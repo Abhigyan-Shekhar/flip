@@ -1,5 +1,10 @@
 # Technical preparation — October 29, 2026
 
+Follow-up: [voice dependency probes](../research/voice/README.md) investigate
+released py-cord and a pinned upstream receive fix. Docker work is deferred at
+the user's request. Podman 5.7.1 is installed, but its `company-brain` VM is
+stopped and the container socket is unreachable; it was left unchanged.
+
 ## Scope and evidence
 
 The working directory initially contained only an unborn Git repository, with

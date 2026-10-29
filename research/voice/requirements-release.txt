@@ -1,0 +1,4 @@
+# Reproduces the published release's receive-boundary failure.
+py-cord[voice]==2.8.1
+davey==0.1.7
+pytest==9.2.0

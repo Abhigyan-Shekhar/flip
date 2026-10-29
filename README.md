@@ -13,6 +13,7 @@ documents and isolated dependency investigations are dated separately.
 
 - [Technical findings, architecture, and risks](docs/PREPARATION.md)
 - [Build sequence and acceptance checks](docs/BUILD_PLAN.md)
+- [Voice compatibility investigation and reproducible probes](research/voice/README.md)
 - [Original supplied specification](docs/SPECIFICATION.md)
 
 The first event-day deliverable is a tested FastAPI and SQLite foundation,
