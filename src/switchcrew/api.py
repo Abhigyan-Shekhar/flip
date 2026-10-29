@@ -91,7 +91,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     token = settings.api_token.get_secret_value()
     credentials = [
         field.get_secret_value()
-        for field in (settings.api_token, settings.pm_api_key, settings.research_api_key)
+        for field in (
+            settings.api_token,
+            settings.pm_api_key,
+            settings.research_api_key,
+            settings.waggle_token,
+        )
         if field is not None
     ]
 

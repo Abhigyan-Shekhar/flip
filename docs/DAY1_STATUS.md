@@ -1,5 +1,10 @@
 # Day 1 implementation and review — October 29, 2026
 
+This is the historical Day 1 implementation report. The user subsequently
+requested [LangGraph scaffolding, product Waggle memory and all-role Switch
+runtimes](AGENT_WORKFLOWS.md); those additions supersede the deferred-scaffolding
+notes below. The current test suite and follow-up evidence are recorded there.
+
 Three GPT-6.1 Sol agents implemented persistence, Switch/Discord transport, and
 PM/Research workers in parallel. The coordinating agent implemented the API,
 configuration, logging, deployment assets and documentation, integrated their

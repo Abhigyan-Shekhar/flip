@@ -12,7 +12,7 @@ class JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
         }
-        if record.name in {"switchcrew.api", "switchcrew.workers"}:
+        if record.name in {"switchcrew.api", "switchcrew.workers", "switchcrew.runtime"}:
             result["event"] = record.msg
             for key in ("request_id", "method", "status_code", "error_type"):
                 if hasattr(record, key):

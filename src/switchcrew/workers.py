@@ -8,6 +8,7 @@ import re
 from uuid import NAMESPACE_URL, uuid5
 
 from .discord import DiscordBinding, normalize_discord_event
+from .graphs import build_agent_graph, graph_result, invoke_agent_graph
 from .logging import configure_logging
 from .research import ResearchProvider
 from .store import Store
@@ -16,32 +17,12 @@ from .switch import SwitchClient
 log = logging.getLogger(__name__)
 
 
-class _Workflow:
-    def __init__(self, provider=None):
-        self.provider = provider
-
-    async def ainvoke(self, state):
-        if self.provider is not None:
-            return {
-                "result": await self.provider.investigate(
-                    state["question"], state["acceptance_criteria"]
-                )
-            }
-        return {
-            "valid": bool(
-                state["question"].strip()
-                and state["acceptance_criteria"]
-                and all(isinstance(c, str) and c.strip() for c in state["acceptance_criteria"])
-            )
-        }
+def pm_graph(**kwargs):
+    return build_agent_graph("pm", **kwargs)
 
 
-def pm_graph():
-    return _Workflow()
-
-
-def research_graph(provider):
-    return _Workflow(provider)
+def research_graph(provider, **kwargs):
+    return build_agent_graph("research", provider=provider, **kwargs)
 
 
 class Worker:
@@ -62,6 +43,8 @@ class Worker:
         research_participant_id=None,
         pm_name=None,
         research_name=None,
+        memory=None,
+        checkpointer=None,
     ):
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
@@ -73,8 +56,11 @@ class Worker:
         self.identity = pm_id if role == "pm" else research_id
         self.bindings = list(bindings)
         self.allowed_guilds, self.allowed_users = set(allowed_guilds), set(allowed_users)
-        self.graph = (
-            pm_graph() if role == "pm" else research_graph(provider or ResearchProvider([]))
+        self.graph = build_agent_graph(
+            role,
+            provider=provider or ResearchProvider([]),
+            memory=memory,
+            checkpointer=checkpointer,
         )
 
     async def receive(self, event):
@@ -180,9 +166,18 @@ class Worker:
             criteria,
             task_id=task_id,
         )
-        valid = (await self.graph.ainvoke({"question": question, "acceptance_criteria": criteria}))[
-            "valid"
-        ]
+        state = await invoke_agent_graph(
+            self.graph,
+            {
+                "agent_role": "pm",
+                "task_id": task_id,
+                "handoff_id": "",
+                "session_id": task_id,
+                "question": question,
+                "acceptance_criteria": criteria,
+            },
+        )
+        valid = state["valid"]
         if not valid:
             if task["status"] == "DRAFT":
                 self.store.transition_task(task_id, "NEEDS_CLARIFICATION", task["version"])
@@ -235,6 +230,10 @@ class Worker:
             body = event["payload"]["body"]
             marker = re.search(r"```switchcrew\n(.*?)\n```\s*$", body, re.DOTALL)
             message = json.loads(marker.group(1) if marker else body)
+            if not isinstance(message, dict):
+                return
+            if not isinstance(message.get("handoff_id"), str) or not message["handoff_id"]:
+                return
             handoff = self.store.get_handoff(message["handoff_id"])
         except (ValueError, KeyError, TypeError):
             return
@@ -253,13 +252,28 @@ class Worker:
                 return
             self.store.accept_handoff(handoff["id"], self.identity)
             await self.flush_outbox()  # Explicit acceptance precedes evidence retrieval.
-            result = await self.graph.ainvoke(
+            if self.store.get_task(handoff["task_id"])["status"] in {"CANCELLED", "COMPLETED"}:
+                self.store.complete_handoff(
+                    handoff["id"],
+                    self.identity,
+                    {
+                        "status": "blocked",
+                        "reason": "Parent task is terminal",
+                    },
+                )
+                return
+            result = await invoke_agent_graph(
+                self.graph,
                 {
+                    "agent_role": "research",
+                    "task_id": handoff["task_id"],
+                    "handoff_id": handoff["id"],
+                    "session_id": handoff["task_id"],
                     "question": handoff["question"],
                     "acceptance_criteria": handoff["acceptance_criteria"],
-                }
+                },
             )
-            self.store.complete_handoff(handoff["id"], self.identity, result["result"])
+            self.store.complete_handoff(handoff["id"], self.identity, graph_result(result))
         elif handoff["recipient"] == self.research_id and handoff["sender"] == self.identity:
             if message.get("type") == "handoff.accepted" and handoff["status"] in {
                 "accepted",
@@ -365,6 +379,7 @@ class Worker:
                                         "room_id": room,
                                         "bridge_id": bridge_id,
                                         "payload": {
+                                            **entry,
                                             "sender": entry["sender"],
                                             "body": entry["body"],
                                             "message_id": entry["id"],
@@ -382,6 +397,9 @@ class Worker:
 
 
 async def _main(role):
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+    from .memory import memory_from_settings
     from .settings import Settings
 
     settings = Settings()
@@ -409,24 +427,30 @@ async def _main(role):
         rooms=[settings.switch_room_id],
     )
     store = Store(settings.database_path)
-    worker = Worker(
-        role,
-        store,
-        client,
-        pm_id=settings.pm_agent_id,
-        research_id=settings.research_agent_id,
-        room_id=settings.switch_room_id,
-        bindings=[DiscordBinding(**b) for b in settings.discord_bindings],
-        allowed_guilds=settings.discord_guild_ids,
-        allowed_users=settings.discord_user_ids,
-        provider=ResearchProvider(settings.research_source_urls, settings.research_max_sources),
-        pm_participant_id=settings.pm_participant_id,
-        research_participant_id=settings.research_participant_id,
-        pm_name=settings.pm_name,
-        research_name=settings.research_name,
-    )
+    settings.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        await worker.run()
+        async with AsyncSqliteSaver.from_conn_string(str(settings.checkpoint_path)) as saver:
+            worker = Worker(
+                role,
+                store,
+                client,
+                pm_id=settings.pm_agent_id,
+                research_id=settings.research_agent_id,
+                room_id=settings.switch_room_id,
+                bindings=[DiscordBinding(**b) for b in settings.discord_bindings],
+                allowed_guilds=settings.discord_guild_ids,
+                allowed_users=settings.discord_user_ids,
+                provider=ResearchProvider(
+                    settings.research_source_urls, settings.research_max_sources
+                ),
+                pm_participant_id=settings.pm_participant_id,
+                research_participant_id=settings.research_participant_id,
+                pm_name=settings.pm_name,
+                research_name=settings.research_name,
+                memory=memory_from_settings(settings),
+                checkpointer=saver,
+            )
+            await worker.run()
     finally:
         await client.close()
         store.close()

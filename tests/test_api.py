@@ -132,3 +132,18 @@ def test_dynamic_validation_keys_cannot_echo_configured_credentials(client):
     response = client.post("/tasks", headers=HEADERS, json=task_body(**{TOKEN: "secret"}))
     assert response.status_code == 422
     assert TOKEN not in response.text
+
+
+def test_waggle_credential_is_redacted_from_api_output(tmp_path):
+    key = "local-memory-credential-for-redaction"
+    cfg = Settings(
+        _env_file=None,
+        database_path=tmp_path / "memory-redaction.sqlite3",
+        api_token=TOKEN,
+        waggle_token=key,
+    )
+    with TestClient(create_app(cfg)) as client:
+        response = client.post("/tasks", headers=HEADERS, json=task_body(objective=f"Review {key}"))
+        assert response.status_code == 201
+        assert key not in response.text
+        assert "[REDACTED]" in response.text

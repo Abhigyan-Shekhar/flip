@@ -5,6 +5,13 @@ PM and Research workers communicating through Switch's Discord text bridge.
 This slice implements the nine Day 1 workstreams from the supplied checklist.
 Local tests use controlled transports; live Switch/Discord acceptance is pending.
 
+All 15 specified agents now have independent LangGraph scaffolds. PM and Research
+run their existing work through compiled graphs with SQLite checkpoints. Optional
+Waggle MCP memory provides project recall and curated outcome storage; a generic
+Switch runtime connects each additional specialist under its own identity. See
+[agent workflows](docs/AGENT_WORKFLOWS.md), [memory](docs/MEMORY.md), and
+[Switch runtimes](docs/AGENT_SWITCH.md).
+
 ## Run locally
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
@@ -56,8 +63,10 @@ Docker commands are provided but have not been executed on this machine.
 Research retrieves bounded excerpts from operator-configured public HTTPS sources.
 It does not implement autonomous web search or claim acceptance criteria are
 verified. Missing criteria trigger a clarification response; send a new complete
-JSON request. Full specialist LangGraphs, Codex, independent QA, GitHub publication,
-approvals, Discord voice, receipts and community workflows remain later work.
+JSON request. Specialist capability implementations beyond PM/Research, actual Codex execution,
+independent QA, GitHub publication, approvals, Discord voice, receipts and community
+workflows remain later work. LangGraph, Waggle and generic Switch scaffolding
+is implemented; memory requires explicit configuration.
 
 Work began October 29, 2026 at the user's explicit request. The earlier
 [preparation notes](docs/PREPARATION.md) and [build plan](docs/BUILD_PLAN.md) remain

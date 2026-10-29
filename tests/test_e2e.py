@@ -153,3 +153,44 @@ async def test_gap_recovers_verified_human_history():
     assert store.get_cursor("pm") == "20"
     assert store.connection.execute("SELECT count(*) FROM handoffs").fetchone()[0] == 1
     assert any(target == "research" for target, body, thread in transport.sent)
+
+
+@pytest.mark.asyncio
+async def test_gap_cannot_remove_proxy_sender_checks():
+    class HistoryTransport(Transport):
+        cursor = None
+
+        async def connect_to_room(self, room):
+            pass
+
+        async def events(self):
+            yield {"type": "connection_state"}
+            yield {
+                "type": "gap",
+                "resumed_at": 20,
+                "history": {
+                    "room": [
+                        {
+                            "threads": [
+                                {
+                                    "root": {
+                                        "id": "proxy-message",
+                                        "sender": "human",
+                                        "kind": "message",
+                                        "sender_kind": "platform",
+                                        "on_behalf_of": "someone",
+                                        "body": json.dumps(
+                                            {"question": "SSE", "acceptance_criteria": ["Sources"]}
+                                        ),
+                                    },
+                                    "replies": [],
+                                }
+                            ]
+                        }
+                    ]
+                },
+            }
+
+    store = Store(":memory:")
+    await worker("pm", store, HistoryTransport()).run()
+    assert store.connection.execute("SELECT count(*) FROM tasks").fetchone()[0] == 0

@@ -1,5 +1,9 @@
 # Local operation
 
+The PM/Research workers now execute independent LangGraph workflows with durable
+SQLite checkpoints. See [all agent workflows](AGENT_WORKFLOWS.md), optional
+[Waggle configuration](MEMORY.md), and [additional Switch runtimes](AGENT_SWITCH.md).
+
 Use CPython 3.12 and `uv sync --frozen`. The lockfile includes runtime and test
 versions. Start the API with `uv run uvicorn switchcrew.api:create_app --factory
 --host 127.0.0.1 --no-access-log`. On startup the service creates the SQLite

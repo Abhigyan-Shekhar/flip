@@ -176,3 +176,43 @@ async def test_whitespace_human_message_does_not_poison_inbox():
     assert (
         store.connection.execute("SELECT status FROM tasks").fetchone()[0] == "NEEDS_CLARIFICATION"
     )
+
+
+@pytest.mark.asyncio
+async def test_malformed_handoff_ids_cannot_poison_worker():
+    store = Store(":memory:")
+    research = worker("research", store, Transport())
+    for index, value in enumerate([None, [], {}, 3, ""]):
+        await research.receive(event("pm", json.dumps({"handoff_id": value}), f"bad-id-{index}"))
+    await research.process_pending()
+    assert not store.pending_inbox("research")
+
+
+@pytest.mark.asyncio
+async def test_cancelled_task_blocks_research_execution():
+    store = Store(":memory:")
+    task = store.create_task("SSE", {"thread_id": "thread"}, ["Evidence"])
+    handoff = store.create_handoff(task["id"], "pm", "research", "SSE", ["Evidence"], 0)
+    current = store.get_task(task["id"])
+    store.transition_task(task["id"], "CANCELLED", current["version"])
+
+    class Forbidden:
+        async def investigate(self, *args):
+            pytest.fail("Cancelled tasks must not execute research")
+
+    research = worker("research", store, Transport(), Forbidden())
+    await research.receive(
+        event(
+            "pm",
+            json.dumps(
+                {
+                    "type": "handoff",
+                    "handoff_id": handoff["id"],
+                    "task_id": task["id"],
+                }
+            ),
+        )
+    )
+    await research.process_pending()
+    assert store.get_handoff(handoff["id"])["result"]["status"] == "blocked"
+    assert store.get_task(task["id"])["status"] == "CANCELLED"

@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     )
 
     database_path: Path = Path("data/switchcrew.sqlite3")
+    checkpoint_path: Path = Path("data/checkpoints.sqlite3")
+    memory_enabled: bool = False
+    memory_project: str = "github.com/Abhigyan-Shekhar/flip"
+    waggle_command: list[str] = Field(default_factory=list)
+    waggle_url: str | None = None
+    waggle_token: SecretStr | None = None
     api_token: SecretStr | None = None
     switch_base_url: str = "http://127.0.0.1:8080"
     switch_room_id: str = ""
@@ -31,6 +37,11 @@ class Settings(BaseSettings):
     research_source_urls: list[str] = Field(default_factory=list)
     research_max_sources: int = Field(default=5, ge=1, le=10)
     poll_interval_seconds: float = Field(default=1.0, ge=0.1, le=60)
+
+    @field_validator("waggle_url", mode="before")
+    @classmethod
+    def optional_waggle_url(cls, value):
+        return None if value == "" else value
 
     @field_validator("api_token")
     @classmethod
