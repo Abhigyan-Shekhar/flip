@@ -1,0 +1,121 @@
+# Local operation
+
+Use CPython 3.12 and `uv sync --frozen`. The lockfile includes runtime and test
+versions. Start the API with `uv run uvicorn switchcrew.api:create_app --factory
+--host 127.0.0.1 --no-access-log`. On startup the service creates the SQLite
+schema and rejects a database from an unsupported future schema version.
+
+Configuration is read from environment variables prefixed `SWITCHCREW_` and the
+local `.env` file. `.env.example` documents the fields. `API_TOKEN` must contain
+at least 32 random characters; startup fails without it. `DATABASE_PATH` defaults
+to `data/switchcrew.sqlite3`. Empty Discord allowlists deny all human requests.
+Lists and bindings use JSON syntax, not comma-separated strings. Keep the file
+mode 0600 and store only real credentials locally. Exceptions and validation
+responses omit request values; API logs record request IDs, methods and status.
+
+## API routes
+
+| Route | Authentication | Behavior |
+| --- | --- | --- |
+| `GET /health` | Public | Process/database availability |
+| `GET /openapi.json` | Bearer | Machine-readable request contracts |
+| `POST /tasks` | Bearer | Create task and first event atomically |
+| `GET /tasks/{id}` | Bearer | Task, source context, state and version |
+| `GET /tasks/{id}/events` | Bearer | Ordered durable event history |
+| `POST /tasks/{id}/transitions` | Bearer | Checked state change with expected version |
+
+Task creation takes `{"objective":"Research Switch reconnect behavior",
+"acceptance_criteria":["Find source excerpts"],"source":{"room_id":"...",
+"thread_id":"..."}}`. The returned initial version is 0. A transition takes
+`{"status":"PLANNED","expected_version":0}`. Stale or illegal changes return
+409, missing tasks 404, missing/wrong credentials 401 and invalid bodies 422.
+The exposed transitions are limited to Day 1 states; there are no publication,
+voice or approval endpoints. This is a trusted operator API, not multi-tenant
+user authorization. API-created tasks are stored only; workers consume requests
+through Switch and do not automatically execute arbitrary API-created records.
+
+## Independent workers
+
+Provision Switch and Discord using [the guide](../deploy/switch/README.md).
+Register distinct always-on PM and Research workers, keep each returned API key,
+then set each registration ID, verified room participant ID, exact participant
+name, room ID and bridge URL in `.env`. Do not conflate these three identity forms.
+Run exactly one instance per specialist:
+
+```sh
+uv run python -m switchcrew.workers research
+uv run python -m switchcrew.workers pm
+```
+
+Use the same `DATABASE_PATH` for API and both workers. This Day 1 implementation
+shares SQLite through separate processes; do not put the database on network
+storage. Workers use deterministic connection IDs and persisted stream cursors,
+inbox/outbox, tasks, handoffs and results. Docker injects only the relevant agent
+key into each worker. Local `.env` is a trusted operator configuration containing
+both keys; separate environment-only process launches can further isolate them.
+
+Configure PM's `DISCORD_BINDINGS` with operator-verified mappings, and nonempty
+`DISCORD_GUILD_IDS` and `DISCORD_USER_IDS`. The event body cannot assert identity.
+Stale bindings must be revoked by the operator when access changes. Configure
+Research's `RESEARCH_SOURCE_URLS` to public HTTPS source pages; at most
+`RESEARCH_MAX_SOURCES` (1–10, default 5) are retrieved. Connections pin validated
+public DNS addresses, reject redirects, cap responses and enforce timeouts.
+Results contain source URLs and excerpts; relevance matching is lexical.
+
+In an existing Discord thread connected to the configured room, send:
+
+```json
+{"question":"How does Switch reconnect its SSE stream?","acceptance_criteria":["Find source excerpts describing reconnect and history recovery"]}
+```
+
+PM creates a task, sends a targeted handoff and waits for an explicit Research
+acknowledgment. Research sends its acknowledgment before fetching sources, then
+returns evidence or a blocked result. PM posts progress and the result in the
+same thread; both worker identities appear through Switch's built-in webhooks.
+A plain text request prompts for a new JSON request; the initial task remains
+`NEEDS_CLARIFICATION`. Excerpts are not a claim that acceptance criteria passed.
+
+## Recovery and limitations
+
+SQLite transactions couple changes with events and outgoing messages. Delivery
+is at-least-once: if Switch accepts a send but its response is lost, a later
+retry can create duplicate visible Discord messages. Receiver deduplication and
+stored handoff results prevent repeated completed research. In-flight read-only
+retrieval can repeat after a process crash before its result commit.
+
+A disconnected target retains pending output and causes worker failure so the
+process supervisor can retry after reconnect. Outgoing transport acceptance is
+separate from application acknowledgment. Run workers under Compose or another
+supervisor. Inspect task events and pending work before resetting connection
+state. Never delete the database to fix delivery problems.
+
+SSE history gaps replay specialist messages from trusted sender metadata and
+human messages only when the persisted room/sender has one operator-verified
+binding. The normal allowlists still apply. Conflicting or missing bindings
+cannot authorize replay. Run the live gap/restart acceptance before treating
+this as a proven production recovery path.
+
+## Live acceptance procedure
+
+This is a manual live gate, not part of the deterministic test suite:
+
+1. Deploy the pinned Switch stack; verify its health and Console connection.
+2. Configure a test guild, bot intents, room, human owner link, verified bindings,
+   two specialist identities, room roles and addressing policy.
+3. Start both workers. Confirm registration, operation discovery and connections.
+4. Submit the JSON request above in a Discord thread. Capture original request,
+   task ID, handoff ID, actual Switch message IDs, Research acknowledgment, source
+   evidence and PM result in that same thread. Verify both identities are visible.
+5. Restart workers/API and fetch task/events to prove persistence. Interrupt
+   Research before completion; confirm recovery and no rerun of completed work.
+6. Disconnect Research, submit another request and confirm pending delivery is
+   retained. Reconnect; confirm acknowledgment and result arrive.
+7. Expire a heartbeat and interrupt SSE; confirm reconnect with stable connection
+   ID/cursor. Force an SSE history gap and inspect specialist and bound-human replay; reconcile
+   any requests without a verified identity binding.
+8. Record actual service versions, timestamp, commands and evidence in
+   `docs/DAY1_STATUS.md` before marking the live gates complete.
+
+As requested, no local live service credentials are available. Docker is absent
+on the current host; its image, Compose startup and live service checks remain
+unexecuted. The real-service flagship is still pending.

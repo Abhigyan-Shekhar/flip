@@ -1,6 +1,8 @@
 # Event build plan
 
-Prepared October 29, 2026. This is a plan, not evidence of implementation.
+Prepared October 29, 2026. This dated plan is preserved as history.
+Implementation began later that day at the user’s explicit request; see
+[the current implementation and review status](DAY1_STATUS.md).
 All dates below are IST. Read [technical findings](PREPARATION.md) first.
 
 ## Before November 4

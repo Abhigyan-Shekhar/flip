@@ -1,0 +1,14 @@
+# Optional same-engine integration with pinned upstream project switch-server.
+services:
+  pm:
+    environment:
+      SWITCHCREW_SWITCH_BASE_URL: http://switch:8000
+    networks: [default, switch-server]
+  research:
+    environment:
+      SWITCHCREW_SWITCH_BASE_URL: http://switch:8000
+    networks: [default, switch-server]
+networks:
+  switch-server:
+    external: true
+    name: switch-server_default

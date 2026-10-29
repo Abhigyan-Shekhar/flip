@@ -1,0 +1,60 @@
+# Application only. Switch's official PostgreSQL-backed stack runs separately.
+x-crew: &crew
+  build: .
+  volumes:
+    - crew-data:/app/data
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+
+x-worker-environment: &worker-environment
+  SWITCHCREW_DATABASE_PATH: /app/data/switchcrew.sqlite3
+  SWITCHCREW_SWITCH_BASE_URL: ${SWITCHCREW_SWITCH_BASE_URL:-http://switch:8000}
+  SWITCHCREW_SWITCH_ROOM_ID: ${SWITCHCREW_SWITCH_ROOM_ID:-}
+  SWITCHCREW_PM_AGENT_ID: ${SWITCHCREW_PM_AGENT_ID:-}
+  SWITCHCREW_RESEARCH_AGENT_ID: ${SWITCHCREW_RESEARCH_AGENT_ID:-}
+  SWITCHCREW_PM_PARTICIPANT_ID: ${SWITCHCREW_PM_PARTICIPANT_ID:-}
+  SWITCHCREW_RESEARCH_PARTICIPANT_ID: ${SWITCHCREW_RESEARCH_PARTICIPANT_ID:-}
+  SWITCHCREW_PM_NAME: ${SWITCHCREW_PM_NAME:-PM Agent}
+  SWITCHCREW_RESEARCH_NAME: ${SWITCHCREW_RESEARCH_NAME:-Research Agent}
+
+services:
+  api:
+    <<: *crew
+    environment:
+      SWITCHCREW_DATABASE_PATH: /app/data/switchcrew.sqlite3
+      SWITCHCREW_API_TOKEN: ${SWITCHCREW_API_TOKEN:?Set a random API token of at least 32 characters}
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+  pm:
+    <<: *crew
+    profiles: [workers]
+    command: ["python", "-m", "switchcrew.workers", "pm"]
+    environment:
+      <<: *worker-environment
+      SWITCHCREW_PM_API_KEY: ${SWITCHCREW_PM_API_KEY:-}
+      SWITCHCREW_DISCORD_GUILD_IDS: ${SWITCHCREW_DISCORD_GUILD_IDS:-[]}
+      SWITCHCREW_DISCORD_USER_IDS: ${SWITCHCREW_DISCORD_USER_IDS:-[]}
+      SWITCHCREW_DISCORD_BINDINGS: ${SWITCHCREW_DISCORD_BINDINGS:-[]}
+  research:
+    <<: *crew
+    profiles: [workers]
+    command: ["python", "-m", "switchcrew.workers", "research"]
+    environment:
+      <<: *worker-environment
+      SWITCHCREW_RESEARCH_API_KEY: ${SWITCHCREW_RESEARCH_API_KEY:-}
+      SWITCHCREW_RESEARCH_SOURCE_URLS: ${SWITCHCREW_RESEARCH_SOURCE_URLS:-[]}
+      SWITCHCREW_RESEARCH_MAX_SOURCES: ${SWITCHCREW_RESEARCH_MAX_SOURCES:-5}
+
+volumes:
+  crew-data:
