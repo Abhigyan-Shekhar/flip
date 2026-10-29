@@ -1,0 +1,15 @@
+# Keep long-running services available after a Docker engine restart.
+# init-db remains a one-shot job, as defined upstream.
+services:
+  postgres:
+    restart: unless-stopped
+  switch:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  gateway:
+    restart: unless-stopped

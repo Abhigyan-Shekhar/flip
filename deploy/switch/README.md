@@ -1,5 +1,49 @@
 # Switch server and Discord setup
 
+## Repeatable local deployment
+
+With Docker Desktop running, from the SwitchCrew repository:
+
+```sh
+bash deploy/switch/local.sh up
+bash deploy/switch/local.sh ps
+curl --fail http://127.0.0.1:8080/health/ready
+```
+
+The script checks out the pinned source below in ignored `.switch/server`,
+generates a mode-0600 `.env` once, and builds the official server and gateway.
+Subsequent starts preserve credentials and PostgreSQL data. It refuses an
+unexpected source revision. PostgreSQL uses loopback port 5433; the gateway uses
+3001 to avoid existing services on port 3000. Long-running containers restart
+with Docker, and Compose waits for database and Switch readiness.
+Use `bash deploy/switch/local.sh stop` to stop without removing data; `logs`
+and `ps` inspect the stack. Docker Desktop must itself start after reboot.
+
+Connect Switch Console using **Connect to an existing server**:
+
+| Setting | Value |
+| --- | --- |
+| Gateway URL | `http://127.0.0.1:3001` |
+| API URL | `http://127.0.0.1:8080` |
+| Email | `admin@switch.local` |
+| Password | `GATEWAY_ADMIN_PASSWORD` in local `.switch/server/.env` |
+
+Open the protected env file locally to retrieve the generated password. Never
+commit it, paste it into chat, or include it in command arguments or screenshots.
+Switch Console **v0.40.1** is the compatible desktop release: it and this server
+both declare `gateway-api` contract 1. Download the architecture-specific app
+from the [official release](https://github.com/sandbox-quantum/switch/releases/tag/switch-console-v0.40.1).
+For Apple Silicon, the official `switch-console-arm64.zip` SHA-256 is
+`02f4f9e4da4da2f831ae618911ffcaf047a28c58c8b1d19bc64345953ef125e0`.
+Console is a desktop application, separate from the gateway container.
+
+The SwitchCrew API can run alongside this stack with
+`docker compose up --build -d --wait api` after configuring its root `.env`.
+PM/Research workers additionally require registration, room identities and
+verified Discord bindings; starting the infrastructure does not configure them.
+
+## Upstream provisioning reference
+
 The Python adapter targets upstream commit
 `557b62b23002548baa678339a97c8140c1ccaa8b`, agent SSE protocol 6. Current upstream
 HEAD has changed transport schemas; do not float the server version. Official
@@ -66,8 +110,9 @@ Persist the returned stream cursor separately. Eviction stops the consumer to
 avoid two processes fighting over the same connection ID. Outgoing mutation
 requests are never blindly retried after an uncertain response.
 
-No live credentials were available. Live gates remain: `/health`, registration,
-operation discovery, Discord room creation/owner link, role addressing,
+The local deployment now generates its own infrastructure credentials. Live
+agent/Discord gates remain: registration, operation discovery, Discord room
+creation/owner link, role addressing,
 heartbeat/reconnect/restart recovery, thread replies and actual recipient ack.
 
 ## Open the operator interface and configure rooms
@@ -132,7 +177,8 @@ docker compose -f compose.yaml -f deploy/compose.switch-local.yaml \
 
 The override joins workers to the upstream `switch-server_default` network and
 uses `http://switch:8000`; start upstream with project name `switch-server` first.
-These container commands remain unexecuted locally because Docker is absent.
+The local server, gateway and API have been exercised with Docker; worker
+startup still requires the agent/Discord configuration described above.
 
 Register each identity once after the bridge is reachable. Set
 `SWITCH_REGISTRATION_TOKEN` locally from upstream `AGENT_REGISTRATION_TOKEN`;

@@ -56,7 +56,9 @@ need a reachable agent bridge URL; container `127.0.0.1` points at the container
 Use a secured external URL or attach workers to the actual Switch Docker network
 with hostname `switch` and port 8000. The provisioning guide includes a local
 network override and avoids host port conflicts.
-Docker commands are provided but have not been executed on this machine.
+For the pinned local Switch server and gateway, run `bash deploy/switch/local.sh`.
+The gateway uses `http://127.0.0.1:3001`, and Switch uses port 8080. See the
+[deployment guide](deploy/switch/README.md) for Console and local credentials.
 
 ## Scope
 

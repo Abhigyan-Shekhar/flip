@@ -102,7 +102,11 @@ can repeat that read-only fetch. State transitions create durable `events`
 outbox records as a local audit feed; no separate external event consumer ships
 in this milestone.
 
-No Docker executable or configured Switch/Discord services were available.
+At the initial implementation checkpoint, Docker and configured Switch/Discord
+services were unavailable. A subsequent October 29 local deployment passed
+Docker builds, Switch readiness, gateway login and API health; see the
+[deployment record](../deploy/switch/VERIFICATION.md). The Discord/worker
+acceptance sequence below remains pending.
 Follow [operations](OPERATIONS.md) and [upstream provisioning](../deploy/switch/README.md)
 to execute the explicit live acceptance sequence and record real task, handoff,
 message and thread evidence. Later-day features listed in the request remain

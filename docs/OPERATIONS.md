@@ -120,6 +120,7 @@ This is a manual live gate, not part of the deterministic test suite:
 8. Record actual service versions, timestamp, commands and evidence in
    `docs/DAY1_STATUS.md` before marking the live gates complete.
 
-As requested, no local live service credentials are available. Docker is absent
-on the current host; its image, Compose startup and live service checks remain
-unexecuted. The real-service flagship is still pending.
+The October 29 local infrastructure deployment passed Docker builds, Switch
+readiness, gateway admin login and SwitchCrew API health. See the
+[deployment record](../deploy/switch/VERIFICATION.md). Discord credentials and
+worker configuration are still required for the real-service flagship.
