@@ -459,3 +459,36 @@ async def test_runtime_does_not_complete_pending_execution(tmp_path):
     assert runtime.store.get_handoff(handoff["id"])["status"] == "accepted"
     assert len(runtime.store.pending_inbox(runtime.connection.agent_id)) == 1
     runtime.store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("commit_config", [False, True])
+async def test_console_onboarding_config_stays_private(setup, tmp_path, commit_config):
+    source, base, ledger = setup
+    root = tmp_path / "work"
+    prepared = await EngineeringExecutor(ledger, root, source, base, None)(state())
+    checkout = Path(prepared["checkout"])
+    config = checkout / ".switch/config/dedicated.json"
+    config.parent.mkdir(parents=True)
+    config.write_text('{"test_only": true}')
+    session = ControlledSession()
+    executor = EngineeringExecutor(ledger, root, source, base, session)
+    assert (await executor(state()))["status"] == "pending_execution"
+    assert git(checkout, "status", "--porcelain") == ""
+    final = commit(checkout, "correct")
+    if commit_config:
+        git(checkout, "add", "-f", ".switch/config/dedicated.json")
+        git(
+            checkout,
+            "-c",
+            "user.name=Controlled Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-m",
+            "unsafe fixture",
+        )
+        final = git(checkout, "rev-parse", "HEAD")
+    receipt(checkout, assignment_id(state()["handoff_id"]), final)
+    result = await executor(state())
+    assert result["status"] == ("implementation_failed" if commit_config else "implemented")

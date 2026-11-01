@@ -225,6 +225,12 @@ class EngineeringExecutor:
             git(checkout, "checkout", "--detach", base)
             with (checkout / ".git/info/exclude").open("a") as excludes:
                 excludes.write("\n.claude/settings.local.json\n.switchcrew-result.json\n")
+        # Console onboarding writes private local connection configuration. Keep it
+        # out of the implementation tree, including checkouts prepared before onboarding.
+        exclude = checkout / ".git/info/exclude"
+        if "/.switch/config/" not in exclude.read_text().splitlines():
+            with exclude.open("a") as excludes:
+                excludes.write("\n/.switch/config/\n")
         # A partly created checkout is never silently reset on retry.
         if data["phase"] == "reserved" and (
             git(checkout, "rev-parse", "HEAD") != base or git(checkout, "status", "--porcelain")
@@ -313,7 +319,11 @@ class EngineeringExecutor:
             git(checkout, "merge-base", "--is-ancestor", base, final)
             dirty = git(checkout, "status", "--porcelain", "--untracked-files=all").splitlines()
             protected = git(
-                checkout, "ls-files", ".claude/settings.local.json", ".switchcrew-result.json"
+                checkout,
+                "ls-files",
+                ".claude/settings.local.json",
+                ".switchcrew-result.json",
+                ".switch/config/",
             )
             if protected or any(line != "?? .switchcrew-result.json" for line in dirty):
                 raise ValueError("Implementation has uncommitted changes")

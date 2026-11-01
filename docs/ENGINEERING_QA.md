@@ -15,8 +15,8 @@ Engineering consumes the existing durable `AgentRuntime` handoff contract.
 immutable inputs in a separate SQLite execution ledger, and clones the local
 operator-selected source into `<checkout_root>/<assignment_id>`. It checks out
 and records the resolved base commit. Existing work is never reset on retry. The new clone locally excludes the
-untracked `.claude/settings.local.json` used by Console onboarding and the
-completion receipt. A result containing either file in the committed tree is
+untracked `.claude/settings.local.json` and `.switch/config/` used by Console onboarding and the
+completion receipt. A result containing those configuration files or the receipt in the committed tree is
 rejected, preventing those configuration/receipt files from entering the diff.
 
 `ConsoleCodex` talks to the **real local Switch Console control API**. The pinned

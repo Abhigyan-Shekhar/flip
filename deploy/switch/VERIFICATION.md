@@ -1,3 +1,42 @@
+# Console connection and onboarding integration — November 1, 2026
+
+Observation timestamp: `2026-11-01T13:59:46.938729+00:00` (UTC). Checkout before this fix:
+`7c94889`; application base `220fa91` plus the focused onboarding fix in this commit.
+
+- PASS: Console is signed in to existing `Verification Docker Switch` at
+  `http://127.0.0.1:8080`; its existing localhost-managed server was preserved.
+- PASS: dedicated real Console agent `approval-test-codex-220fa91`, provider
+  `codex` (UI reports signed in), Console ID
+  `ce9ebb1e-3400-4001-809d-6020e52eb4cb`, Switch ID
+  `71cc8b11-052b-422d-a471-88936db0aee9`, location
+  `9bbfb227-3e92-4570-858a-1231968c6e73`. The actual adapter validated the
+  exact prepared assignment directory. Its session list was empty. No managed
+  implementation session or delivery is claimed by this preparation evidence.
+- Agent added only to isolated acceptance room; its addressing policy allows
+  only that room's Engineering identity. Permission bypass remains off.
+- FAIL: first approved task `55d2b9c6-fcc3-5457-adac-ef3535a1aef6` completed
+  Engineering handoff `f5230d6d-2c51-577a-8d29-9f6d25f014da` as
+  `blocked_configuration` / `checkout_not_clean_at_base`, before session
+  creation. Console onboarding generated `.switch/config/<agent>.json` in
+  the prepared checkout. The existing implementation excluded only the Claude
+  onboarding file and receipt. Task is `FAILED`, version 5; ledger remains
+  `reserved`, with no session/delivery/result. No task or approval state was reset.
+- FIX: exclude Console's private `.switch/config/` from local implementation
+  status, including already-prepared checkouts, and reject any result that
+  commits files from that directory. Controlled tests exercise successful
+  onboarding and forced credential-file commit rejection. No real credentials
+  were used in those tests or committed to this branch.
+- Controlled validation: **191 passed, 3 live tests skipped**; Ruff lint and
+  format checks passed; `git diff --check` passed. These are not live Codex/QA
+  acceptance evidence.
+- A requester retry with trailing punctuation created clarification task
+  `10495556-4a0f-575e-9d23-574a6a8f882c`; no privileged handoff resulted.
+  A corrected plain JSON request and fresh human approval are needed for a new
+  assignment. The first task remains as failure evidence.
+- NOT RUN: managed implementation, exact-SHA independent QA, Release approval,
+  real draft PR/receipt, remaining denial tasks and live recovery scenarios.
+  Narrowly scoped Release token remains unconfigured; Release remains stopped.
+
 # Approval/Release review remediation — November 1, 2026
 
 Observation timestamp: `2026-11-01T19:14:22.826831+05:30` (Asia/Kolkata, UTC+05:30).
