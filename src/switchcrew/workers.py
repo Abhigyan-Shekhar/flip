@@ -12,7 +12,7 @@ from .graphs import build_agent_graph, graph_result, invoke_agent_graph
 from .logging import configure_logging
 from .research import ResearchProvider
 from .store import Store
-from .switch import SwitchClient
+from .switch import SwitchClient, SwitchOwnershipLost
 
 log = logging.getLogger("switchcrew.workers")
 
@@ -361,6 +361,7 @@ class Worker:
                 # reconnect as well as startup; release is idempotent.
                 await self.switch.operation("release_role")
                 await self.switch.operation("assume_role", role=self.role)
+                log.info("worker_role_assumed", extra={"role": self.role})
                 await self.flush_outbox()
             if event.get("type") == "gap":
                 log.info("history_gap_received", extra={"role": self.role})
@@ -402,7 +403,10 @@ class Worker:
                                     }
                                 )
                 self.store.set_cursor(self.identity, event["resumed_at"])
-                log.info("history_gap_replayed", extra={"role": self.role})
+                log.info(
+                    "history_gap_replayed",
+                    extra={"role": self.role, "cursor": event["resumed_at"]},
+                )
             await self.receive(event)
             if event.get("sequence") is not None:
                 self.store.set_cursor(self.identity, event["sequence"])
@@ -471,12 +475,21 @@ async def _main(role):
         store.close()
 
 
+async def run_worker(role):
+    """Return an exit status for an on-failure supervisor without leaking errors."""
+    try:
+        await _main(role)
+    except SwitchOwnershipLost:
+        log.error("worker_ownership_lost", extra={"role": role})
+        return 0  # The recovery Compose override restarts failures, not displaced holders.
+    except Exception as exc:
+        log.error("worker_failed", extra={"role": role, "error_type": type(exc).__name__})
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("role", choices=["pm", "research"])
     configure_logging()
-    try:
-        asyncio.run(_main(parser.parse_args().role))
-    except Exception as exc:
-        log.error("worker_failed", extra={"error_type": type(exc).__name__})
-        raise SystemExit(1) from None
+    raise SystemExit(asyncio.run(run_worker(parser.parse_args().role)))

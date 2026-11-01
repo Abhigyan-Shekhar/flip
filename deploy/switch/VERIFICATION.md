@@ -1,3 +1,46 @@
+# Recovery hardening follow-up — November 1, 2026
+
+Workstream `codex/recovery-acceptance`, based on live-verification commit
+`2441365`. The current host has no working Docker installation, live Switch
+listeners or external worker credentials. The user confirmed that the demo
+below ran on a friend's Mac, with private files in that Mac's `.env` and
+`.switch/`. No new real Discord, container or server recovery run is claimed.
+
+## Changes and local evidence
+
+- Fenced reconnects send `expected_generation`; a client that missed its
+  eviction cannot silently reclaim a newer stream. Heartbeat and operation
+  `taken_over` refusals use a distinct terminal ownership-loss exception.
+- `heartbeat_lapsed` eviction frames reconnect with the existing cursor rather
+  than being treated as terminal ownership loss. HTTP 500 during stream/beat
+  reads also reconnects; outgoing mutations are not automatically retried.
+- PM/Research log safe connection, role and replay metadata. Lost ownership
+  exits 0; ordinary failures exit 1. New `worker-recovery.yaml` uses `on-failure`
+  so a displaced holder stays stopped. This override is required; the base
+  Compose policy still restarts clean exits. It trades automatic Docker-daemon
+  restart startup for explicit operator startup of workers.
+- Controlled regression: a request found only in gap history, duplicated across
+  pages and live events, survives database reopen and produces one task/handoff,
+  one Research execution and one logical result in its stored original thread.
+  Interrupted history insertion leaves the old durable cursor for retry.
+- `gap_cursor.py` backs up and injects only the application cursor, restores
+  only an unchanged injected cursor and refuses to overwrite backups/progress.
+  Subprocess tests exercise those refusal and restore paths on temporary SQLite.
+- Final local checks: **136 tests passed; 3 opt-in live tests skipped**. Ruff
+  lint and format, shell syntax and `git diff --check` passed. Both worker
+  restart override entries parse as YAML; actual Docker Compose execution was
+  unavailable here.
+
+The three live probes separately cover real heartbeat expiry, `no_stream`
+reattachment and `taken_over` fencing using an isolated probe identity. They
+are present and runnable, but were **not executed against Switch** on this host.
+Read the [acceptance runbook](RECOVERY_ACCEPTANCE.md) to run them and the
+request-during-gap procedure on the verification Mac. Also verify the actual
+supervisor's terminal takeover behavior there. Natural retention expiry,
+fresh provisioning and the desktop Console connection remain separate gates.
+
+---
+
 # Live deployment verification — November 1, 2026
 
 Executed in the macOS checkout used for this run. The earlier records below

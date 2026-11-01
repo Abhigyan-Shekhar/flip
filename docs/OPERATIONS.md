@@ -44,6 +44,9 @@ Provision Switch and Discord using [the guide](../deploy/switch/README.md).
 Register distinct always-on PM and Research workers, keep each returned API key,
 then set each registration ID, verified room participant ID, exact participant
 name, room ID and bridge URL in `.env`. Do not conflate these three identity forms.
+Use machine names `pm-agent` and `research-agent` for targeting. Membership UUIDs
+are not necessarily the transport sender IDs; verify senders against authenticated
+history and the stored external-user/client mapping as described in provisioning.
 Run exactly one instance per specialist:
 
 ```sh
@@ -66,10 +69,14 @@ Research's `RESEARCH_SOURCE_URLS` to public HTTPS source pages; at most
 public DNS addresses, reject redirects, cap responses and enforce timeouts.
 Results contain source URLs and excerpts; relevance matching is lexical.
 
-In an existing Discord thread connected to the configured room, send:
+Create the test thread on a human message already bridged into Switch. A standalone
+bot-created thread can lack an ingested root on this pinned server, causing replies
+to land in the parent channel. Verify the actual Discord location of each reply.
+For the bounded official source
+`https://docs.discord.com/developers/events/gateway.md`, send:
 
 ```json
-{"question":"How does Switch reconnect its SSE stream?","acceptance_criteria":["Find source excerpts describing reconnect and history recovery"]}
+{"question":"What are Discord Gateway intents?","acceptance_criteria":["Find official source excerpts explaining intents"]}
 ```
 
 PM creates a task, sends a targeted handoff and waits for an explicit Research
@@ -92,6 +99,22 @@ process supervisor can retry after reconnect. Outgoing transport acceptance is
 separate from application acknowledgment. Run workers under Compose or another
 supervisor. Inspect task events and pending work before resetting connection
 state. Never delete the database to fix delivery problems.
+
+For Compose workers, include `-f deploy/switch/worker-recovery.yaml` after the
+base file and any networking override. Workers exit 0 after an eviction or
+`taken_over` refusal and log `worker_ownership_lost`; this override's `on-failure`
+policy leaves that holder stopped. The base `unless-stopped` policy would restart
+even a clean exit and could steal the winning connection back. Ordinary failures
+exit 1 and restart. With `on-failure`, explicitly start workers after a Docker
+daemon/host restart. For a host process supervisor, apply the same exit policy.
+See [Docker restart semantics](https://docs.docker.com/engine/containers/start-containers-automatically/).
+
+Within a process, reconnects carry `expected_generation` alongside the stable
+connection ID and persisted cursor. A `heartbeat_lapsed` frame or recoverable
+heartbeat HTTP refusal reopens the stream; `taken_over` remains terminal.
+`stream_reconnecting`, `worker_connected`, `worker_role_assumed`,
+`history_gap_received` and `history_gap_replayed` expose only allowlisted metadata.
+History replay means durable inbox insertion; application processing follows.
 
 SSE history gaps replay specialist messages from trusted sender metadata and
 human messages only when the persisted room/sender has one operator-verified
@@ -120,7 +143,10 @@ This is a manual live gate, not part of the deterministic test suite:
 8. Record actual service versions, timestamp, commands and evidence in
    `docs/DAY1_STATUS.md` before marking the live gates complete.
 
-The October 29 local infrastructure deployment passed Docker builds, Switch
-readiness, gateway admin login and SwitchCrew API health. See the
-[deployment record](../deploy/switch/VERIFICATION.md). Discord credentials and
-worker configuration are still required for the real-service flagship.
+The November 1 verification Mac recorded the real original-thread workflow,
+worker/API restarts, disconnected-worker recovery and an injected replay-ticket
+gap. Those services and private credentials do not transfer with this repository.
+See the [deployment record](../deploy/switch/VERIFICATION.md). Request-during-gap,
+explicit heartbeat cases and fresh provisioning remain live gates; the
+[recovery runbook](../deploy/switch/RECOVERY_ACCEPTANCE.md) supplies opt-in tests
+and a reversible application-cursor injection procedure.

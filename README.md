@@ -3,7 +3,11 @@
 SwitchCrew is a Python 3.12/FastAPI service with SQLite task history and separate
 PM and Research workers communicating through Switch's Discord text bridge.
 This slice implements the nine Day 1 workstreams from the supplied checklist.
-Local tests use controlled transports; live Switch/Discord acceptance is pending.
+A real Discord → PM → Research → original-thread exchange and several restart,
+disconnect and injected-gap checks were recorded on the verification Mac on
+November 1. See the [evidence and remaining gates](deploy/switch/VERIFICATION.md)
+and [recovery acceptance runbook](deploy/switch/RECOVERY_ACCEPTANCE.md). Deployment
+credentials and running services are local to that Mac, not supplied by Git.
 
 All 15 specified agents now have independent LangGraph scaffolds. PM and Research
 run their existing work through compiled graphs with SQLite checkpoints. Optional
@@ -18,7 +22,8 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 
 ```sh
 uv sync --frozen
-cp .env.example .env
+# First setup only: preserve an existing .env and its credentials.
+test -e .env || cp .env.example .env
 chmod 600 .env
 # Generate a token; paste it into SWITCHCREW_API_TOKEN in .env.
 uv run python -c 'import secrets; print(secrets.token_urlsafe(32))'
@@ -47,7 +52,8 @@ After configuring `.env`:
 
 ```sh
 docker compose up --build -d api
-docker compose --profile workers up --build -d
+docker compose -f compose.yaml -f deploy/compose.switch-local.yaml \
+  -f deploy/switch/worker-recovery.yaml --profile workers up --build -d
 ```
 
 The API listens on `127.0.0.1:8000`. All three application processes use the
@@ -59,6 +65,9 @@ network override and avoids host port conflicts.
 For the pinned local Switch server and gateway, run `bash deploy/switch/local.sh`.
 The gateway uses `http://127.0.0.1:3001`, and Switch uses port 8080. See the
 [deployment guide](deploy/switch/README.md) for Console and local credentials.
+The worker recovery override restarts failures but leaves an evicted worker
+stopped. Start workers explicitly after restarting Docker; remove the local
+network override when using a separately configured remote Switch server.
 
 ## Scope
 

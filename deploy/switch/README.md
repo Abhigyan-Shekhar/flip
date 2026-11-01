@@ -189,13 +189,17 @@ SwitchCrew's explicit network override from the SwitchCrew repository:
 
 ```sh
 docker compose -f compose.yaml -f deploy/compose.switch-local.yaml \
-  --profile workers up --build -d
+  -f deploy/switch/worker-recovery.yaml --profile workers up --build -d
 ```
 
 The override joins workers to the upstream `switch-server_default` network and
 uses `http://switch:8000`; start upstream with project name `switch-server` first.
 The local server, gateway and API have been exercised with Docker; worker
 startup still requires the agent/Discord configuration described above.
+The worker recovery override uses `on-failure`: normal failures restart, while
+an evicted worker exits cleanly and remains stopped. Start workers explicitly
+after restarting Docker. Keep this override when using a remote Switch server,
+but omit the same-engine network override in that case.
 
 Register each identity once after the bridge is reachable. Set
 `SWITCH_REGISTRATION_TOKEN` locally from upstream `AGENT_REGISTRATION_TOKEN`;
@@ -248,3 +252,9 @@ Run `python3 deploy/switch/preflight.py` from the repository. It uses only the
 standard library, checks private configuration, local health and authenticated
 operation discovery, and never prints keys. It does not certify membership,
 addressing, source retrieval, end-to-end delivery or recovery.
+
+For the remaining request-during-gap and heartbeat gates, follow
+[the recovery acceptance runbook](RECOVERY_ACCEPTANCE.md). It contains isolated
+live probes and a backed-up application-cursor injection that does not edit the
+Switch database. These procedures must run on the Mac with the live services;
+the repository alone does not contain credentials or deploy that environment.

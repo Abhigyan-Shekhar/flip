@@ -58,6 +58,59 @@ def worker(role, store, transport, provider=None):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["pm", "research"])
+async def test_room_role_reacquired_before_delivery_on_each_connection(role):
+    class Reconnecting(Transport):
+        cursor = None
+
+        async def connect_to_room(self, room):
+            self.operations.append(("connect_to_room", {"room": room}))
+
+        async def events(self):
+            for generation in (1, 2, 3):
+                yield {"type": "connection_state", "generation": generation}
+                expected = [
+                    ("connect_to_room", {"room": "room"}),
+                    ("release_role", {}),
+                    ("assume_role", {"role": role}),
+                ] * generation
+                assert self.operations == expected
+
+    class CheckingWorker(Worker):
+        async def flush_outbox(self):
+            assert self.switch.operations[-1] == ("assume_role", {"role": role})
+            await super().flush_outbox()
+
+    store = Store(":memory:")
+    transport = Reconnecting()
+    await CheckingWorker(
+        role, store, transport, pm_id="pm", research_id="research", room_id="room"
+    ).run()
+    store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ownership_lost, expected", [(True, 0), (False, 1)])
+async def test_supervisor_exit_stands_down_only_for_lost_ownership(
+    monkeypatch, caplog, ownership_lost, expected
+):
+    from switchcrew import workers
+    from switchcrew.switch import SwitchOwnershipLost
+
+    async def fail(role):
+        raise (
+            SwitchOwnershipLost("private-credential")
+            if ownership_lost
+            else RuntimeError("private-credential")
+        )
+
+    monkeypatch.setattr(workers, "_main", fail)
+    assert await workers.run_worker("pm") == expected
+    assert "private-credential" not in caplog.text
+    assert ("worker_ownership_lost" if ownership_lost else "worker_failed") in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_missing_criteria_and_forged_sender():
     store = Store(":memory:")
     transport = Transport()

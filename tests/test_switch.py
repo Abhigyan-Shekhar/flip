@@ -1,10 +1,19 @@
 import asyncio
 import json
+import os
+from pathlib import Path
+from uuid import uuid4
 
 import httpx
 import pytest
 
-from switchcrew.switch import SwitchClient, SwitchProtocolError, parse_sse, register_agent
+from switchcrew.switch import (
+    SwitchClient,
+    SwitchOwnershipLost,
+    SwitchProtocolError,
+    parse_sse,
+    register_agent,
+)
 
 
 @pytest.mark.asyncio
@@ -132,7 +141,8 @@ async def test_sequence_mismatch_is_fatal():
 
 
 @pytest.mark.asyncio
-async def test_idle_heartbeat_failure_reopens_with_same_id():
+@pytest.mark.parametrize("status", [404, 409, 500, 503])
+async def test_idle_heartbeat_failure_reopens_with_same_id(status):
     opens = []
     beats = []
 
@@ -151,7 +161,12 @@ async def test_idle_heartbeat_failure_reopens_with_same_id():
     def handle(request):
         if request.url.path.endswith("/beat"):
             beats.append(json.loads(request.content))
-            return httpx.Response(409, json={"detail": {"code": "no_stream"}})
+            return httpx.Response(status, json={"detail": {"code": "no_stream"}})
+        if opens:
+            assert request.url.params["expected_generation"] == "1"
+            assert request.headers["Last-Event-ID"] == "42"
+        else:
+            assert "expected_generation" not in request.url.params
         opens.append(request.url.params["connection_id"])
         return httpx.Response(200, stream=Idle())
 
@@ -159,9 +174,102 @@ async def test_idle_heartbeat_failure_reopens_with_same_id():
         client = SwitchClient("https://s.test", "a", "key", "c", client=http)
         stream = client.events()
         await anext(stream)
+        await client.acknowledge(42)
         await asyncio.wait_for(anext(stream), 1)
         assert opens == ["c", "c"]
         assert beats[0] == {"connection_id": "c", "generation": 1}
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
+async def test_fenced_reconnect_stands_down_if_socket_missed_eviction():
+    opens = []
+
+    def handle(request):
+        opens.append(request)
+        if len(opens) == 1:
+            state = {
+                "connection_id": "c",
+                "agent_id": "a",
+                "rooms": [],
+                "generation": 7,
+                "heartbeat_interval_seconds": 10,
+            }
+            return httpx.Response(
+                200, text=f"event: connection_state\ndata: {json.dumps(state)}\n\n"
+            )
+        assert request.url.params["expected_generation"] == "7"
+        return httpx.Response(409, json={"detail": {"code": "taken_over"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        client = SwitchClient("https://s.test", "a", "key", "c", client=http)
+        stream = client.events()
+        await anext(stream)
+        with pytest.raises(SwitchOwnershipLost, match="taken over"):
+            await asyncio.wait_for(anext(stream), 1)
+        assert len(opens) == 2
+
+
+@pytest.mark.asyncio
+async def test_eviction_is_terminal_and_does_not_echo_server_prose():
+    opens = []
+
+    def handle(request):
+        opens.append(request)
+        state = {
+            "connection_id": "c",
+            "agent_id": "a",
+            "rooms": [],
+            "generation": 1,
+            "heartbeat_interval_seconds": 10,
+        }
+        return httpx.Response(
+            200,
+            text=(
+                f"event: connection_state\ndata: {json.dumps(state)}\n\n"
+                'event: evicted\ndata: {"reason":"untrusted secret prose"}\n\n'
+            ),
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        client = SwitchClient("https://s.test", "a", "key", "c", client=http)
+        stream = client.events()
+        await anext(stream)
+        with pytest.raises(SwitchOwnershipLost) as caught:
+            await anext(stream)
+        assert "untrusted" not in str(caught.value)
+        assert len(opens) == 1
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_lapse_frame_reopens_without_losing_cursor():
+    opens = []
+
+    def handle(request):
+        opens.append(request)
+        state = {
+            "connection_id": "c",
+            "agent_id": "a",
+            "rooms": [],
+            "generation": len(opens),
+            "heartbeat_interval_seconds": 10,
+        }
+        content = f"event: connection_state\ndata: {json.dumps(state)}\n\n"
+        if len(opens) == 1:
+            content += 'event: evicted\ndata: {"code":"heartbeat_lapsed"}\n\n'
+        else:
+            assert request.url.params["expected_generation"] == "1"
+            assert request.headers["Last-Event-ID"] == "42"
+        return httpx.Response(200, text=content)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        client = SwitchClient("https://s.test", "a", "key", "c", client=http)
+        stream = client.events()
+        await anext(stream)
+        await client.acknowledge(42)
+        state = await asyncio.wait_for(anext(stream), 1)
+        assert state["type"] == "connection_state" and client.generation == 2
+        assert client.cursor == 42 and len(opens) == 2
         await stream.aclose()
 
 
@@ -219,3 +327,139 @@ async def test_history_pagination_converts_epoch_millis_to_iso8601():
         client = SwitchClient("https://s.test", "a", "key", "c", ["room"], http)
         history = await client._recover_history()
     assert len(history["room"]) == 2
+
+
+@pytest.fixture
+def live_recovery_credentials():
+    """Opt-in only: use a newly registered probe agent, never PM or Research."""
+    if os.environ.get("SWITCHCREW_LIVE_RECOVERY") != "1":
+        pytest.skip("Requires an isolated real Switch recovery-probe identity")
+    try:
+        from switchcrew.settings import Settings
+
+        path = Path(os.environ["SWITCHCREW_LIVE_AGENT_FILE"])
+        credentials = json.loads(path.read_text())
+        if path.stat().st_mode & 0o077:
+            pytest.fail("Probe credential file must be private", pytrace=False)
+        if not path.name.startswith("recovery-probe"):
+            pytest.fail("Use the dedicated recovery-probe credential file", pytrace=False)
+        identity, key = credentials["id"], credentials["api_key"]
+        if not all(isinstance(value, str) and value for value in (identity, key)):
+            raise ValueError
+        url = Settings(
+            _env_file=None,
+            switch_base_url=os.environ.get("SWITCHCREW_LIVE_SWITCH_URL", "http://127.0.0.1:8080"),
+        ).switch_base_url
+    except (KeyError, OSError, ValueError, TypeError):
+        pytest.fail(
+            "Configure a valid private isolated probe identity and Switch URL", pytrace=False
+        )
+    return url, identity, key
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_heartbeat_expiry_reconnects(live_recovery_credentials):
+    class UnbeatingClient(SwitchClient):
+        async def _beat(self, interval):
+            await asyncio.Event().wait()  # Deliberately miss the probe's real heartbeat TTL.
+
+    url, identity, key = live_recovery_credentials
+    client = UnbeatingClient(url, identity, key, connection_id=str(uuid4()))
+    stream = client.events()
+    try:
+        async with asyncio.timeout(15):
+            first = await anext(stream)
+        generation = client.generation
+        async with asyncio.timeout(4 * first["heartbeat_interval_seconds"] + 15):
+            resumed = await anext(stream)
+        assert resumed["type"] == "connection_state"
+        assert resumed["connection_id"] == client.connection_id
+        assert client.generation > generation
+    finally:
+        await stream.aclose()
+        await client.close()
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_heartbeat_no_stream_and_fenced_reattach(live_recovery_credentials):
+    url, identity, key = live_recovery_credentials
+    client = SwitchClient(url, identity, key, connection_id=str(uuid4()))
+    stream = client.events()
+    try:
+        async with asyncio.timeout(20):
+            state = await anext(stream)
+            assert state["type"] == "connection_state"
+            generation = client.generation
+            assert isinstance(generation, int)
+            await stream.aclose()
+            # Closing the HTTP stream detaches the real server's stream holder.
+            # No server rows or production worker connections are edited.
+            while True:
+                try:
+                    await client._request(
+                        "POST",
+                        f"/agents/{identity}/connection/beat",
+                        json={"connection_id": client.connection_id, "generation": generation},
+                    )
+                except httpx.HTTPStatusError as exc:
+                    assert exc.response.status_code == 409
+                    assert exc.response.json()["detail"]["code"] == "no_stream"
+                    break
+                await asyncio.sleep(0.1)
+            stream = client.events()
+            state = await anext(stream)
+            assert state["connection_id"] == client.connection_id
+            assert client.generation > generation
+            await client._request(
+                "POST",
+                f"/agents/{identity}/connection/beat",
+                json={"connection_id": client.connection_id, "generation": client.generation},
+            )
+    finally:
+        await stream.aclose()
+        await client.close()
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_takeover_stops_loser_without_displacing_winner(live_recovery_credentials):
+    url, identity, key = live_recovery_credentials
+    connection = str(uuid4())
+    loser = SwitchClient(url, identity, key, connection_id=connection)
+    winner = SwitchClient(url, identity, key, connection_id=connection)
+    opens = []
+
+    async def record_open(request):
+        if request.url.path.endswith("/events"):
+            opens.append(request.url)
+
+    loser.http.event_hooks["request"].append(record_open)
+    old_stream, new_stream = loser.events(), winner.events()
+    try:
+        async with asyncio.timeout(20):
+            await anext(old_stream)
+            old_generation = loser.generation
+            await anext(new_stream)  # Deliberate takeover of this isolated probe only.
+            assert winner.generation > old_generation
+            refused = await loser.http.post(
+                url + f"/agents/{identity}/connection/beat",
+                headers={"Authorization": f"Bearer {key}"},
+                json={"connection_id": connection, "generation": old_generation},
+            )
+            assert refused.status_code == 409
+            assert refused.json()["detail"]["code"] == "taken_over"
+            with pytest.raises(SwitchOwnershipLost):
+                await anext(old_stream)
+            assert len(opens) == 1
+            await winner._request(
+                "POST",
+                f"/agents/{identity}/connection/beat",
+                json={"connection_id": connection, "generation": winner.generation},
+            )
+    finally:
+        await old_stream.aclose()
+        await new_stream.aclose()
+        await loser.close()
+        await winner.close()

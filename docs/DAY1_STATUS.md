@@ -1,5 +1,29 @@
 # Day 1 implementation and review — October 29, 2026
 
+## Current follow-up — November 1, 2026
+
+The live-verification branch (`2441365`) recorded a real Discord → PM → Research
+→ original-thread exchange, worker/API restart persistence, PM/Research disconnect
+recovery and a real server gap caused by a missing replay ticket. Read the
+[verification record](../deploy/switch/VERIFICATION.md) for exact evidence and
+limits. Infrastructure and credentials remain on the verification Mac.
+
+The `codex/recovery-acceptance` follow-up adds fenced reattachment, recoverable
+heartbeat-lapse handling, takeover-aware worker exit status and an opt-in
+`on-failure` Compose override. It includes role reacquisition, missed-request
+replay/deduplication, interrupted replay persistence and safe diagnostic tests.
+Opt-in real-server heartbeat tests and a reversible cursor injection procedure
+are in the [acceptance runbook](../deploy/switch/RECOVERY_ACCEPTANCE.md).
+
+The current development host lacks Docker, worker credentials and reachable
+Switch services; the user confirmed the recorded deployment was on a friend's
+Mac. No new live acceptance is claimed here. Request-during-gap, explicit live
+heartbeat cases, fresh deployment reproducibility and the desktop Console
+connection remain open. The historical report below retains its original counts
+and pending rows rather than presenting them as current status.
+
+## Historical implementation report
+
 This is the historical Day 1 implementation report. The user subsequently
 requested [LangGraph scaffolding, product Waggle memory and all-role Switch
 runtimes](AGENT_WORKFLOWS.md); those additions supersede the deferred-scaffolding

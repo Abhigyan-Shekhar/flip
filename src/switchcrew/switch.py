@@ -9,15 +9,33 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from uuid import uuid4
 
 import httpx
 
+log = logging.getLogger("switchcrew.switch")
+
 
 class SwitchProtocolError(RuntimeError):
     pass
+
+
+class SwitchOwnershipLost(SwitchProtocolError):
+    """Another session owns this connection; automatic restart must stand down."""
+
+
+def _taken_over(response):
+    if response.status_code != 409:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return isinstance(detail, dict) and detail.get("code") == "taken_over"
 
 
 async def parse_sse(lines: AsyncIterator[str]) -> AsyncIterator[dict]:
@@ -72,6 +90,8 @@ class SwitchClient:
     async def _request(self, method, path, **kwargs):
         headers = {**self._headers, **kwargs.pop("headers", {})}
         response = await self.http.request(method, self.base_url + path, headers=headers, **kwargs)
+        if _taken_over(response):
+            raise SwitchOwnershipLost("Connection incarnation taken over")
         response.raise_for_status()
         return response.json()
 
@@ -149,7 +169,8 @@ class SwitchClient:
 
         Consumers must process history before following events. Deduplicate by
         message ID across restarts (sequence alone is not a durable identity).
-        Eviction is fatal to avoid fighting another live instance.
+        Ownership loss is fatal; heartbeat lapse reopens without taking over a
+        newer generation. Persisted cursors resume delivery across processes.
         """
         delay = 0.25
         while True:
@@ -164,6 +185,9 @@ class SwitchClient:
                     "protocol_accepts": "6",
                     "client": "switchcrew",
                 }
+                if self.generation is not None:
+                    # A reconnect must not silently take a newer holder's stream.
+                    params["expected_generation"] = self.generation
                 headers = {**self._headers, "Accept": "text/event-stream"}
                 if self.cursor is not None:
                     headers["Last-Event-ID"] = str(self.cursor)
@@ -214,9 +238,17 @@ class SwitchClient:
                             beat = asyncio.create_task(self._beat(interval))
                             first, delay = False, 0.25
                         if kind == "evicted":
-                            raise SwitchProtocolError(
-                                "Connection evicted: " + str(event.get("reason"))
-                            )
+                            if event.get("code") == "heartbeat_lapsed":
+                                log.warning(
+                                    "heartbeat_lapsed",
+                                    extra={
+                                        "connection_id": self.connection_id,
+                                        "generation": self.generation,
+                                        "cursor": self.cursor,
+                                    },
+                                )
+                                break
+                            raise SwitchOwnershipLost("Connection evicted")
                         if kind == "subscription_changed":
                             self.rooms = event["rooms"]
                         if kind == "gap":
@@ -233,19 +265,35 @@ class SwitchClient:
                                 continue
                         yield event
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 409:
-                    with contextlib.suppress(ValueError):
-                        detail = exc.response.json().get("detail", {})
-                        if isinstance(detail, dict) and detail.get("code") == "taken_over":
-                            raise SwitchProtocolError("Heartbeat incarnation taken over") from exc
-                if exc.response.status_code not in (404, 409, 429, 502, 503, 504):
+                if _taken_over(exc.response):
+                    raise SwitchOwnershipLost("Connection incarnation taken over") from exc
+                if exc.response.status_code not in (404, 409, 429, 500, 502, 503, 504):
                     raise
-            except (TimeoutError, httpx.TransportError):
-                pass
+                log.warning(
+                    "stream_reconnecting",
+                    extra={
+                        "connection_id": self.connection_id,
+                        "generation": self.generation,
+                        "cursor": self.cursor,
+                        "status_code": exc.response.status_code,
+                    },
+                )
+            except (TimeoutError, httpx.TransportError) as exc:
+                log.warning(
+                    "stream_reconnecting",
+                    extra={
+                        "connection_id": self.connection_id,
+                        "generation": self.generation,
+                        "cursor": self.cursor,
+                        "error_type": type(exc).__name__,
+                    },
+                )
             finally:
                 if beat:
                     beat.cancel()
-                    with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError):
+                    with contextlib.suppress(
+                        asyncio.CancelledError, httpx.HTTPError, SwitchOwnershipLost
+                    ):
                         await beat
             await asyncio.sleep(delay)
             delay = min(delay * 2, 10)

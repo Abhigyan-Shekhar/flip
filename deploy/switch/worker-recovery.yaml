@@ -1,0 +1,8 @@
+# Include after compose.yaml: displaced workers exit 0 and must remain stopped.
+# Ordinary failures still restart. The base unless-stopped policy restarts even
+# a clean exit and would let an evicted worker steal the winning connection back.
+services:
+  pm:
+    restart: on-failure
+  research:
+    restart: on-failure
