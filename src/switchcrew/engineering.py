@@ -178,15 +178,23 @@ class ConsoleCodex:
 
 
 class EngineeringExecutor:
-    def __init__(self, ledger, root, source, base_revision, session):
+    def __init__(self, ledger, root, source, base_revision, session, authorize=None):
         self.ledger, self.root = ledger, Path(root).resolve()
         self.source, self.base = str(Path(source).resolve()), base_revision
         self.session = session
+        self.authorize = authorize
+
+    def check_approval(self, state):
+        if self.authorize is not None:
+            self.authorize(state)
 
     async def __call__(self, state):
         identity = assignment_id(state["handoff_id"])
         try:
+            self.check_approval(state)
             return await self.execute(state)
+        except PermissionError:
+            return outcome("blocked", identity, reason="human_engineering_approval_required")
         except (OSError, ValueError, subprocess.CalledProcessError):
             return outcome(
                 "blocked_configuration", identity, reason="assignment_checkout_or_inputs_invalid"
@@ -259,6 +267,7 @@ class EngineeringExecutor:
                         identity,
                         reason="uncertain_session_creation_reconcile_by_title",
                     )
+                self.check_approval(state)
                 sid = await self.session.create(identity)
             data = self.ledger.get(identity)
             if data["phase"] in {"reserved", "creating_session"}:
@@ -270,6 +279,7 @@ class EngineeringExecutor:
                 )
                 self.ledger.put(identity, data)
             if self.ledger.claim(identity, "session_ready", "delivering"):
+                self.check_approval(state)
                 event = await self.session.deliver(
                     identity, checkout, state["question"], state["acceptance_criteria"]
                 )

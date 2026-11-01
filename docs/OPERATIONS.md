@@ -1,11 +1,11 @@
 # Local operation
 
-Standalone Engineering/QA execution is documented in
-[Engineering → independent QA](ENGINEERING_QA.md). It uses an explicitly isolated
-test room, registries, application database and execution ledger. It does not
-automatically route requests from the existing Discord PM worker. Real managed
-Codex acceptance remains pending; controlled Git/subprocess tests are recorded
-separately from the November 1 PM/Research Discord demonstration.
+[Approved Engineering and Release](APPROVAL_RELEASE.md) connects PM requests to
+Engineering, independent QA and GitHub draft PR publication through two durable
+human approval stages. It documents shared state, private worker templates,
+identity/credential boundaries and the live acceptance runbook. The underlying
+Console and QA contracts are described in [Engineering/QA](ENGINEERING_QA.md).
+Real Console/GitHub acceptance remains pending on the verification host.
 
 The PM/Research workers now execute independent LangGraph workflows with durable
 SQLite checkpoints. See [all agent workflows](AGENT_WORKFLOWS.md), optional
@@ -33,17 +33,23 @@ responses omit request values; API logs record request IDs, methods and status.
 | `POST /tasks` | Bearer | Create task and first event atomically |
 | `GET /tasks/{id}` | Bearer | Task, source context, state and version |
 | `GET /tasks/{id}/events` | Bearer | Ordered durable event history |
-| `POST /tasks/{id}/transitions` | Bearer | Checked state change with expected version |
+| `POST /tasks/{id}/transitions` | Bearer | Checked research state change or pre-publication cancellation |
+| `GET /tasks/{id}/workflow` | Service bearer | Engineering workflow, approvals, QA and receipt |
+| `POST /tasks/{id}/approvals` | Human bearer | Version-checked Engineering/release approval or rejection |
 
 Task creation takes `{"objective":"Research Switch reconnect behavior",
 "acceptance_criteria":["Find source excerpts"],"source":{"room_id":"...",
 "thread_id":"..."}}`. The returned initial version is 0. A transition takes
 `{"status":"PLANNED","expected_version":0}`. Stale or illegal changes return
 409, missing tasks 404, missing/wrong credentials 401 and invalid bodies 422.
-The exposed transitions are limited to Day 1 states; there are no publication,
-voice or approval endpoints. This is a trusted operator API, not multi-tenant
-user authorization. API-created tasks are stored only; workers consume requests
-through Switch and do not automatically execute arbitrary API-created records.
+Generic transitions retain the research state allowlist; approved Engineering
+state advances only through the dedicated workflow. Human credentials are
+independent of the service API token; approval authentication failures return 403.
+API-created research tasks are stored only. Explicit engineering requests with
+`kind: "engineering"` and a configured `job_key` create an approval request;
+after human approval PM delivers the durable handoff to Engineering. See the
+[new runbook](APPROVAL_RELEASE.md) for bodies, setup and authorization limits.
+Voice endpoints remain outside this implementation.
 
 ## Independent workers
 

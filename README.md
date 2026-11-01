@@ -74,13 +74,14 @@ network override when using a separately configured remote Switch server.
 Research retrieves bounded excerpts from operator-configured public HTTPS sources.
 It does not implement autonomous web search or claim acceptance criteria are
 verified. Missing criteria trigger a clarification response; send a new complete
-JSON request. Standalone [Engineering and independent QA](docs/ENGINEERING_QA.md)
-now have configured executors, durable execution ledgers and revision-pinned QA
-commands. Their real Console-managed Codex workflow still needs live acceptance;
-the default Discord PM worker currently delegates only to Research. GitHub
-publication, approvals, Discord voice, receipts and community workflows remain
-later work. LangGraph, Waggle and generic Switch scaffolding are implemented;
-memory requires explicit configuration.
+JSON request. [Approved Engineering and Release](docs/APPROVAL_RELEASE.md) now
+connect PM to the Engineering worker, independent revision-pinned QA, human
+release approval/rejection, and GitHub draft PR publication with an audit receipt.
+The route requires explicit identities, operator job templates and human approvers;
+unconfigured requests cannot execute Engineering or publish. Controlled local
+validation covers this pipeline; real Console-managed Codex and GitHub acceptance
+still need the verification host and private configuration. Discord voice and
+community workflows remain later work. Memory requires explicit configuration.
 
 Work began October 29, 2026 at the user's explicit request. The earlier
 [preparation notes](docs/PREPARATION.md) and [build plan](docs/BUILD_PLAN.md) remain

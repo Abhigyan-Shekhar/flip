@@ -29,7 +29,8 @@ TRANSITIONS = {
     "FAILED": {"IN_PROGRESS"},
     "PASSED": {"HUMAN_REVIEW"},
     "HUMAN_REVIEW": {"PUBLISH_APPROVED"},
-    "PUBLISH_APPROVED": {"PR_OPEN"},
+    "PUBLISH_APPROVED": {"PUBLISHING"},
+    "PUBLISHING": {"PR_OPEN"},
     "PR_OPEN": {"COMPLETED"},
     "BLOCKED": {"IN_PROGRESS"},
 }
@@ -85,12 +86,18 @@ class Store:
 
     @contextmanager
     def transaction(self):
-        self.connection.execute("BEGIN IMMEDIATE")
+        nested = self.connection.in_transaction
+        savepoint = "sp_" + uuid4().hex
+        self.connection.execute(f"SAVEPOINT {savepoint}" if nested else "BEGIN IMMEDIATE")
         try:
             yield
-            self.connection.execute("COMMIT")
+            self.connection.execute(f"RELEASE {savepoint}" if nested else "COMMIT")
         except BaseException:
-            self.connection.execute("ROLLBACK")
+            if nested:
+                self.connection.execute(f"ROLLBACK TO {savepoint}")
+                self.connection.execute(f"RELEASE {savepoint}")
+            else:
+                self.connection.execute("ROLLBACK")
             raise
 
     def _row(self, row):
@@ -162,7 +169,7 @@ class Store:
         with self.transaction():
             task = self._check(task_id, expected_version)
             allowed = set(TRANSITIONS.get(task["status"], set()))
-            if task["status"] not in {"COMPLETED", "CANCELLED"}:
+            if task["status"] not in {"COMPLETED", "CANCELLED", "PUBLISHING"}:
                 allowed.update({"BLOCKED", "CANCELLED", "FAILED"})
             if status == task["status"] or status not in allowed:
                 raise InvalidTransitionError(f"Cannot transition {task['status']} to {status}")

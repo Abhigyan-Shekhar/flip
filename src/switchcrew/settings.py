@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     waggle_url: str | None = None
     waggle_token: SecretStr | None = None
     api_token: SecretStr | None = None
+    approval_credentials: dict[str, SecretStr] = Field(default_factory=dict)
+    approval_user_ids: list[str] = Field(default_factory=list)
+    engineering_agent_id: str = ""
+    engineering_name: str = ""
+    qa_agent_id: str = ""
+    release_agent_id: str = ""
+    release_name: str = ""
+    release_repository: str = ""
+    release_base: str = ""
     switch_base_url: str = "http://127.0.0.1:8080"
     switch_room_id: str = ""
     pm_participant_id: str = ""
@@ -37,6 +46,16 @@ class Settings(BaseSettings):
     research_source_urls: list[str] = Field(default_factory=list)
     research_max_sources: int = Field(default=5, ge=1, le=10)
     poll_interval_seconds: float = Field(default=1.0, ge=0.1, le=60)
+
+    @field_validator("approval_credentials")
+    @classmethod
+    def human_credentials(cls, value):
+        tokens = [token.get_secret_value() for token in value.values()]
+        if any(not actor.strip() for actor in value) or any(len(t) < 32 for t in tokens):
+            raise ValueError("Human approval identities and strong credentials are required")
+        if len(tokens) != len(set(tokens)):
+            raise ValueError("Each human requires an independent credential")
+        return value
 
     @field_validator("waggle_url", mode="before")
     @classmethod

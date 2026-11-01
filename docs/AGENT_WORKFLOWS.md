@@ -10,7 +10,7 @@ addressed handoffs through Switch.
 
 | Role | Internal work node | Default implementation |
 | --- | --- | --- |
-| PM | `plan_handoff` | Validate requirements and plan delegation to Research |
+| PM | `plan_handoff` | Validate requirements; plan Research or approval-gated Engineering |
 | Research | `retrieve_evidence` | Retrieve excerpts from configured public HTTPS sources |
 | Voice | `prepare_voice` | Requires consented voice I/O executor |
 | Community | `triage_support` | Requires support triage executor |
@@ -31,12 +31,14 @@ the missing capability. A scaffold does not prove Codex execution, independent
 QA, voice, approval enforcement, publication or external service availability.
 No LLM provider or model credentials are required to compile these workflows.
 
-Engineering and QA now also have configured standalone executors described in
-[Engineering → independent QA](ENGINEERING_QA.md): an actual Console control API
-adapter with durable session reconciliation, and separate revision-pinned Git
-checkouts with operator-selected validation commands. The default graphs above
-still block without those executors. Controlled Git/subprocess execution passes;
-the real Console-managed Codex → QA workflow requires its documented live gate.
+Engineering, QA and Release have configured executors described in
+[Approved Engineering and Release](APPROVAL_RELEASE.md): a Console control API
+adapter with durable session reconciliation, independent revision-pinned QA,
+and human-approved GitHub draft PR publication. PM's `requested_role` selects
+Research or an Engineering approval request; the worker commits the authorized
+handoff. Default specialist graphs still block without configured executors.
+Controlled Git/subprocess/runtime tests pass; live Console/GitHub acceptance
+requires the documented verification host checks.
 
 ## State and routing
 

@@ -1,7 +1,8 @@
-"""Standalone specialist processes using AgentConnection/AgentRuntime contracts.
+"""Independent approved Engineering, QA and Release processes over Switch.
 
-Each process needs an explicit private config and separate integration database.
-No PM/Research settings, containers or credential files are loaded.
+Each process reads its own private registry/capability configuration and shares
+application approval state; Engineering, QA and Release share a separate ledger.
+No root .env or PM/Research credential files are loaded.
 """
 
 import argparse
@@ -11,17 +12,17 @@ import logging
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
+from .approval import ApprovalWorkflow
 from .engineering import (
     ConsoleCodex,
     EngineeringExecutor,
     Ledger,
     assignment_id,
-    enqueue_independent_qa,
-    qa_handoff_id,
 )
 from .graphs import build_agent_graph
 from .memory import NullMemory, memory_from_settings
 from .qa import QAExecutor
+from .release import GitHubPublisher, ReleaseExecutor
 from .runtime import AgentRuntime, load_connection, ownership_lost
 from .settings import Settings
 from .store import Store
@@ -80,6 +81,70 @@ class IntegrationRuntime(AgentRuntime):
                 await self.flush_outbox()
 
 
+def configured_executor(config, connection, client, store, ledger, approvals):
+    """Wire operator-owned capabilities; no privileged runtime has an approval bypass."""
+    role = connection.role
+
+    async def execute(state):
+        managed = approvals.get(state["task_id"])
+        if not managed:
+            return {"status": "blocked", "reason": "human_engineering_approval_required"}
+        if role == "release":
+            release_config = config["release"]
+            publisher = GitHubPublisher(
+                release_config["repository"], release_config["base"], release_config["token"]
+            )
+            return await ReleaseExecutor(approvals, ledger, connection.agent_id, publisher)(state)
+        if role == "engineering":
+            try:
+                approvals.require_engineering(state, connection.agent_id)
+            except PermissionError:
+                return {"status": "blocked", "reason": "human_engineering_approval_required"}
+        elif role == "qa":
+            if (
+                managed["phase"] != "qa"
+                or not managed.get("engineering_approval", {}).get("approved")
+                or store.get_task(state["task_id"])["status"] != "QA_REVIEW"
+                or managed.get("qa_handoff") != state["handoff_id"]
+                or managed["spec"]["qa"] != connection.agent_id
+            ):
+                return {"status": "blocked", "reason": "qa_assignment_mismatch"}
+        else:
+            return {"status": "blocked_configuration", "reason": "unsupported_privileged_role"}
+        job = config.get("job_templates", {}).get(managed["spec"]["job_key"])
+        if job is None:
+            return {"status": "blocked_configuration", "reason": "operator_job_not_configured"}
+        if role == "engineering":
+            session = ConsoleCodex(
+                config["control_file"],
+                job["console_agent_id"],
+                job["codex_name"],
+                client,
+                console_database=config["console_database"],
+                switch_agent_id=job["codex_switch_agent_id"],
+            )
+            executor = EngineeringExecutor(
+                ledger,
+                config["checkout_root"],
+                job["source"],
+                job["base_revision"],
+                session,
+                authorize=lambda value: approvals.require_engineering(value, connection.agent_id),
+            )
+        else:
+            executor = QAExecutor(
+                ledger,
+                config["checkout_root"],
+                assignment_id(managed["engineering_handoff"]),
+                managed["revision"],
+                job.get("commands", []),
+                job.get("timeout", 120),
+            )
+        return await executor(state)
+
+    return execute
+
+
 async def run(config_file):
     path = Path(config_file)
     if path.stat().st_mode & 0o077:
@@ -88,8 +153,8 @@ async def run(config_file):
     # Use the same origin/HTTPS validation as the established worker path.
     switch_url = Settings(_env_file=None, switch_base_url=config["switch_url"]).switch_base_url
     role = config["role"]
-    if role not in {"engineering", "qa"}:
-        raise ValueError("This entry point supports Engineering and QA only")
+    if role not in {"engineering", "qa", "release"}:
+        raise ValueError("This entry point supports Engineering, QA and Release only")
     if Path(config["registry"]).stat().st_mode & 0o077:
         raise ValueError("Runtime registry must be private")
     connection = load_connection(config["registry"], role)
@@ -107,6 +172,7 @@ async def run(config_file):
         else NullMemory()
     )
     store, ledger = Store(database), Ledger(ledger_path)
+    approvals = ApprovalWorkflow(store)
     client = SwitchClient(
         switch_url,
         connection.agent_id,
@@ -115,56 +181,14 @@ async def run(config_file):
         rooms=[connection.room_id],
     )
 
-    async def execute(state):
-        job = config.get("jobs", {}).get(state["handoff_id"])
-        if role == "qa" and job is None:
-            for upstream, review in config.get("reviews", {}).items():
-                handoff = store.get_handoff(upstream)
-                result = (handoff or {}).get("result") or {}
-                revision = result.get("final_revision")
-                if revision and state["handoff_id"] == qa_handoff_id(upstream, revision):
-                    job = {
-                        **review,
-                        "implementation_assignment": assignment_id(upstream),
-                        "revision": revision,
-                    }
-                    break
-        if job is None:
-            return {"status": "blocked_configuration", "reason": "operator_job_not_configured"}
-        if role == "engineering":
-            session = ConsoleCodex(
-                config["control_file"],
-                job["console_agent_id"],
-                job["codex_name"],
-                client,
-                console_database=config["console_database"],
-                switch_agent_id=job["codex_switch_agent_id"],
-            )
-            executor = EngineeringExecutor(
-                ledger, config["checkout_root"], job["source"], job["base_revision"], session
-            )
-        else:
-            executor = QAExecutor(
-                ledger,
-                config["checkout_root"],
-                job["implementation_assignment"],
-                job["revision"],
-                job["commands"],
-                job.get("timeout", 120),
-            )
-        return await executor(state)
+    execute = configured_executor(config, connection, client, store, ledger, approvals)
 
     # Pending executor results must be reconciled afresh, never checkpoint-cached.
     graph = build_agent_graph(role, executor=execute, memory=memory)
 
     def after_pending():
-        if role == "engineering":
-            for handoff_id in config.get("jobs", {}):
-                handoff = store.get_handoff(handoff_id)
-                if handoff:
-                    enqueue_independent_qa(
-                        store, handoff_id, connection.agent_id, config["qa_agent_id"]
-                    )
+        for row in store.connection.execute("SELECT task_id FROM approval_workflows").fetchall():
+            approvals.reconcile(row[0])
 
     runtime = IntegrationRuntime(connection, store, client, graph, after_pending=after_pending)
     try:

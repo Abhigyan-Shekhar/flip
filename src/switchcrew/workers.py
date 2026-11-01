@@ -7,11 +7,12 @@ import logging
 import re
 from uuid import NAMESPACE_URL, uuid5
 
+from .approval import ApprovalWorkflow
 from .discord import DiscordBinding, normalize_discord_event
 from .graphs import build_agent_graph, graph_result, invoke_agent_graph
 from .logging import configure_logging
 from .research import ResearchProvider
-from .store import Store
+from .store import ConflictError, Store
 from .switch import SwitchClient, SwitchOwnershipLost
 
 log = logging.getLogger("switchcrew.workers")
@@ -23,6 +24,27 @@ def pm_graph(**kwargs):
 
 def research_graph(provider, **kwargs):
     return build_agent_graph("research", provider=provider, **kwargs)
+
+
+async def polling_events(events):
+    """Keep durable workflow progress moving while the Switch stream is quiet."""
+    iterator = events.__aiter__()
+    pending = asyncio.create_task(anext(iterator))
+    try:
+        while True:
+            done, _ = await asyncio.wait({pending}, timeout=2)
+            if not done:
+                yield {"type": "tick"}
+                continue
+            try:
+                event = pending.result()
+            except StopAsyncIteration:
+                return
+            yield event
+            pending = asyncio.create_task(anext(iterator))
+    finally:
+        pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
 
 
 class Worker:
@@ -45,14 +67,29 @@ class Worker:
         research_name=None,
         memory=None,
         checkpointer=None,
+        engineering_id="",
+        engineering_name="",
+        qa_id="",
+        release_id="",
+        release_name="",
+        release_repository="",
+        release_base="",
+        approval_users=(),
     ):
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
         self.role, self.store, self.switch = role, store, switch
+        self.engineering_id, self.qa_id, self.release_id = engineering_id, qa_id, release_id
+        self.release_repository, self.release_base = release_repository, release_base
+        self.approvals = ApprovalWorkflow(store, approval_users)
         self.pm_id, self.research_id, self.room_id = pm_id, research_id, room_id
         self.pm_sender = pm_participant_id or pm_id
         self.research_sender = research_participant_id or research_id
         self.names = {pm_id: pm_name or pm_id, research_id: research_name or research_id}
+        if engineering_id:
+            self.names[engineering_id] = engineering_name or engineering_id
+        if release_id:
+            self.names[release_id] = release_name or release_id
         self.identity = pm_id if role == "pm" else research_id
         self.bindings = list(bindings)
         self.allowed_guilds, self.allowed_users = set(allowed_guilds), set(allowed_users)
@@ -123,6 +160,29 @@ class Worker:
         self.store.receive_inbox(message_id, self.identity, canonical)
 
     async def process_pending(self):
+        if not getattr(self.switch, "connected", True):
+            return
+        if self.role == "pm":
+            for row in self.store.connection.execute(
+                "SELECT task_id FROM approval_workflows"
+            ).fetchall():
+                task_id = row[0]
+                data = self.approvals.reconcile(task_id)
+                if data and data["phase"] in {"human_review", "failed"}:
+                    task = self.store.get_task(task_id)
+                    if data["spec"]["pm"] != self.pm_id or task["status"] not in {
+                        "HUMAN_REVIEW",
+                        "FAILED",
+                    }:
+                        continue
+                    self._reply(
+                        task_id,
+                        data["phase"],
+                        f"Engineering task {task_id}: {data['phase']}; "
+                        f"revision {data.get('revision', 'unavailable')}; "
+                        f"task version {task['version']}. "
+                        "Review QA evidence before release approval.",
+                    )
         for item in self.store.pending_inbox(self.identity):
             event = item["payload"]
             if self.role == "pm" and event["payload"]["sender"] != self.research_sender:
@@ -144,6 +204,32 @@ class Worker:
                 request = {}
         except ValueError:
             request = {}
+        if request.get("type") == "approval":
+            try:
+                if (
+                    not isinstance(request.get("approved"), bool)
+                    or not isinstance(request.get("task_id"), str)
+                    or type(request.get("expected_version")) is not int
+                ):
+                    return
+                task = self.store.get_task(request.get("task_id", ""))
+                if not task or task["source"].get("room_id") != source.room_id:
+                    return
+                if (task["source"].get("thread_id") or task["source"].get("message_id")) != (
+                    source.thread_id or source.message_id
+                ):
+                    return
+                self.approvals.decide(
+                    task["id"],
+                    request.get("stage"),
+                    request["approved"],
+                    source.user_id,
+                    request.get("expected_version"),
+                )
+            except (PermissionError, ConflictError, ValueError, TypeError):
+                return
+            self._reply(task["id"], "decision_" + source.message_id, "Human decision recorded.")
+            return
         question = request.get("question", source.body)
         criteria = request.get("acceptance_criteria", [])
         if (
@@ -174,6 +260,9 @@ class Worker:
                 "handoff_id": "",
                 "session_id": task_id,
                 "question": question,
+                "requested_role": "engineering"
+                if request.get("kind") == "engineering"
+                else "research",
                 "acceptance_criteria": criteria,
             },
         )
@@ -188,6 +277,34 @@ class Worker:
                     "Send a new JSON request with question and nonempty acceptance_criteria. "
                     "This task remains awaiting clarification."
                 ),
+            )
+            return
+        if request.get("kind") == "engineering":
+            job_key = request.get("job_key")
+            if (
+                not isinstance(job_key, str)
+                or not job_key.strip()
+                or not all((self.engineering_id, self.qa_id, self.release_id))
+            ):
+                self._reply(
+                    task_id, "configuration", "Engineering route requires operator configuration."
+                )
+                return
+            self.approvals.request(
+                task_id,
+                self.pm_id,
+                self.engineering_id,
+                self.qa_id,
+                self.release_id,
+                job_key,
+                self.release_repository,
+                self.release_base,
+            )
+            self._reply(
+                task_id,
+                "engineering_approval",
+                f"Engineering request {task_id} awaits human approval. "
+                "Task version: 1. No Engineering action has started.",
             )
             return
         handoff_id = str(uuid5(NAMESPACE_URL, f"{task_id}:research"))
@@ -303,6 +420,8 @@ class Worker:
                 )
 
     async def flush_outbox(self):
+        if not getattr(self.switch, "connected", True):
+            return
         for item in self.store.pending_outbox():
             payload = item["payload"]
             handoff = (
@@ -347,7 +466,12 @@ class Worker:
             if self.store.get_cursor(self.identity)
             else None
         )
-        async for event in self.switch.events():
+        ready = False
+        async for event in polling_events(self.switch.events()):
+            if event.get("type") == "tick" and (
+                not ready or not getattr(self.switch, "connected", True)
+            ):
+                continue
             if event.get("type") == "connection_state":
                 log.info(
                     "worker_connected",
@@ -364,6 +488,7 @@ class Worker:
                 await self.switch.operation("release_role")
                 await self.switch.operation("assume_role", role=self.role)
                 log.info("worker_role_assumed", extra={"role": self.role})
+                ready = True
                 await self.flush_outbox()
             if event.get("type") == "gap":
                 log.info("history_gap_received", extra={"role": self.role})
@@ -470,6 +595,14 @@ async def _main(role):
                 research_name=settings.research_name,
                 memory=memory_from_settings(settings),
                 checkpointer=saver,
+                engineering_id=settings.engineering_agent_id,
+                engineering_name=settings.engineering_name,
+                qa_id=settings.qa_agent_id,
+                release_id=settings.release_agent_id,
+                release_name=settings.release_name,
+                release_repository=settings.release_repository,
+                release_base=settings.release_base,
+                approval_users=settings.approval_user_ids,
             )
             await worker.run()
     finally:

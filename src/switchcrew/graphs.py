@@ -23,6 +23,7 @@ class AgentState(TypedDict, total=False):
     handoff_id: str
     session_id: str
     question: str
+    requested_role: str
     acceptance_criteria: list[str]
     valid: bool
     memory_context: str
@@ -39,6 +40,7 @@ class AgentRequest(BaseModel):
 
 Executor = Callable[[AgentState], Awaitable[dict[str, Any]]]
 RESULT_STATUSES = {
+    "awaiting_approval",
     "pending_execution",
     "blocked_configuration",
     "implemented",
@@ -86,7 +88,9 @@ def build_agent_graph(
             data, valid = None, False
         output = {
             "agent_role": spec.role.value,
-            "valid": valid,
+            "valid": valid
+            and state.get("requested_role", "research") in {"research", "engineering"},
+            "requested_role": state.get("requested_role", "research"),
             "memory_context": "",
             "memory_warnings": [],
             "memory_persisted": False,
@@ -122,9 +126,11 @@ def build_agent_graph(
                 raise ValueError("Executor must return a structured specialist result")
         elif spec.role == AgentRole.PM:
             result = {
-                "status": "delegation_ready",
+                "status": "awaiting_approval"
+                if state.get("requested_role") == "engineering"
+                else "delegation_ready",
                 "role": spec.role.value,
-                "selected_role": AgentRole.RESEARCH.value,
+                "selected_role": state.get("requested_role", AgentRole.RESEARCH.value),
                 "question": state["question"],
                 "acceptance_criteria": state["acceptance_criteria"],
             }
@@ -212,13 +218,19 @@ async def invoke_agent_graph(graph, state: AgentState) -> AgentState:
         if saved.values:
             for key in (
                 "question",
+                "requested_role",
                 "acceptance_criteria",
                 "task_id",
                 "handoff_id",
                 "agent_role",
                 "session_id",
             ):
-                if key in state and saved.values.get(key) != state[key]:
+                previous = (
+                    saved.values.get(key, "research")
+                    if key == "requested_role"
+                    else saved.values.get(key)
+                )
+                if key in state and previous != state[key]:
                     raise ValueError("Checkpoint assignment differs from incoming request")
             if saved.next:
                 return await graph.ainvoke(None, config=config)

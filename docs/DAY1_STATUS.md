@@ -1,5 +1,28 @@
 # Day 1 implementation and review — October 29, 2026
 
+## Approved Engineering and Release — November 1, 2026
+
+PM now accepts explicit engineering requests, waits for a separately authorized
+human decision, and creates the Engineering handoff only on approval. Durable
+workflow records drive independent revision-bound QA, a second human decision,
+and the Release worker's exact-SHA branch publication and GitHub draft PR.
+Receipts include both approval identities, the tested SHA, command evidence and
+PR URL. Service credentials cannot approve, rejection cancels, failed/stale QA
+blocks release, and uncertain PR creation is reconciled without a duplicate POST.
+
+The [current setup and acceptance runbook](APPROVAL_RELEASE.md) supersedes the
+standalone/no-routing statements in the historical integration report below.
+Local tests use actual Git commits and QA subprocesses with controlled Console
+and GitHub adapters. Real Console/GitHub/Discord acceptance remains unverified
+on this host. The user's later pasted Discord transcript supports the existing
+PM/Research baseline and one visible forced-gap recovery sequence on reported
+`50e24b2`; see the [operator evidence](../deploy/switch/VERIFICATION.md).
+That transcript does not demonstrate this new approval/release implementation.
+No live PR was created and no running deployment was reconfigured.
+Validation: **189 tests passed; 3 live tests skipped**. Ruff lint/format, lockfile
+and diff checks passed; wheel/source builds and both worker CLI smoke checks
+passed. The CLI checks used the documented noneditable-install workaround.
+
 ## Combined recovery and Engineering/QA integration — November 1, 2026
 
 Integrated Person 1's `8506a38` and Person 2's `0b1dce7`, retaining their shared

@@ -1,3 +1,48 @@
+# Operator-provided Discord recovery evidence — November 1, 2026
+
+The user supplied a copied Discord transcript and reported successful restart,
+Research-offline recovery, and recovery of a request submitted while PM was
+stopped through a forced history gap. This is evidence from the verification
+Mac supplied by the operator, not a new live run on the development host.
+
+Source: attached `Pasted text.txt`, SHA-256
+`1e631af4435f7dad96418e928f2190f27de4e43e2042af09cf7ce84e045a5f84`.
+Displayed times below are copied from Discord; the export does not specify its
+timezone. The user identifies the successful location as the existing
+“SwitchCrew anchored verification” thread linked in the historical record below.
+
+| Visible exchange | Evidence in supplied transcript |
+| --- | --- |
+| Baseline on reported `master` revision `50e24b2` | Human marker `master-50e24b2-normal` at 1:41 PM; task `45b1fc57-a15d-55c3-8392-a217feaab298`, handoff `4653f91b-95bf-52db-a52d-26323fca84d8`; Research acknowledgment/evidence and PM result by 1:42 PM. |
+| Request during operator-reported forced gap | Human marker `master-50e24b2-forced-gap` at 1:43 PM; PM delegation, Research acknowledgment/evidence and PM result at 1:46 PM. Task `04a70def-5e99-5b2d-9c4f-19d0b155e447`; handoff `d49c5df2-fafe-50ea-96c3-df2d9c1feaeb`. |
+| Logical delivery identities for that recovery | Delegation `bb3e4ed3-821e-4f9d-a8a4-ddd085ab7a02`; acknowledgment `b71dfa7a-58e2-48eb-a13a-ce1af417a0eb`; Research completion `e1c402c2-2c48-43de-9270-fb41aaf21a0c`. These are application delivery IDs, not Discord message IDs. |
+
+The supplied excerpt shows one visible delegation/acknowledgment/completion
+sequence for the forced-gap task, with consistent task/handoff IDs. The operator
+reports exactly one execution and a result in the same Discord thread. The
+copied text alone does not establish the stop/restart procedure, actual server
+`gap` emission, thread ID, or database execution counts. Correlate the above IDs
+with the verification Mac's logs/database to independently audit those claims.
+The earlier “After gap” row below concerns a different run and retains its
+original, narrower conclusion.
+
+The transcript contains PM/Research only. It does not demonstrate Engineering,
+QA, human approval gates or GitHub publication. Research reports
+`evidence_found`, explicitly leaves criteria assessment to a human, and reports
+memory as `disabled_or_no_write`; these results are not independent QA approval
+or evidence of product Waggle persistence.
+
+Approved PM → Engineering routing, independent QA orchestration and approved
+Release/GitHub draft PR creation are now implemented in this repository,
+with controlled local validation recorded in
+[the current status](../../docs/DAY1_STATUS.md). They were not part of the
+reported `50e24b2` demonstration and remain live-unverified.
+Follow [the approval/release runbook](../../docs/APPROVAL_RELEASE.md) to provision
+the real Console-managed Codex agent and test both authorization stages, failed
+QA blocking publication, and the final actual draft PR receipt.
+
+---
+
 # Recovery hardening follow-up — November 1, 2026
 
 Workstream `codex/recovery-acceptance`, based on live-verification commit

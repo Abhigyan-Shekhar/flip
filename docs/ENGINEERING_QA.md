@@ -1,8 +1,12 @@
 # Engineering → independent QA
 
-Branch base: `2441365` (`codex/switch-live-verification`). This work uses a
-separate worktree and never starts, restarts or reconfigures PM/Research.
-Publication, Release approvals and voice are outside this implementation.
+Current deployment instructions are in [Approved Engineering and Release](APPROVAL_RELEASE.md).
+The runtime now requires a durable human-approved PM workflow for Engineering
+and QA, and also supports Release. Legacy manually seeded Engineering handoffs
+and `jobs`/`reviews` configuration no longer authorize runtime execution. Use the
+new runbook's shared database, approval flow and `job_templates`.
+
+Original branch base: `2441365` (`codex/switch-live-verification`).
 
 ## Execution model
 
@@ -137,116 +141,20 @@ and transports documented in `docs/MEMORY.md`. Shared project identity is
 `github.com/Abhigyan-Shekhar/flip`; provenance remains role/task scoped. Raw code,
 command output, prompts and recalled memory are not added to memory summaries.
 
-## Standalone integration entry point
+## Approved integration entry point
 
-Create a **new test room** and independent Engineering, QA, coordinator and
-managed Codex identities. Do not reuse the running PM/Research room, keys,
-connection IDs, application DB or checkout. Codex needs its provider login and
-an operational Console host. Give it access only to the test room; configure its
-working directory to the expected assignment checkout. The adapter deliberately
-does not change agent settings or bootstrap login credentials.
+Use the shared-room, shared-application-database instructions and private
+per-worker `job_templates` configurations in
+[Approved Engineering and Release](APPROVAL_RELEASE.md). Start each independent
+process with `python -m switchcrew.engineering_qa --config /private/worker.json`.
+The entry point supports `engineering`, `qa` and `release`; it requires a durable
+human-approved workflow. A manually created handoff is insufficient.
 
-Each runtime uses a private registry compatible with `runtime.AgentConnection`:
-`role`, `agent_id`, transport `participant_id`, exact machine `name`, `api_key`,
-`room_id`, `allowed_senders` (transport sender → registration ID), and
-`target_names` (registration ID → machine name). Engineering allows the test
-coordinator and QA; QA allows Engineering. Engineering targets the coordinator,
-QA and the dedicated Codex machine name as appropriate. Switch addressing must
-also allow the intended sender identities in this test room.
-
-Engineering config example (save outside tracked files; chmod 600):
-
-```json
-{
-  "role": "engineering",
-  "registry": "/private/integration/engineering.json",
-  "test_room_id": "NEW_TEST_ROOM",
-  "switch_url": "http://127.0.0.1:8080",
-  "database": "/private/integration/application.sqlite3",
-  "ledger": "/private/integration/executions.sqlite3",
-  "checkout_root": "/private/integration/engineering",
-  "control_file": "/path/to/SwitchConsole/control-api.json",
-  "console_database": "/path/to/SwitchConsole/switchdash.db",
-  "qa_agent_id": "NEW_QA_REGISTRATION_ID",
-  "jobs": {
-    "ENGINEERING_HANDOFF_ID": {
-      "source": "/absolute/local/target-repository",
-      "base_revision": "PINNED_BASE_COMMIT",
-      "console_agent_id": "DEDICATED_CONSOLE_CODEX_AGENT_ID",
-      "codex_switch_agent_id": "DEDICATED_CORE_CODEX_REGISTRATION_ID",
-      "codex_name": "engineering-codex-test"
-    }
-  }
-}
-```
-
-QA uses the same isolated application DB and execution ledger, its own registry
-and role, and a different checkout root. Replace Engineering's `jobs` with:
-
-```json
-{
-  "reviews": {
-    "ENGINEERING_HANDOFF_ID": {
-      "commands": [["/absolute/path/to/python", "-m", "pytest", "-q"]],
-      "timeout": 120
-    }
-  }
-}
-```
-
-QA derives the review handoff ID and exact revision from the completed
-Engineering handoff, and reads the corresponding assignment from the shared
-execution ledger. Manual pinned QA jobs are also supported via `jobs` keyed by
-QA handoff ID with `implementation_assignment`, `revision`, `commands`, `timeout`.
-
-Before sending the Engineering handoff, prepare its checkout and then onboard
-the dedicated Console agent at that exact path. Preparation can invoke
-`EngineeringExecutor(ledger, checkout_root, source, base_revision, None)` with
-the actual handoff state: it creates the clone and returns
-`blocked_configuration` plus the checkout path, without storing a final result
-or creating a session. Do this directly before starting/delivering to the
-runtime; delivering an unconfigured job through the runtime would complete its
-handoff as blocked and require a new handoff to retry. Once Console is configured,
-the same prepared assignment can execute through the real adapter.
-
-Start the two independent processes:
-
-```sh
-uv run python -m switchcrew.engineering_qa --config /private/integration/engineering-config.json
-uv run python -m switchcrew.engineering_qa --config /private/integration/qa-config.json
-```
-
-The Switch origin uses the established HTTPS/loopback validation. CLI failures
-log only allowlisted diagnostics. A lost-ownership exception, including one
-wrapped by a TaskGroup, exits 0 so an `on-failure` supervisor stands down;
-ordinary failures exit 1. The generic specialist CLI uses the same policy.
-Do not use an always-restarting supervisor for these identities. The PM/Research
-Compose override is documented in `deploy/switch/RECOVERY_ACCEPTANCE.md`; it does
-not provision containers for the standalone Engineering/QA processes.
-
-Seed a task and Engineering handoff using the existing `Store.create_task` and
-`Store.create_handoff` APIs in the **integration DB**, with the new coordinator
-as sender and new Engineering registration as recipient. Use a stable explicit
-handoff ID matching the config. The coordinator must deliver that outbox through
-its own authenticated runtime; creating a database row alone is not delivery.
-Engineering's runtime creates and sends the QA handoff after implementation;
-QA's independent runtime acknowledges and completes it through Switch.
-
-### Cross-boundary request to the PM/Research owner
-
-No reserved file was edited. The concurrent owner was not identifiable among
-this app's chat inventory, so this is the concrete coordination request:
-
-1. Add optional routing of an approved Engineering task to the standalone
-   Engineering identity using the existing durable handoff schema. Provide the
-   handoff ID to the operator's job config, rather than passing shell commands.
-2. Preserve `pending_execution` as incomplete work when reconciling external
-   executors. This branch adds only that minimal handling in owned `runtime.py`.
-3. Observe Engineering and QA acknowledgments independently. Require the QA
-   result's implementation assignment and exact tested revision to match the
-   currently selected Engineering result before reporting verified success.
-4. Coordinate the additive `graphs.RESULT_STATUSES` entries when integrating
-   parallel graph changes. Do not merge this branch over the owner's workers.
+Each runtime still reads only its own protected registry and capability config.
+Application state and the execution ledger must use separate files. Origins
+receive the established HTTPS/loopback validation. CLI failures log only
+allowlisted diagnostics; a lost-ownership exception exits zero so an
+`on-failure` supervisor stands down. There is no always-restarting takeover loop.
 
 ## Evidence: controlled results versus live gates
 
