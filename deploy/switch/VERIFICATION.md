@@ -10,6 +10,7 @@ preserved. No application source was changed for this acceptance run.
 
 - Application/master commit: `50e24b272be99567b5411b435ebf744c6519ebb4`.
 - Switch source: `557b62b23002548baa678339a97c8140c1ccaa8b` (unchanged pin).
+- Runtime versions: Docker Engine `29.8.1`, Compose `5.5.1`, Console `0.40.1`.
 - Console control GET `/agents`: HTTP 200, empty agent list. No managed Codex
   session ID or live Engineering tested SHA exists for this run.
 - Application image: `sha256:5ec9b4f148b66df578ad9ff88f5993f8cddcc9262908d32dd4f56bf679fcca87`.
