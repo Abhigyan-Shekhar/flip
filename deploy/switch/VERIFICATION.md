@@ -1,3 +1,151 @@
+# Approval and Release live acceptance preparation — November 1, 2026
+
+Latest observation: `2026-11-01T18:44:16.577677+05:30` (Asia/Kolkata, UTC+05:30).
+This is a new isolated acceptance setup, not evidence that the complete workflow
+has passed. No application code was changed for this run.
+
+## Checkout and controlled validation
+
+The separate `engineering-qa` worktree was clean at
+`0b1dce7aa66da51810b2d8d1f5e0fd850ea10bf0` on `codex/engineering-qa`.
+`git pull --ff-only origin master` fast-forwarded it to
+`220fa91e18e0b3d517d0bee1dc675f49ffa10315`.
+`src/switchcrew/approval.py`, `release.py`, `docs/APPROVAL_RELEASE.md` and
+`tests/test_approval_release.py` all exist. Read the approval/release guide,
+Engineering/QA guide, memory instructions and previous verification records.
+The first automatic permission review timed out; the permitted retry succeeded.
+
+`uv sync --frozen` succeeded. Full controlled suite: **189 passed, 3 skipped**.
+`ruff check .`, `ruff format --check src tests scripts` and `git diff --check`
+passed. Those controlled tests, including Console/GitHub doubles, do not prove
+live provider execution, human decisions or publication. Skipped live tests
+remain open gates.
+
+## Isolated setup actually performed
+
+The existing deployment checkout, `.env`, databases and volumes were preserved;
+no established application service was rebuilt/reconfigured/restarted by a
+Compose command. Docker Desktop had been stopped and was opened to restore
+host/server availability; daemon-managed containers may start under their own
+policies. Switch readiness subsequently returned HTTP 200. Docker Engine is
+`29.8.1`; Switch source stays pinned to
+`557b62b23002548baa678339a97c8140c1ccaa8b`.
+
+Fresh channel:
+[approval-release-acceptance](https://discord.com/channels/1565566745622872115/1566393931837472809).
+After confirming the requester actually posted here rather than in `#general`,
+a thread was attached to that already-bridged human message:
+[approval-release-success](https://discord.com/channels/1565566745622872115/1566438888992542903).
+
+- Switch room: `fdcbbd2b-9490-4fe4-891b-3db34a22ce8e`.
+- Discord bridge: `fddc56cd-4e79-4cc7-9110-932bb65f52e0` (existing bridge, fresh channel/room).
+- Human anchor Discord message: `1566438888992542903`.
+- Requester: Discord `806859717728927744`; allowed to submit, excluded from approvers.
+- Designated human approver, supplied by user: Discord `703216309684666389`.
+- Destination supplied by user: `Abhigyan-Shekhar/flip`, base `master`.
+  This is the main project repository, not a disposable repository. Resolve that
+  mismatch explicitly before any release; no release approval has been issued.
+
+Distinct newly registered identities:
+
+| Role | Registration ID |
+| --- | --- |
+| PM | `ba0793d3-2fcc-46ab-86dc-96ced12cb8b9` |
+| Research compatibility identity (not started) | `653c33f5-6617-4377-a1e1-ebb501bfcc2f` |
+| Engineering | `27e7bb11-8f18-4cae-85c4-118c816d80a7` |
+| QA | `78a59784-c2b6-4b47-b2b1-3d191c1efec1` |
+| Release | `ba16286d-9de9-4118-982e-b46366bd66ac` |
+
+Verified Discord bindings use stored transport/client mappings rather than
+inferred sender IDs. Room-scoped addressing was configured for these test
+identities. Protected native registries and configs live under ignored
+`.switch/approval-acceptance-220fa91/`; no key is included in this report.
+
+The new PM process connected at `2026-11-01T13:09:57.183979Z`
+(`18:39:57.183979 IST`) with connection
+`dbc45d1b-6c78-566c-adab-913bcdaac7e3`, generation `8589934799`; its `pm`
+role was assumed at `13:09:57.225003Z`. Engineering, QA and Release were not
+started while provider configuration and approvals remain incomplete.
+
+All configs select the identical native application path
+`.switch/approval-acceptance-220fa91/application.sqlite3`; Python `samefile`
+checks across PM/Engineering/QA/Release paths passed. The observed application
+file device/inode is `16777231/21870397`. Engineering/QA/Release all select the
+same separate `executions.sqlite3`, device/inode `16777231/21870401`; its path
+is verified distinct from the application database. No container `/app/data`
+path is used by these native processes. Config path equivalence is verified;
+actual file opening by the three unstarted processes remains untested.
+
+An isolated local operator fixture was prepared from the new checkout with
+`answer.txt` deliberately containing `broken`. Its setup commit is
+`dd0b258a8badc5ce20c3c055a406423606a820f1`. This is an operator setup artifact, **not** a
+managed Codex implementation or a QA-tested success SHA. Independent operator
+QA templates specify a Python assertion that the file equals `correct`, and a
+separate deliberately failing command returning exit 7. Neither template has
+run against a live managed implementation.
+
+## Live observations and case status
+
+The requester sent the intended engineering JSON with an extra period after
+its closing brace. The parser safely treated this as invalid JSON and created
+clarification task `803b1159-f4ae-5c5f-9cb8-7207304c3c50`,
+`NEEDS_CLARIFICATION`, version 1. A corrected JSON request was requested;
+no state or approval record was manually edited to force it through.
+
+| Case | Result | Actual evidence or missing prerequisite |
+| --- | --- | --- |
+| Required implementation files / fast-forward update | PASS | All files present at `220fa91`; clean initial worktree. |
+| Controlled tests and lint | PASS | 189 passed, 3 live skips; lint/format/diff checks passed. |
+| Fresh identities, room and human-anchored thread | PASS | IDs and link above; verified stored sender mappings. |
+| Shared application and separate ledger config paths | PASS | `samefile` checks and distinct device/inode evidence above. Unstarted processes still need runtime confirmation. |
+| Malformed request cannot launch Engineering | PASS | Clarification task, no Engineering handoff or session. This is not a substitute for valid-request approval acceptance. |
+| Valid engineering request stays `AWAITING_APPROVAL` | NOT RUN | Corrected request not yet observed at latest check. |
+| Authorized separate human Engineering approval | NOT RUN | No valid awaiting-approval task or human decision yet. |
+| Real managed Codex change, commit/diff/session | NOT RUN | Console control API returned HTTP 200 with `agents: []`; Console still points to an unconnected local-server entry. |
+| Independent exact-SHA QA → `HUMAN_REVIEW` | NOT RUN | No live managed implementation artifact or tested SHA. |
+| Separate release approval after diff/QA review | NOT RUN | No reviewable live diff, QA result or human release decision. |
+| Exactly one real draft PR with approved head | NOT RUN | No release approval, configured process-private repository-scoped Release token or publication attempt. |
+| Receipt in original Discord thread | NOT RUN | No actual draft PR exists for this test. |
+| Unauthorized / wrong-thread / stale or replayed approval denial tasks | NOT RUN | Separate live decision messages/tasks not performed. Controlled tests are separate. |
+| Human rejection of Engineering | NOT RUN | No live authorized rejection decision. |
+| Failing operator QA blocks publication | NOT RUN | Failing template prepared; no live managed artifact. |
+| Human rejection of release | NOT RUN | No live `HUMAN_REVIEW` task. |
+| Revision changed after QA cannot publish | NOT RUN | No live tested implementation revision. |
+| Restart at pending stages without duplicate work/PR | NOT RUN | No approved live implementation/publication to reconcile. |
+| Controlled reversible uncertain-PR-response live fault | NOT RUN | No real PR creation attempted; no blind retry or erased ledger. |
+
+At latest direct database inspection: `{"approval_workflows": 0, "handoffs": 0, "tasks": 1}`;
+execution ledger rows: `0`. Recorded tasks: `[{"id": "803b1159-f4ae-5c5f-9cb8-7207304c3c50", "status": "NEEDS_CLARIFICATION", "version": 1}]`.
+There are no human approval records, Engineering/QA/Release handoff IDs, real
+managed-session IDs, live QA exit codes/tested SHAs, PR URLs or PR head SHAs to
+report. No exactly-once success claim is made from those empty counts.
+
+## Prerequisites still needed
+
+Console was opened; its control endpoint again reports zero managed agents.
+Its visible default local server says not running even though the separate
+Docker Switch API is reachable. Connect Console to gateway
+`http://127.0.0.1:3001`, API `http://127.0.0.1:8080`, using the existing locally
+stored admin credential; keep the password private. UI automation encountered
+capture/window errors, so operator completion was requested. Then configure a
+real Codex provider login. Do not start an unrelated Console-managed local stack.
+
+After a valid request and a separate authorized human Engineering approval,
+keep Engineering stopped, derive the exact assignment path from the durable
+handoff, prepare its checkout, onboard a dedicated Console Codex agent there,
+and complete the operator template. Start Engineering only then. Preserve both
+human gates; do not replace them with agent-authored approval messages or manual
+SQLite changes. Before Release, show the tested SHA, diff, QA commands/exits and
+explicit destination to the human, and wait for a separate release approval.
+
+GitHub authentication succeeds through the local keyring when checked with
+appropriate keychain access. The earlier sandboxed `gh auth status` failure was
+not evidence of invalid credentials. A broad CLI login was not copied into the
+Release process; its scoped credential configuration remains incomplete.
+No release branch or draft PR was created by this test. No PR was merged.
+
+---
+
 # Operator-provided Discord recovery evidence — November 1, 2026
 
 The user supplied a copied Discord transcript and reported successful restart,
