@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     ingress_agent_id: str = ""
     pm_api_key: SecretStr | None = None
     research_api_key: SecretStr | None = None
-    pm_name: str = "PM Agent"
-    research_name: str = "Research Agent"
+    pm_name: str = "pm-agent"
+    research_name: str = "research-agent"
     discord_bindings: list[dict] = Field(default_factory=list)
     discord_guild_ids: list[str] = Field(default_factory=list)
     discord_user_ids: list[str] = Field(default_factory=list)

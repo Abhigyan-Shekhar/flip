@@ -12,8 +12,9 @@ This read-only check reports Docker/Compose availability, local HTTP health and
 missing or structurally invalid required configuration fields. It never prints
 configuration values. URLs can be overridden with `--switch-url`,
 `--gateway-url`, and `--crew-url`; probes reject URL credentials and redirects.
-Exit 0 means these prerequisites passed; it does not authenticate credentials or
-verify Discord permissions, identity ownership, addressing, workflow or recovery.
+The check also authenticates both worker keys through operation discovery.
+Exit 0 means these prerequisites passed; it does not verify Discord permissions,
+identity ownership, addressing, workflow or recovery.
 Optional product Waggle is not required. Environment variables override the
 root `.env`; the lightweight env reader supports literal key/value lines and
 outer quotes, without shell evaluation or variable interpolation.
@@ -204,12 +205,46 @@ never paste it into chat or command-line arguments. From SwitchCrew:
 mkdir -p .switch
 chmod 700 .switch
 uv run python scripts/register_agents.py --url http://127.0.0.1:8080 \
-  --name 'PM Agent' --description 'Coordinates read-only research' --output .switch/pm.json
+  --name pm-agent --display-name 'PM Agent' --description 'Coordinates read-only research' --output .switch/pm.json
 uv run python scripts/register_agents.py --url http://127.0.0.1:8080 \
-  --name 'Research Agent' --description 'Retrieves configured public evidence' --output .switch/research.json
+  --name research-agent --display-name 'Research Agent' --description 'Retrieves configured public evidence' --output .switch/research.json
 ```
 
 Transfer returned IDs/keys into the matching local settings without printing the
 files. The registration script refuses to overwrite keys. Revoke orphaned
 identities if registration succeeds but local key persistence fails. Unset the
 registration token after provisioning; runtime workers use only their own keys.
+
+## Live provisioning corrections
+
+Agent machine names must use lowercase letters, digits, dots, hyphens or
+underscores. Register `pm-agent` and `research-agent`; use `--display-name` for
+“PM Agent” and “Research Agent”. Set `SWITCHCREW_PM_NAME=pm-agent` and
+`SWITCHCREW_RESEARCH_NAME=research-agent` for targeted delivery.
+
+The UUIDs returned by `list_participants` identify agent/external-user records.
+The `payload.sender` and history `sender` fields use transport identities.
+Verify those separately against stored client mappings and authenticated room
+history before setting `*_PARTICIPANT_ID` or Discord bindings. Do not copy the
+membership UUID into the sender allowlist or infer a transport ID from its name.
+
+Workers assume their configured room role after each connection; define `pm`
+and `research` in that room before starting them. Addressing policies must admit
+the verified human external-user records and peer agent registration ID in that
+room. Those policy IDs differ from transport sender IDs.
+
+For the Gateway-intents example, configure
+`https://docs.discord.com/developers/events/gateway.md`. The official HTML page
+exceeds the bounded fetch size; the Markdown version is about 55 KB and is
+served as `text/markdown`. The fetch limit and public-network restrictions stay
+in force.
+
+Create the Discord test thread on a human message already bridged into Switch.
+A standalone thread created by the bot has no ingested root message, and this
+pinned upstream can lose its thread association. Do not mark original-thread
+delivery passed unless every response is observed in that thread.
+
+Run `python3 deploy/switch/preflight.py` from the repository. It uses only the
+standard library, checks private configuration, local health and authenticated
+operation discovery, and never prints keys. It does not certify membership,
+addressing, source retrieval, end-to-end delivery or recovery.

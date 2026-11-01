@@ -75,7 +75,8 @@ def retrieve_https(url: str, max_bytes: int = 262144, timeout: float = 10) -> st
             raise ResearchError(f"Source returned HTTP {response.status}; redirects are disabled")
         content_type = response.getheader("Content-Type", "")
         if not any(
-            kind in content_type.lower() for kind in ("text/plain", "text/html", "application/json")
+            kind in content_type.lower()
+            for kind in ("text/plain", "text/html", "text/markdown", "application/json")
         ):
             raise ResearchError("Unsupported source content type")
         raw = response.read(max_bytes + 1)

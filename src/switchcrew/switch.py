@@ -251,7 +251,9 @@ class SwitchClient:
             delay = min(delay * 2, 10)
 
 
-async def register_agent(base_url, registration_token, name, description, *, client=None):
+async def register_agent(
+    base_url, registration_token, name, description, *, display_name=None, client=None
+):
     """Register one always-on custom worker. Caller stores returned key securely."""
     owned = client is None
     http = client or httpx.AsyncClient(timeout=30)
@@ -262,6 +264,7 @@ async def register_agent(base_url, registration_token, name, description, *, cli
             json={
                 "name": name,
                 "description": description,
+                "display_name": display_name,
                 "connector_type": "switchcrew",
                 "integration_profile": {
                     "connection_model": "always_on",

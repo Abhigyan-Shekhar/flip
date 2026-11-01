@@ -9,8 +9,15 @@ from switchcrew.workers import Worker
 
 
 class Transport:
+    connection_id = "test-connection"
+
     def __init__(self):
         self.sent = []
+        self.operations = []
+
+    async def operation(self, name, **args):
+        self.operations.append((name, args))
+        return {}
 
     async def post_message(self, body, thread_id=None):
         self.sent.append(("discord", body, thread_id))
@@ -82,6 +89,37 @@ def test_private_sources_blocked(monkeypatch):
         retrieve_https("https://example.org")
     with pytest.raises(ResearchError):
         retrieve_https("http://example.org")
+
+
+def test_markdown_source_keeps_size_limit(monkeypatch):
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **kw: [(2, 1, 6, "", ("8.8.8.8", 443))])
+
+    class Response:
+        status = 200
+
+        def getheader(self, name, default=""):
+            return "text/markdown; charset=utf-8"
+
+        def read(self, limit):
+            return b"# Gateway intents"[:limit]
+
+    class Connection:
+        def __init__(self, *args):
+            pass
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("switchcrew.research._PinnedHTTPS", Connection)
+    assert retrieve_https("https://example.org/gateway.md") == "# Gateway intents"
+    with pytest.raises(ResearchError, match="byte limit"):
+        retrieve_https("https://example.org/gateway.md", max_bytes=5)
 
 
 @pytest.mark.asyncio

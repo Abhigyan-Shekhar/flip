@@ -120,6 +120,7 @@ async def test_gap_recovers_verified_human_history():
 
         async def events(self):
             yield {"type": "connection_state"}
+            assert self.operations == [("release_role", {}), ("assume_role", {"role": "pm"})]
             yield {
                 "type": "gap",
                 "resumed_at": 20,

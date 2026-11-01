@@ -77,11 +77,14 @@ def valid_url(value):
         return False
 
 
-def probe(url):
+def probe(url, api_key=None):
     if not valid_url(url):
         return {"status": "invalid_url"}
     try:
-        with urllib.request.build_opener(NoRedirect).open(url, timeout=3) as response:
+        request = urllib.request.Request(
+            url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {}
+        )
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=3) as response:
             return {"status": "reachable", "http_status": response.status}
     except urllib.error.HTTPError as error:
         return {"status": "http_error", "http_status": error.code}
@@ -188,6 +191,15 @@ def main():
         "gateway": probe(args.gateway_url),
         "crew_health": probe(args.crew_url.rstrip("/") + "/health"),
     }
+    authentication = {}
+    for role in ("PM", "RESEARCH"):
+        agent_id = values.get(f"SWITCHCREW_{role}_AGENT_ID", "")
+        api_key = values.get(f"SWITCHCREW_{role}_API_KEY", "")
+        if agent_id and api_key:
+            agent_path = urllib.parse.quote(agent_id, safe="")
+            authentication[role.lower()] = probe(
+                switch_url.rstrip("/") + f"/agents/{agent_path}/ops", api_key
+            )
     protected = not args.env_file.exists() or not (
         stat.S_IMODE(args.env_file.stat().st_mode) & 0o077
     )
@@ -199,7 +211,7 @@ def main():
             "env_file_private": protected,
             "missing": missing,
             "invalid": invalid,
-            "credential_authentication": "not_tested",
+            "credential_authentication": authentication,
         },
         "services": probes,
         "operator_checks": {
@@ -222,6 +234,7 @@ def main():
             or not protected
             or (local_runtime_required and not all(runtime.values()))
             or any(item.get("http_status") != 200 for item in probes.values())
+            or any(item.get("http_status") != 200 for item in authentication.values())
         )
     )
 

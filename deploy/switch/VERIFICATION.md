@@ -1,3 +1,88 @@
+# Live deployment verification — November 1, 2026
+
+Executed in the macOS checkout used for this run. The earlier records below
+refer to other hosts or earlier states and remain historical.
+
+## Provisioned and running
+
+Switch remains pinned to `557b62b23002548baa678339a97c8140c1ccaa8b`.
+Docker Desktop was started; existing generated server configuration and the
+PostgreSQL volume were preserved. Switch readiness, gateway and SwitchCrew API
+return HTTP 200. PM and Research authenticate separately and run as containers.
+Console v0.40.1 is installed and was opened; its desktop connection to this
+Docker server remains unverified. Provisioning used the authenticated gateway
+API, including the built-in Discord text bridge, rather than Console's forms.
+
+The existing bot token was validated without printing it. The bot belongs to
+the requested guild and can access the test channel. The original owner was
+linked; the operator explicitly authorized adding `lonewolf6786` as a second
+owner during this run. Both account links were verified through Discord
+membership and Switch's stored external-user/client mappings. Credentials and
+identity evidence remain in ignored mode-0600 files under `.switch/` and `.env`.
+
+| Item | Verified identity |
+| --- | --- |
+| Switch room | `5689b0df-8b85-4e5d-890f-7e8ee9dced1a` |
+| Discord bridge | `fddc56cd-4e79-4cc7-9110-932bb65f52e0` |
+| PM registration | `23b2ffba-67c1-4300-83e5-4ac4f2fd42da` (`pm-agent`, display “PM Agent”) |
+| Research registration | `36e9e040-87b6-4e62-9a80-a13edd0831da` (`research-agent`, display “Research Agent”) |
+| Original owner | Discord `703216309684666389` |
+| Additional authorized owner | Discord `806859717728927744` |
+| Guild / channel | `1565566745622872115` / `1565566746423992432` |
+| Successful Discord thread | `1566349550032134197`, “SwitchCrew anchored verification” |
+
+Membership UUIDs and SSE transport sender IDs differ. Sender settings were
+verified against the stored client mapping and authenticated history, never
+inferred from a display name. Both workers have room-scoped addressing rules
+allowing the two verified humans and the peer worker. Roles `pm` and `research`
+are defined and assumed on each worker connection.
+
+## Live workflow evidence
+
+[Original test thread](https://discord.com/channels/1565566745622872115/1566349550032134197).
+Research uses the official bounded source
+`https://docs.discord.com/developers/events/gateway.md`.
+
+| Gate | Evidence / result |
+| --- | --- |
+| Full workflow | Task `e02cc046-07b1-5323-a652-3964cafbf34c` completed in the original thread. Human request `1566350977920016495`; PM delegation `1566350987806117890`; Research acknowledgment `1566350993669496925`; Research evidence `1566351000007086201`; PM result `1566351004113444906`. |
+| Targeted delivery | Outbox records became sent only after the recipient status was `live`; Research's persisted `handoff.accepted` followed transport acceptance. |
+| Restart | Restarted API, PM and Research. Task/handoff/inbox/outbox counts stayed `2/2/8/18`; completed task and handoff results persisted without another research execution. |
+| Research disconnect | Stopped Research, submitted request `1566351241825747029`; task `f92baf72-3b4c-5cab-984a-2a56d8967046` was `IN_PROGRESS`. Restarting Research produced acknowledgment `1566351275518595206`, evidence and PM result `1566351289128980625`; task became `COMPLETED`. |
+| SSE interruption | Restarted the Switch server. Workers resumed from durable cursors with stable connection identities. PM reconnected in process; Research logged an HTTPStatusError, exited and recovered through Docker restart policy. Completed research was not repeated. This exercises interrupted SSE/reconnection and process recovery, not every heartbeat refusal case. |
+| Server-emitted history gap | Stopped PM and temporarily moved its existing replay-ticket row `9007194959773739` to a reversible alternate ID. The real server emitted `gap`; PM logged `history_gap_received` then `history_gap_replayed` at `07:24:25 UTC`. The original ticket was restored in `finally`. No task history or events were deleted. This fault models an unavailable retained replay ticket, not natural retention expiry. |
+| PM disconnect | With PM stopped, human request `1566353060283023391` was retained and completed after restart as task `267f53e0-2594-5329-a704-2aa658a83e66`. This additional run exercised normal durable reconnection, not a second gap. |
+| After gap | Prior completed tasks remained completed without repeat handoffs. An older unprocessed plain message correctly created one `NEEDS_CLARIFICATION` task. A new request after replay created task `792d9c31-4417-59fd-ab30-210440cb6c63`, which completed with source evidence. This run does not establish recovery of a request submitted during the gap itself. |
+
+Connection IDs are PM `82ba9c24-416a-5565-9dbc-79158e14bfb5` and Research
+`73ebf199-e33b-5870-8049-6fee059b991f`. Durable cursor snapshots, task records,
+Discord message evidence and the replay-ticket backup are stored privately
+under `.switch/`. Logging now exposes only allowlisted connection/replay fields.
+
+## Findings and checks
+
+The supplied registration labels containing spaces were rejected by the actual
+pinned server. Registration now accepts separate machine/display names and
+validates the machine name before reserving a credential path. Worker defaults
+and deployment instructions use the machine names for targeting.
+
+The official Gateway HTML page exceeded the 256 KiB source limit. Its official
+Markdown representation is approximately 55 KB; Markdown content is now
+accepted while retaining the size limit and public-network checks. The first
+test remains honestly recorded as `BLOCKED` due to that original source error.
+A standalone bot-created thread had no ingested root and replies reached the
+parent channel. The successful test used a thread on an already-bridged human
+message; this upstream thread-root limitation remains documented.
+
+`python3 deploy/switch/preflight.py` passed runtime, private configuration,
+health and separate worker-key authentication checks. Its operator gates remain
+`not_verified` by design: their evidence belongs in this report, not inferred
+from health. Final automated checks: **122 pytest tests**, `ruff check .`,
+`ruff format --check src tests scripts deploy/switch/preflight.py`, and
+`git diff --check`.
+
+---
+
 # Local deployment verification — October 29, 2026
 
 ## Current checkout recheck — October 29, 2026

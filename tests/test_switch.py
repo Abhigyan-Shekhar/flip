@@ -36,6 +36,8 @@ async def test_http_operation_auth_and_registration():
         if request.url.path == "/agents":
             body = json.loads(request.content)
             assert body["integration_profile"]["connection_model"] == "always_on"
+            assert body["name"] == "pm-agent"
+            assert body["display_name"] == "PM Agent"
             return httpx.Response(200, json={"id": "a", "api_key": "private"})
         return httpx.Response(
             200,
@@ -49,7 +51,14 @@ async def test_http_operation_auth_and_registration():
         assert seen[-1].headers["X-Switch-Connection-Id"] == "connection"
         assert seen[-1].headers["Authorization"] == "Bearer key"
         assert json.loads(seen[-1].content)["body"] == "hello"
-        await register_agent("https://switch.test", "registration", "pm", "PM", client=http)
+        await register_agent(
+            "https://switch.test",
+            "registration",
+            "pm-agent",
+            "PM",
+            display_name="PM Agent",
+            client=http,
+        )
         assert seen[-1].headers["Authorization"] == "Bearer registration"
 
 

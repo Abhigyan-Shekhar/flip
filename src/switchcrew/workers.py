@@ -14,7 +14,7 @@ from .research import ResearchProvider
 from .store import Store
 from .switch import SwitchClient
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("switchcrew.workers")
 
 
 def pm_graph(**kwargs):
@@ -347,9 +347,23 @@ class Worker:
         )
         async for event in self.switch.events():
             if event.get("type") == "connection_state":
+                log.info(
+                    "worker_connected",
+                    extra={
+                        "role": self.role,
+                        "connection_id": self.switch.connection_id,
+                        "generation": event.get("generation"),
+                        "cursor": self.switch.cursor,
+                    },
+                )
                 await self.switch.connect_to_room(self.room_id)
+                # Role leases belong to the live session. Re-establish them on
+                # reconnect as well as startup; release is idempotent.
+                await self.switch.operation("release_role")
+                await self.switch.operation("assume_role", role=self.role)
                 await self.flush_outbox()
             if event.get("type") == "gap":
+                log.info("history_gap_received", extra={"role": self.role})
                 for room, pages in event["history"].items():
                     if room != self.room_id:
                         continue
@@ -388,6 +402,7 @@ class Worker:
                                     }
                                 )
                 self.store.set_cursor(self.identity, event["resumed_at"])
+                log.info("history_gap_replayed", extra={"role": self.role})
             await self.receive(event)
             if event.get("sequence") is not None:
                 self.store.set_cursor(self.identity, event["sequence"])

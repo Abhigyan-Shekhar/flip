@@ -14,7 +14,16 @@ class JsonFormatter(logging.Formatter):
         }
         if record.name in {"switchcrew.api", "switchcrew.workers", "switchcrew.runtime"}:
             result["event"] = record.msg
-            for key in ("request_id", "method", "status_code", "error_type"):
+            for key in (
+                "request_id",
+                "method",
+                "status_code",
+                "error_type",
+                "role",
+                "connection_id",
+                "generation",
+                "cursor",
+            ):
                 if hasattr(record, key):
                     result[key] = getattr(record, key)
         else:
