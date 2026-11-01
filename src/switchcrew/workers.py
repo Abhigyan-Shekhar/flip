@@ -273,7 +273,9 @@ class Worker:
                     "acceptance_criteria": handoff["acceptance_criteria"],
                 },
             )
-            self.store.complete_handoff(handoff["id"], self.identity, graph_result(result))
+            self.store.complete_handoff(
+                handoff["id"], self.identity, graph_result(result), execution_role=self.role
+            )
         elif handoff["recipient"] == self.research_id and handoff["sender"] == self.identity:
             if message.get("type") == "handoff.accepted" and handoff["status"] in {
                 "accepted",

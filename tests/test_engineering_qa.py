@@ -220,6 +220,69 @@ async def test_validation_cannot_change_tested_revision(setup, tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("filename", ["helper.py", "ignored/helper.py"])
+async def test_validation_rejects_untracked_and_ignored_inputs(setup, tmp_path, filename):
+    source, _, ledger = setup
+    (source / ".gitignore").write_text("ignored/\n")
+    git(source, "add", ".gitignore")
+    git(
+        source,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "ignore",
+    )
+    revision = git(source, "rev-parse", "HEAD")
+    identity = assignment_id("implementation")
+    ledger.reserve(identity, {})
+    ledger.put(
+        identity,
+        {"result": {"status": "implemented", "checkout": str(source), "final_revision": revision}},
+    )
+    commands = [
+        [
+            sys.executable,
+            "-c",
+            f"from pathlib import Path; p=Path({filename!r}); "
+            "p.parent.mkdir(parents=True, exist_ok=True); p.write_text('pass')",
+        ],
+        [sys.executable, "-c", f"from pathlib import Path; assert Path({filename!r}).exists()"],
+    ]
+    result = await QAExecutor(ledger, tmp_path / "qa", identity, revision, commands)(
+        state("qa", "qa")
+    )
+    assert result["status"] == "qa_failed"
+    assert len(result["commands"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_validation_allows_python_caches_but_commands_get_fresh_checkout(setup, tmp_path):
+    source, revision, ledger = setup
+    identity = assignment_id("implementation")
+    ledger.reserve(identity, {})
+    ledger.put(
+        identity,
+        {"result": {"status": "implemented", "checkout": str(source), "final_revision": revision}},
+    )
+    commands = [
+        [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; p=Path('__pycache__/answer.cpython-312.pyc'); "
+            "p.parent.mkdir(); p.write_bytes(b'cache')",
+        ],
+        [sys.executable, "-c", "from pathlib import Path; assert not Path('__pycache__').exists()"],
+    ]
+    result = await QAExecutor(ledger, tmp_path / "qa", identity, revision, commands)(
+        state("qa", "qa")
+    )
+    assert result["status"] == "verified_success"
+
+
+@pytest.mark.asyncio
 async def test_executor_outcomes_follow_existing_graph_contract(setup, tmp_path):
     source, base, ledger = setup
     graph = build_agent_graph(
@@ -304,6 +367,44 @@ async def test_invalid_receipt_cannot_be_implementation_success(setup, tmp_path)
     await executor(state())
     receipt(session.checkout, "different-assignment", base)
     assert (await executor(state()))["status"] == "implementation_failed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("record", [[], None, "receipt"])
+async def test_non_object_receipt_is_an_implementation_failure(setup, tmp_path, record):
+    source, base, ledger = setup
+    session = ControlledSession()
+    executor = EngineeringExecutor(ledger, tmp_path / "work", source, base, session)
+    await executor(state())
+    (session.checkout / ".switchcrew-result.json").write_text(json.dumps(record))
+    assert (await executor(state()))["status"] == "implementation_failed"
+
+
+@pytest.mark.asyncio
+async def test_console_outage_after_delivery_keeps_handoff_pending(setup, tmp_path):
+    source, base, ledger = setup
+
+    class IntermittentSession(ControlledSession):
+        outage = False
+
+        async def validate(self, checkout):
+            if self.outage:
+                raise httpx.ConnectError("unavailable")
+            await super().validate(checkout)
+
+    session = IntermittentSession()
+    executor = EngineeringExecutor(ledger, tmp_path / "work", source, base, session)
+    assert (await executor(state()))["status"] == "pending_execution"
+    identity = assignment_id("engineering-1")
+    final = commit(session.checkout, "correct")
+    receipt(session.checkout, identity, final)
+    session.outage = True
+    assert (await executor(state()))["status"] == "pending_execution"
+    session.outage = False
+    result = await executor(state())
+    assert result["status"] == "implemented"
+    assert result["final_revision"] == final
+    assert session.creates == session.deliveries == 1
 
 
 @pytest.mark.asyncio

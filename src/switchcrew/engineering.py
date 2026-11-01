@@ -233,6 +233,16 @@ class EngineeringExecutor:
         try:
             await self.session.validate(checkout)
         except (OSError, ValueError, KeyError, sqlite3.Error, httpx.HTTPError):
+            # Once an external action has been claimed, its outcome may still
+            # arrive. Preserve the handoff until identity can be verified again.
+            if self.ledger.get(identity)["phase"] != "reserved":
+                return outcome(
+                    "pending_execution",
+                    identity,
+                    checkout=str(checkout),
+                    base_revision=base,
+                    reason="managed_codex_identity_unavailable_or_misconfigured",
+                )
             return outcome(
                 "blocked_configuration",
                 identity,
@@ -285,6 +295,8 @@ class EngineeringExecutor:
             )
         try:
             record = json.loads(receipt.read_text())
+            if not isinstance(record, dict):
+                raise ValueError("Receipt must be an object")
             final = git(checkout, "rev-parse", "HEAD")
             if record["assignment_id"] != identity or record["final_revision"] != final:
                 raise ValueError("Receipt identity/revision differs")
@@ -330,13 +342,13 @@ def enqueue_independent_qa(store, engineering_handoff, engineering_agent, qa_age
     if handoff["status"] != "completed" or result.get("status") != "implemented":
         return None
     revision = result["final_revision"]
-    task = store.get_task(handoff["task_id"])
     return store.create_handoff(
-        task["id"],
+        handoff["task_id"],
         engineering_agent,
         qa_agent,
         handoff["question"],
         handoff["acceptance_criteria"],
-        task["version"],
+        None,
         handoff_id=qa_handoff_id(engineering_handoff, revision),
+        require_active=True,
     )

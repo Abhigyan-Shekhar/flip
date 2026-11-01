@@ -172,10 +172,13 @@ async def test_idle_heartbeat_failure_reopens_with_same_id(status):
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
         client = SwitchClient("https://s.test", "a", "key", "c", client=http)
+        disconnects = []
+        client.on_disconnect = lambda: disconnects.append(True)
         stream = client.events()
         await anext(stream)
         await client.acknowledge(42)
         await asyncio.wait_for(anext(stream), 1)
+        assert disconnects
         assert opens == ["c", "c"]
         assert beats[0] == {"connection_id": "c", "generation": 1}
         await stream.aclose()

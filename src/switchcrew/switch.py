@@ -77,11 +77,20 @@ class SwitchClient:
         self.rooms = list(rooms)
         self.cursor: int | None = None
         self.generation: int | None = None
+        self.connected = False
         self._owned = client is None
         self.http = client or httpx.AsyncClient(base_url=base_url.rstrip("/") + "/", timeout=30)
         self.base_url = base_url.rstrip("/")
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self.operations: dict | None = None
+        # One runtime owns each client. Receipt polling must stop as soon as
+        # liveness is lost, including the adapter's internal reconnect backoff.
+        self.on_disconnect = None
+
+    def _disconnected(self):
+        self.connected = False
+        if self.on_disconnect is not None:
+            self.on_disconnect()
 
     async def close(self):
         if self._owned:
@@ -139,11 +148,15 @@ class SwitchClient:
     async def _beat(self, interval):
         while True:
             await asyncio.sleep(interval)
-            await self._request(
-                "POST",
-                f"/agents/{self.agent_id}/connection/beat",
-                json={"connection_id": self.connection_id, "generation": self.generation},
-            )
+            try:
+                await self._request(
+                    "POST",
+                    f"/agents/{self.agent_id}/connection/beat",
+                    json={"connection_id": self.connection_id, "generation": self.generation},
+                )
+            except (TimeoutError, httpx.HTTPError, SwitchOwnershipLost):
+                self._disconnected()
+                raise
 
     async def _recover_history(self):
         histories = {}
@@ -236,6 +249,7 @@ class SwitchClient:
                             if interval <= 0:
                                 raise SwitchProtocolError("Invalid heartbeat interval")
                             beat = asyncio.create_task(self._beat(interval))
+                            self.connected = True
                             first, delay = False, 0.25
                         if kind == "evicted":
                             if event.get("code") == "heartbeat_lapsed":
@@ -289,6 +303,7 @@ class SwitchClient:
                     },
                 )
             finally:
+                self._disconnected()
                 if beat:
                     beat.cancel()
                     with contextlib.suppress(

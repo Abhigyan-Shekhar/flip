@@ -74,10 +74,13 @@ network override when using a separately configured remote Switch server.
 Research retrieves bounded excerpts from operator-configured public HTTPS sources.
 It does not implement autonomous web search or claim acceptance criteria are
 verified. Missing criteria trigger a clarification response; send a new complete
-JSON request. Specialist capability implementations beyond PM/Research, actual Codex execution,
-independent QA, GitHub publication, approvals, Discord voice, receipts and community
-workflows remain later work. LangGraph, Waggle and generic Switch scaffolding
-is implemented; memory requires explicit configuration.
+JSON request. Standalone [Engineering and independent QA](docs/ENGINEERING_QA.md)
+now have configured executors, durable execution ledgers and revision-pinned QA
+commands. Their real Console-managed Codex workflow still needs live acceptance;
+the default Discord PM worker currently delegates only to Research. GitHub
+publication, approvals, Discord voice, receipts and community workflows remain
+later work. LangGraph, Waggle and generic Switch scaffolding are implemented;
+memory requires explicit configuration.
 
 Work began October 29, 2026 at the user's explicit request. The earlier
 [preparation notes](docs/PREPARATION.md) and [build plan](docs/BUILD_PLAN.md) remain

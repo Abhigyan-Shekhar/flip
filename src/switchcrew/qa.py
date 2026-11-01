@@ -11,6 +11,30 @@ from pathlib import Path
 from .engineering import assignment_id, git, outcome
 
 
+def generated_inputs(checkout):
+    """Reject new worktree files except known Python/pytest cache artifacts."""
+    paths = set()
+    for args in (
+        ("--others", "--exclude-standard"),
+        ("--others", "--ignored", "--exclude-standard"),
+    ):
+        paths.update(git(checkout, "ls-files", *args).splitlines())
+    pytest_cache = {
+        ".pytest_cache/.gitignore",
+        ".pytest_cache/CACHEDIR.TAG",
+        ".pytest_cache/README.md",
+        ".pytest_cache/v/cache/nodeids",
+        ".pytest_cache/v/cache/lastfailed",
+        ".pytest_cache/v/cache/stepwise",
+    }
+    return [
+        path
+        for path in paths
+        if path not in pytest_cache
+        and not ("__pycache__" in Path(path).parts and path.endswith(".pyc"))
+    ]
+
+
 class QAExecutor:
     def __init__(self, ledger, root, implementation_assignment, revision, commands, timeout=120):
         self.ledger, self.root = ledger, Path(root).resolve()
@@ -66,29 +90,32 @@ class QAExecutor:
                 commands=data.get("commands", []),
             )
         self.root.mkdir(parents=True, exist_ok=True)
-        checkout = Path(tempfile.mkdtemp(prefix=identity + "-", dir=self.root))
+        run_dir = Path(tempfile.mkdtemp(prefix=identity + "-", dir=self.root))
+        checkout = run_dir
         records = []
         try:
-            subprocess.run(
-                [
-                    "git",
-                    "clone",
-                    "--no-hardlinks",
-                    "--no-checkout",
-                    current["checkout"],
-                    str(checkout),
-                ],
-                check=True,
-                capture_output=True,
-            )
-            git(checkout, "checkout", "--detach", self.revision)
-            if git(checkout, "rev-parse", "HEAD") != self.revision:
-                raise ValueError("QA checkout revision mismatch")
-            # No application/API credentials or caller PYTHONPATH are inherited.
-            env = {"PATH": os.defpath, "HOME": str(checkout / ".qa-home"), "LANG": "C.UTF-8"}
-            Path(env["HOME"]).mkdir()
             revision_unchanged = True
-            for command in self.commands:
+            for index, command in enumerate(self.commands):
+                checkout = run_dir / f"command-{index}"
+                subprocess.run(
+                    [
+                        "git",
+                        "clone",
+                        "--no-hardlinks",
+                        "--no-checkout",
+                        current["checkout"],
+                        str(checkout),
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                git(checkout, "checkout", "--detach", self.revision)
+                if git(checkout, "rev-parse", "HEAD") != self.revision:
+                    raise ValueError("QA checkout revision mismatch")
+                # HOME is outside the checkout and is fresh for each command.
+                home = run_dir / f"home-{index}"
+                home.mkdir()
+                env = {"PATH": os.defpath, "HOME": str(home), "LANG": "C.UTF-8"}
                 self.ledger.put(
                     identity,
                     {
@@ -140,15 +167,17 @@ class QAExecutor:
                     identity,
                     {"phase": "running", "commands": records, "tested_revision": self.revision},
                 )
-                if git(checkout, "rev-parse", "HEAD") != self.revision or git(
-                    checkout, "diff", "HEAD"
+                if (
+                    git(checkout, "rev-parse", "HEAD") != self.revision
+                    or git(checkout, "diff", "HEAD")
+                    or generated_inputs(checkout)
                 ):
                     revision_unchanged = False
                     break
-            clean = revision_unchanged and not git(checkout, "diff", "HEAD")
             status = (
                 "verified_success"
-                if clean and all(r["exit_code"] == 0 and not r["timed_out"] for r in records)
+                if revision_unchanged
+                and all(r["exit_code"] == 0 and not r["timed_out"] for r in records)
                 else "qa_failed"
             )
             if self.stale():

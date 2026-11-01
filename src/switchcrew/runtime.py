@@ -15,7 +15,16 @@ from uuid import NAMESPACE_URL, uuid5
 from .agents import AGENT_ROLES
 from .graphs import graph_result, invoke_agent_graph
 from .store import Store
-from .switch import SwitchClient
+from .switch import SwitchClient, SwitchOwnershipLost
+
+log = logging.getLogger("switchcrew.runtime")
+
+
+def ownership_lost(exc):
+    """TaskGroup wraps terminal fencing errors; mixed ordinary failures stay failures."""
+    if isinstance(exc, SwitchOwnershipLost):
+        return True
+    return isinstance(exc, BaseExceptionGroup) and all(ownership_lost(e) for e in exc.exceptions)
 
 
 @dataclass(frozen=True)
@@ -54,6 +63,13 @@ class AgentRuntime:
         self.connection, self.store, self.switch, self.graph = connection, store, switch, graph
         if getattr(switch, "agent_id", connection.agent_id) != connection.agent_id:
             raise ValueError("Switch client identity differs from runtime identity")
+        self.switch.on_disconnect = self.on_disconnected
+
+    def on_disconnected(self):
+        """Lifecycle hook for runtimes that perform work outside the event loop."""
+
+    def is_ready(self):
+        return getattr(self.switch, "connected", True)
 
     async def receive(self, event):
         c = self.connection
@@ -103,11 +119,15 @@ class AgentRuntime:
     async def process_pending(self):
         c = self.connection
         for item in self.store.pending_inbox(c.agent_id):
+            if not self.is_ready():
+                return
             message = item["payload"]["message"]
             handoff = self.store.get_handoff(message["handoff_id"])
             if message["type"] == "handoff" and handoff["status"] != "completed":
                 self.store.accept_handoff(handoff["id"], c.agent_id)
                 await self.flush_outbox()  # Durable acceptance must be delivered before work.
+                if not self.is_ready():
+                    return
                 task = self.store.get_task(handoff["task_id"])
                 if task["status"] in {"CANCELLED", "COMPLETED"}:
                     self.store.complete_handoff(
@@ -130,14 +150,20 @@ class AgentRuntime:
                     }
                     state["agent_role"] = c.role
                     result = await invoke_agent_graph(self.graph, state)
-                    if result["result"].get("status") == "pending_execution":
+                    completed = self.store.complete_handoff(
+                        handoff["id"], c.agent_id, graph_result(result), c.role
+                    )
+                    if completed is None:
                         continue
-                    self.store.complete_handoff(handoff["id"], c.agent_id, graph_result(result))
             self.store.complete_inbox(item["message_id"], c.agent_id)
 
     async def flush_outbox(self):
+        if not self.is_ready():
+            return
         c = self.connection
         for item in self.store.pending_outbox():
+            if not self.is_ready():
+                return
             p = item["payload"]
             if not p.get("handoff_id"):
                 continue
@@ -145,10 +171,12 @@ class AgentRuntime:
             owner = h["sender"] if p["type"] == "handoff" else h["recipient"]
             if owner != c.agent_id:
                 continue
+            task = self.store.get_task(item["task_id"])
+            if p["type"] == "handoff" and task["status"] in {"CANCELLED", "COMPLETED"}:
+                continue
             target = c.target_names.get(item["recipient"])
             if not target:
                 raise ValueError("Missing target name for durable delivery")
-            task = self.store.get_task(item["task_id"])
             source = task["source"]
             body = (
                 "```switchcrew\n"
@@ -180,6 +208,9 @@ class AgentRuntime:
                             }
                         )
 
+    async def on_connected(self):
+        await self.switch.connect_to_room(self.connection.room_id)
+
     async def run(self):
         identity = self.connection.agent_id
         cursor = self.store.get_cursor(identity)
@@ -187,7 +218,7 @@ class AgentRuntime:
         # A restart can have durable work even if the stream has no new messages.
         async for event in self.switch.events():
             if event.get("type") == "connection_state":
-                await self.switch.connect_to_room(self.connection.room_id)
+                await self.on_connected()
             elif event.get("type") == "gap":
                 await self._recover(event)
             else:
@@ -246,6 +277,19 @@ async def _main(role, registry, database, url):
         store.close()
 
 
+async def run_runtime(role, registry, database, url):
+    try:
+        await _main(role, registry, database, url)
+    except Exception as exc:
+        terminal = ownership_lost(exc)
+        log.error(
+            "runtime_ownership_lost" if terminal else "runtime_failed",
+            extra={"role": role, "error_type": type(exc).__name__},
+        )
+        return 0 if terminal else 1
+    return 0
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("role", choices=AGENT_ROLES)
@@ -260,10 +304,4 @@ if __name__ == "__main__":
     from .logging import configure_logging
 
     configure_logging()
-    try:
-        asyncio.run(_main(args.role, args.registry, args.database, args.url))
-    except Exception as exc:
-        logging.getLogger(__name__).error(
-            "runtime_failed", extra={"error_type": type(exc).__name__}
-        )
-        raise SystemExit(1) from None
+    raise SystemExit(asyncio.run(run_runtime(args.role, args.registry, args.database, args.url)))

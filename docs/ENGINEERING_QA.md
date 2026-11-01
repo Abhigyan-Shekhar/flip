@@ -63,20 +63,29 @@ handoff ID **and final revision**. Reconciliation creates the same handoff after
 restart. QA commands are selected from operator configuration, never from the
 Engineering prompt, receipt or implementation code.
 
-`QAExecutor` creates a new clone and detached checkout at that exact revision.
-It runs argv arrays without a shell, with an isolated HOME and a minimal
+`QAExecutor` creates a fresh clone and detached checkout at that exact revision
+for **each command**. Commands cannot share generated build artifacts or a HOME
+directory. Configure each validation command to work independently against the
+pinned source. It runs argv arrays without an implicit shell, with an external,
+per-command HOME and a minimal
 environment that excludes application keys, caller PYTHONPATH and user tokens.
 Every executed command records argv, exit code, timeout, tested revision,
 bounded output summary, full output SHA-256 and byte count. Command intent and
-finished command records are durable. A command that changes tracked code or
-HEAD fails validation before another command runs. Timeouts terminate the
-process group. Retained QA directories allow inspection.
+finished command records are durable. A command that changes tracked code, HEAD,
+or leaves new untracked/ignored inputs fails validation before another command
+runs. Only Python `__pycache__/*.pyc` and enumerated pytest metadata files are
+allowed; even these caches do not carry into the next command's fresh clone.
+Arbitrary build products left inside the checkout fail this conservative policy.
+Timeouts terminate the process group. Retained QA directories allow inspection.
 
 These are separate Git checkouts and process environments, **not OS security
 sandboxes**. Commands can access the host and network. Use a dedicated execution
 account/container/VM for untrusted target repositories. A machine loss during QA
 can leave a subprocess that needs operator reconciliation before another QA
 handoff is issued. No automatic retry is assumed safe for arbitrary commands.
+Worktree checks run after each command; they do not detect temporary source
+changes created and removed within a command, or make malicious commands safe.
+Validation argv is trusted operator configuration.
 
 ## Outcomes and reconciliation
 
@@ -96,6 +105,10 @@ matching session can be found, the assignment remains pending and never issues
 another creation POST. Prompt delivery is also claimed before the Switch
 mutation; an uncertain send is never repeated. An operator must reconcile an
 absent session/receipt before using a new assignment to retry.
+Once session creation or delivery has been claimed, a Console validation outage
+keeps the assignment pending instead of completing it as blocked. The managed
+agent/location identity must validate again before a receipt is accepted. A
+non-object or otherwise malformed receipt fails implementation verification.
 
 QA checks implementation currency before running, after running, and before
 returning a cached result. A consumer must compare both
@@ -105,8 +118,17 @@ implementation. Changing either inputs or validation commands requires a new
 handoff. A process interruption with a `running` QA record returns blocked with
 any durable command evidence instead of rerunning commands blindly.
 
+QA handoff creation checks task liveness in the same SQLite transaction as the
+new assignment. Executor completion also rechecks liveness transactionally;
+late results for a terminal task become blocked, including a pending execution
+returned after cancellation. Unsent handoff messages for terminal tasks are
+retained but skipped. These checks cannot recall a network request already in
+flight or forcibly stop a running external Codex session/command.
+
 The integration runtime polls pending executions when no new SSE message
-arrives. It deliberately uses graphs without checkpoint caching: a pending
+arrives. Polling waits until the room claim completes and pauses on transport
+disconnect/heartbeat refusal, including the adapter's internal reconnect backoff.
+It deliberately uses graphs without checkpoint caching: a pending
 external operation must be reconciled on the next invocation. Existing graph
 memory hooks still prime/recall/observe curated outcomes. Waggle remains disabled
 unless the private integration config explicitly includes
@@ -194,6 +216,14 @@ uv run python -m switchcrew.engineering_qa --config /private/integration/enginee
 uv run python -m switchcrew.engineering_qa --config /private/integration/qa-config.json
 ```
 
+The Switch origin uses the established HTTPS/loopback validation. CLI failures
+log only allowlisted diagnostics. A lost-ownership exception, including one
+wrapped by a TaskGroup, exits 0 so an `on-failure` supervisor stands down;
+ordinary failures exit 1. The generic specialist CLI uses the same policy.
+Do not use an always-restarting supervisor for these identities. The PM/Research
+Compose override is documented in `deploy/switch/RECOVERY_ACCEPTANCE.md`; it does
+not provision containers for the standalone Engineering/QA processes.
+
 Seed a task and Engineering handoff using the existing `Store.create_task` and
 `Store.create_handoff` APIs in the **integration DB**, with the new coordinator
 as sender and new Engineering registration as recipient. Use a stable explicit
@@ -249,8 +279,17 @@ test evidence. This branch does not claim that live acceptance has passed.
 
 ## Branch validation
 
-Executed in the separate `engineering-qa` worktree: **136 full-suite tests
+Initial Person 2 validation in the separate `engineering-qa` worktree: **136 full-suite tests
 passed**, including 14 Engineering/QA cases. `ruff check .`,
 `ruff format --check src tests scripts`, and `git diff --check` passed. The
 standalone module's `--help` entry point was also exercised. No reserved
 PM/Research, deployment, README or operational-status file was changed.
+
+During integration with recovery hardening, independent GPT-6.1 Terra reviews
+identified and fixed cross-command QA contamination, terminal-task assignment
+and result races, a post-delivery Console-outage reconciliation failure, and
+malformed receipt shapes. Parent integration added connection-readiness gates,
+disconnect lifecycle callbacks, secure origin validation and takeover-aware
+CLI exit handling. The combined checks and live limitations are recorded in
+`docs/DAY1_STATUS.md`; controlled Git/session doubles remain separate from real
+Console Codex evidence.

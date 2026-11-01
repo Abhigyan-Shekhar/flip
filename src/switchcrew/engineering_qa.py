@@ -7,6 +7,7 @@ No PM/Research settings, containers or credential files are loaded.
 import argparse
 import asyncio
 import json
+import logging
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -21,10 +22,12 @@ from .engineering import (
 from .graphs import build_agent_graph
 from .memory import NullMemory, memory_from_settings
 from .qa import QAExecutor
-from .runtime import AgentRuntime, load_connection
+from .runtime import AgentRuntime, load_connection, ownership_lost
 from .settings import Settings
 from .store import Store
 from .switch import SwitchClient
+
+log = logging.getLogger("switchcrew.runtime")
 
 
 class IntegrationRuntime(AgentRuntime):
@@ -33,22 +36,46 @@ class IntegrationRuntime(AgentRuntime):
         self.after_pending = after_pending
         self.processing = asyncio.Lock()
         self.delivery = asyncio.Lock()
+        self.ready = asyncio.Event()
+
+    async def on_connected(self):
+        self.ready.clear()
+        await super().on_connected()
+        if getattr(self.switch, "connected", True):
+            self.ready.set()
+
+    def on_disconnected(self):
+        self.ready.clear()
+
+    def is_ready(self):
+        return self.ready.is_set() and super().is_ready()
+
+    async def run(self):
+        try:
+            await super().run()
+        finally:
+            self.ready.clear()
 
     async def process_pending(self):
         async with self.processing:
+            if not self.ready.is_set():
+                return
             await super().process_pending()
             if self.after_pending:
                 self.after_pending()
 
     async def flush_outbox(self):
         async with self.delivery:
+            if not self.ready.is_set():
+                return
             await super().flush_outbox()
 
     async def poll(self):
         while True:
+            await self.ready.wait()
             await asyncio.sleep(2)
             # Poll receipts even when the SSE stream has no new messages.
-            if self.switch.generation is not None:
+            if self.ready.is_set():
                 await self.process_pending()
                 await self.flush_outbox()
 
@@ -58,6 +85,8 @@ async def run(config_file):
     if path.stat().st_mode & 0o077:
         raise ValueError("Integration configuration must be private")
     config = json.loads(path.read_text())
+    # Use the same origin/HTTPS validation as the established worker path.
+    switch_url = Settings(_env_file=None, switch_base_url=config["switch_url"]).switch_base_url
     role = config["role"]
     if role not in {"engineering", "qa"}:
         raise ValueError("This entry point supports Engineering and QA only")
@@ -79,7 +108,7 @@ async def run(config_file):
     )
     store, ledger = Store(database), Ledger(ledger_path)
     client = SwitchClient(
-        config["switch_url"],
+        switch_url,
         connection.agent_id,
         connection.api_key,
         connection_id=str(uuid5(NAMESPACE_URL, f"switchcrew:{role}:{connection.agent_id}")),
@@ -148,7 +177,23 @@ async def run(config_file):
         ledger.close()
 
 
+async def run_integration(config_file):
+    try:
+        await run(config_file)
+    except Exception as exc:
+        terminal = ownership_lost(exc)
+        log.error(
+            "integration_ownership_lost" if terminal else "integration_failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        return 0 if terminal else 1
+    return 0
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
-    asyncio.run(run(parser.parse_args().config))
+    from .logging import configure_logging
+
+    configure_logging()
+    raise SystemExit(asyncio.run(run_integration(parser.parse_args().config)))

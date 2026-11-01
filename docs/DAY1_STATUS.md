@@ -1,5 +1,35 @@
 # Day 1 implementation and review — October 29, 2026
 
+## Combined recovery and Engineering/QA integration — November 1, 2026
+
+Integrated Person 1's `8506a38` and Person 2's `0b1dce7`, retaining their shared
+live-verification base `2441365`. Two explicitly requested GPT-6.1 Terra
+subagents independently reviewed Engineering/QA integrity and runtime/state
+recovery; the coordinating agent integrated their fixes and reviewed the whole.
+
+Review fixes include fresh revision-pinned QA clones per command and rejection
+of generated inputs, transactional terminal-task checks before creating QA work
+or committing late executor results, continued reconciliation after temporary
+Console outages, and malformed receipt handling. Integration also pauses work
+and queued delivery when transport liveness is lost, waits for room readiness,
+validates Switch origins and uses sanitized takeover-aware CLI exit policies.
+The dedicated Research worker uses the same terminal-aware result commit.
+
+Combined local validation: **171 tests passed; 3 opt-in live tests skipped**.
+Ruff lint/format, lockfile verification, shell syntax and diff checks passed;
+source distribution and wheel built, and standalone Engineering/QA and generic
+runtime help entry points were exercised. No credentials or private state were
+included. QA commands are trusted operator configuration, not an OS sandbox;
+see the per-command isolation policy in [ENGINEERING_QA.md](ENGINEERING_QA.md).
+
+Real Console Codex → independent QA acceptance and the remaining Discord
+recovery gates still need the verification Mac and its private configuration.
+The default Discord PM worker still delegates only to Research; Engineering/QA
+is a separately configured entry point, not automatic approved PM routing.
+Running external work and network requests already in flight cannot be recalled
+by the SQLite cancellation checks. Earlier counts and reports below retain
+their original scope and dates.
+
 ## Current follow-up — November 1, 2026
 
 The live-verification branch (`2441365`) recorded a real Discord → PM → Research

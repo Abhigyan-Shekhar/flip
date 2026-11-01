@@ -31,6 +31,13 @@ the missing capability. A scaffold does not prove Codex execution, independent
 QA, voice, approval enforcement, publication or external service availability.
 No LLM provider or model credentials are required to compile these workflows.
 
+Engineering and QA now also have configured standalone executors described in
+[Engineering → independent QA](ENGINEERING_QA.md): an actual Console control API
+adapter with durable session reconciliation, and separate revision-pinned Git
+checkouts with operator-selected validation commands. The default graphs above
+still block without those executors. Controlled Git/subprocess execution passes;
+the real Console-managed Codex → QA workflow requires its documented live gate.
+
 ## State and routing
 
 The common typed state includes `agent_role`, `task_id`, `handoff_id`, `session_id`,

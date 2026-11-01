@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -75,6 +76,50 @@ def setup_runtime(tmp_path, switch=None):
         },
     }
     return runtime, event, handoff, calls
+
+
+@pytest.mark.parametrize("result_status", ["verified_success", "pending_execution"])
+async def test_cancel_during_execution_blocks_late_result(tmp_path, result_status):
+    runtime, event, handoff, _ = setup_runtime(tmp_path)
+    started, release = asyncio.Event(), asyncio.Event()
+
+    class SuspendedGraph:
+        name = "switchcrew_research"
+        checkpointer = None
+
+        async def ainvoke(self, state, config):
+            started.set()
+            await release.wait()
+            return {"result": {"status": result_status}}
+
+    runtime.graph = SuspendedGraph()
+    await runtime.receive(event)
+    processing = asyncio.create_task(runtime.process_pending())
+    await started.wait()
+    task = runtime.store.get_task(handoff["task_id"])
+    runtime.store.transition_task(task["id"], "CANCELLED", task["version"])
+    release.set()
+    await processing
+    assert runtime.store.get_handoff(handoff["id"])["result"] == {
+        "status": "blocked",
+        "reason": "task_terminal",
+        "task_status": "CANCELLED",
+        "role": "research",
+    }
+    assert not runtime.store.pending_inbox("research")
+    runtime.store.close()
+
+
+async def test_cancelled_task_does_not_flush_queued_handoff(tmp_path):
+    runtime, _, handoff, _ = setup_runtime(tmp_path)
+    task = runtime.store.get_task(handoff["task_id"])
+    runtime.store.create_handoff(task["id"], "research", "qa", "Review", ["Pass"], task["version"])
+    runtime.connection.target_names["qa"] = "QA"
+    task = runtime.store.get_task(task["id"])
+    runtime.store.transition_task(task["id"], "CANCELLED", task["version"])
+    await runtime.flush_outbox()
+    assert not runtime.switch.sent
+    runtime.store.close()
 
 
 async def test_durable_ack_result_replay_and_cursor(tmp_path):

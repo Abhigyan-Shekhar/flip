@@ -193,11 +193,17 @@ class Store:
         acceptance_criteria,
         expected_version,
         handoff_id=None,
+        require_active=False,
     ):
         if not all(isinstance(v, str) and v.strip() for v in (sender, recipient, question)):
             raise ValueError("Sender, recipient and question are required")
         handoff_id = handoff_id or str(uuid4())
         with self.transaction():
+            task = self.get_task(task_id)
+            if task is None:
+                raise KeyError(task_id)
+            if require_active and task["status"] in {"CANCELLED", "COMPLETED"}:
+                return None
             existing = self.get_handoff(handoff_id)
             if existing:
                 requested = dict(
@@ -210,6 +216,8 @@ class Store:
                 if any(existing[key] != value for key, value in requested.items()):
                     raise ConflictError("Handoff ID reused with different content")
                 return existing
+            if require_active and expected_version is None:
+                expected_version = task["version"]
             self._check(task_id, expected_version)
             self.connection.execute(
                 "INSERT INTO handoffs(id,task_id,sender,recipient,question,"
@@ -254,7 +262,9 @@ class Store:
             self.connection.execute("SELECT * FROM handoffs WHERE id=?", (handoff_id,)).fetchone()
         )
 
-    def _handoff_update(self, handoff_id, sender, status, result=None, expected_version=None):
+    def _handoff_update(
+        self, handoff_id, sender, status, result=None, expected_version=None, execution_role=None
+    ):
         with self.transaction():
             handoff = self.get_handoff(handoff_id)
             if handoff is None:
@@ -272,6 +282,17 @@ class Store:
                 ("accepted", "completed"),
             }:
                 raise InvalidTransitionError("Handoff must be accepted before completion")
+            task = self.get_task(handoff["task_id"])
+            if execution_role is not None and status == "completed":
+                if task["status"] in {"CANCELLED", "COMPLETED"}:
+                    result = {
+                        "status": "blocked",
+                        "reason": "task_terminal",
+                        "task_status": task["status"],
+                        "role": execution_role,
+                    }
+                elif result.get("status") == "pending_execution":
+                    return None
             self.connection.execute(
                 "UPDATE handoffs SET status=?,result=?,version=version+1 WHERE id=?",
                 (status, encode(result) if result is not None else None, handoff_id),
@@ -279,7 +300,6 @@ class Store:
             self.connection.execute(
                 "UPDATE assignments SET status=? WHERE id=?", (status, handoff_id)
             )
-            task = self.get_task(handoff["task_id"])
             self._event(
                 task["id"],
                 f"handoff.{status}",
@@ -299,10 +319,12 @@ class Store:
             handoff_id, sender, "accepted", expected_version=expected_version
         )
 
-    def complete_handoff(self, handoff_id, sender, result):
+    def complete_handoff(self, handoff_id, sender, result, execution_role=None):
         if not isinstance(result, dict):
             raise ValueError("Handoff result must be an object")
-        return self._handoff_update(handoff_id, sender, "completed", result=result)
+        return self._handoff_update(
+            handoff_id, sender, "completed", result=result, execution_role=execution_role
+        )
 
     def receive_inbox(self, message_id, recipient, payload, task_id=None):
         with self.transaction():

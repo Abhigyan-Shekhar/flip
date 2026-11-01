@@ -193,6 +193,32 @@ async def test_disconnected_handoff_remains_pending():
 
 
 @pytest.mark.asyncio
+async def test_research_result_after_cancellation_is_atomically_blocked():
+    store = Store(":memory:")
+    task = store.create_task("Gateway", {}, ["Find sources"])
+    handoff = store.create_handoff(task["id"], "pm", "research", "Gateway", ["Find sources"], 0)
+
+    class CancellingProvider:
+        async def investigate(self, question, criteria):
+            current = store.get_task(task["id"])
+            store.transition_task(task["id"], "CANCELLED", current["version"])
+            return {"status": "evidence_found", "evidence": []}
+
+    research = worker("research", store, Transport(), CancellingProvider())
+    await research.receive(
+        event(
+            "pm",
+            json.dumps({"type": "handoff", "handoff_id": handoff["id"], "task_id": task["id"]}),
+        )
+    )
+    await research.process_pending()
+    assert store.get_task(task["id"])["status"] == "CANCELLED"
+    result = store.get_handoff(handoff["id"])["result"]
+    assert result["status"] == "blocked" and result["reason"] == "task_terminal"
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_trusted_sender_mapping_is_distinct_from_target_name():
     store = Store(":memory:")
     transport = Transport()

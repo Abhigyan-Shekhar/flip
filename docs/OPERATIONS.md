@@ -1,5 +1,12 @@
 # Local operation
 
+Standalone Engineering/QA execution is documented in
+[Engineering → independent QA](ENGINEERING_QA.md). It uses an explicitly isolated
+test room, registries, application database and execution ledger. It does not
+automatically route requests from the existing Discord PM worker. Real managed
+Codex acceptance remains pending; controlled Git/subprocess tests are recorded
+separately from the November 1 PM/Research Discord demonstration.
+
 The PM/Research workers now execute independent LangGraph workflows with durable
 SQLite checkpoints. See [all agent workflows](AGENT_WORKFLOWS.md), optional
 [Waggle configuration](MEMORY.md), and [additional Switch runtimes](AGENT_SWITCH.md).
