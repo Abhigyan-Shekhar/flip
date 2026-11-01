@@ -130,6 +130,8 @@ class AgentRuntime:
                     }
                     state["agent_role"] = c.role
                     result = await invoke_agent_graph(self.graph, state)
+                    if result["result"].get("status") == "pending_execution":
+                        continue
                     self.store.complete_handoff(handoff["id"], c.agent_id, graph_result(result))
             self.store.complete_inbox(item["message_id"], c.agent_id)
 

@@ -39,6 +39,13 @@ class AgentRequest(BaseModel):
 
 Executor = Callable[[AgentState], Awaitable[dict[str, Any]]]
 RESULT_STATUSES = {
+    "pending_execution",
+    "blocked_configuration",
+    "implemented",
+    "implementation_failed",
+    "qa_failed",
+    "verified_success",
+    "stale_qa",
     "completed",
     "evidence_found",
     "blocked",
