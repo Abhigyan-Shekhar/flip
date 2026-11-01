@@ -1,3 +1,111 @@
+# Approval/Release review remediation — November 1, 2026
+
+Observation timestamp: `2026-11-01T19:14:22.826831+05:30` (Asia/Kolkata, UTC+05:30).
+Application implementation under test remains `220fa91`; only verification
+reporting changes in this evidence branch. This entry supersedes the incomplete
+setup snapshot below where explicitly noted.
+
+## Findings addressed and remaining
+
+| Finding | Current evidence |
+| --- | --- |
+| P0: no valid Engineering request | RESOLVED. A real requester message created task `55d2b9c6-fcc3-5457-adac-ef3535a1aef6`, observed `AWAITING_APPROVAL`, version 1, with zero handoffs. |
+| P0: no dedicated managed Codex agent | OPEN. Console control API still returns `agents: []`. Read-only Console database inspection found only `Local Switch server` at `http://localhost:52719`, managed by Console, rather than the required Docker Core server `http://127.0.0.1:8080`. The UI shows a buddy on that separate server; this is not the dedicated acceptance agent. |
+| P1: publication targets main flip repository | DESTINATION RESOLVED. Created private disposable repository [parthgenx/switchcrew-acceptance-20261101](https://github.com/parthgenx/switchcrew-acceptance-20261101). All isolated PM/Release config and the new workflow bind that repository. The narrowly scoped Release token is still unconfigured; the broad local CLI login was not copied into Release. |
+| P1: acceptance gates missing | PARTIAL PROGRESS. Valid-request gating and separate human Engineering approval have real evidence below. Managed implementation, independent QA, release review/approval, actual draft PR/receipt and full recovery are still NOT RUN. |
+
+## Disposable repository and fixture
+
+The repository is private. It was seeded only with an operator baseline on
+`master`: `5b84e5489dd46f136dd9cb818563a8795af08e93`.
+The baseline contains a minimal README and deliberately broken `answer.txt`.
+It is not an Engineering implementation and is not a QA-passed SHA. The earlier
+local fixture copied from flip is retained separately for audit, and is no
+longer the configured source. No main-project code was published to the test
+repository. GitHub PR enumeration returned an empty list.
+
+Before changing destination, the isolated application DB had zero approval
+workflows. Only the isolated PM was stopped and restarted to reload its
+in-memory destination. Its fresh connection at `2026-11-01T13:27:22.700317Z`
+(`18:57:22.700317 IST`) used generation `8589934801`; its role was assumed at
+`13:27:22.774257Z`. The established deployment was not reconfigured or restarted.
+The subsequent human request durably binds only the disposable destination.
+
+## Live pre-approval and authorization evidence
+
+Original isolated thread:
+[approval-release-success](https://discord.com/channels/1565566745622872115/1566438888992542903).
+
+| Event | UTC / IST | Evidence |
+| --- | --- | --- |
+| Valid Engineering request by requester `806859717728927744` | 13:33:34.452 / 19:03:34.452 | [request](https://discord.com/channels/1565566745622872115/1566438888992542903/1566445097774743794) |
+| Requester attempted to approve | 13:37:07.600 / 19:07:07.600 | [unauthorized attempt](https://discord.com/channels/1565566745622872115/1566438888992542903/1566445991782256651) |
+| Separate authorized human `703216309684666389` approved Engineering | 13:39:33.312 / 19:09:33.312 | [human approval](https://discord.com/channels/1565566745622872115/1566438888992542903/1566446602942423232) |
+
+Before the authorized approval, direct reads showed task
+`55d2b9c6-fcc3-5457-adac-ef3535a1aef6` in `AWAITING_APPROVAL`, version 1,
+workflow phase `awaiting_engineering_approval`, zero handoffs and no recorded
+decisions. The requester is absent from the configured approver allowlist.
+The unauthorized same-thread attempt left those values unchanged. This is a
+real incidental authorization denial on the success task; the separately
+requested denial-case tasks are still NOT RUN.
+
+The authorized decision was persisted at
+`2026-11-01T13:39:33.857153+00:00`, actor `703216309684666389`,
+`approved: true`, `task_version: 1`. Task state became `IN_PROGRESS`, version 4.
+Exactly one pending Engineering handoff exists:
+`f5230d6d-2c51-577a-8d29-9f6d25f014da`, from PM
+`ba0793d3-2fcc-46ab-86dc-96ced12cb8b9` to Engineering
+`27e7bb11-8f18-4cae-85c4-118c816d80a7`. No agent-authored approval or manual
+state/approval update was used.
+
+## Prepared assignment and remaining execution gate
+
+With Engineering still stopped, the documented operator preparation call used
+the actual approved handoff and `session=None` with the normal authorization
+check. Assignment ID: `edeb8980baf8440caedffabba4c1d4f5`.
+Prepared checkout:
+
+```text
+/Users/parthbhat/Coding/New Hackatho /flip/.switch/approval-acceptance-220fa91/engineering/edeb8980baf8440caedffabba4c1d4f5
+```
+
+Base SHA is `5b84e5489dd46f136dd9cb818563a8795af08e93`. The ledger contains
+one row at phase `reserved`; there is no managed session ID, creation claim,
+delivery claim or result. Preparation returned `blocked_configuration` /
+`managed_codex_session_not_configured`, as expected for this operator-only
+preparation call. The runtime was not started with placeholders, and its
+handoff was not completed as blocked by this call.
+
+The isolated PM exited 1 at `2026-11-01T13:39:33.910346Z`, logging
+`worker_failed` / `RuntimeError`, when its pending targeted handoff encountered
+the still-offline Engineering recipient. The approval and handoff remain
+durable. This does not show successful Engineering transport acceptance.
+Resume the isolated workers under an on-failure supervisor once the managed
+agent/location is configured; do not edit the handoff or restart production.
+
+Connect Console via Add server → **Connect to an existing server** using its
+single Core-address field `http://127.0.0.1:8080` (not the separate dashboard
+port 3001 and not “Run a server”). Do not alter the other managed local server.
+The dedicated Codex agent must use the prepared path above, join the isolated
+room and allow the Engineering sender. Its exact Console ID, Switch registration
+ID, provider login and location still need verification before delivery.
+
+Before starting Release, supply a repository-scoped credential restricted to
+the disposable repository with Contents and Pull requests write permissions.
+Store it only in the protected Release config. Actual implementation commit,
+tested SHA, QA commands/exits, release approval/version, PR URL/head SHA and
+thread completion receipt are absent and remain **NOT RUN**. No release branch,
+PR or merge has been performed by this acceptance workflow. No exactly-once
+implementation or publication claim is made.
+
+Raw structured evidence is private under
+`.switch/approval-acceptance-220fa91/`: `review-remediation-evidence.json`,
+`review-discord-decisions.json`, `checkout-preparation.json`, and updated
+manifest/configuration files. Secrets are excluded from Git.
+
+---
+
 # Approval and Release live acceptance preparation — November 1, 2026
 
 Latest observation: `2026-11-01T18:44:16.577677+05:30` (Asia/Kolkata, UTC+05:30).
