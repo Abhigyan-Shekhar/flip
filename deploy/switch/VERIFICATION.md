@@ -1,5 +1,23 @@
 # Local deployment verification — October 29, 2026
 
+## Current checkout recheck — October 29, 2026
+
+After fetching commit `729699a`, this checkout's current host did **not** have
+the deployment described below: Docker CLI resolves only to a broken symlink
+targeting an absent Docker.app, Switch Console is absent, and `.env` and
+`.switch/` are absent. HTTP probes to Switch `8080`, gateway `3001` and SwitchCrew
+`8000` could not connect. Podman has a stopped `company-brain` VM; it was left
+unchanged. A root `.env` was subsequently created with mode 0600 and a random
+SwitchCrew API token; external credentials, rooms, bindings and allowlists remain
+empty. No container runtime or external credentials were installed.
+
+Run `python3 deploy/switch/preflight.py` to inspect the current host without
+printing credentials. Treat the following earlier record as historical evidence,
+not proof that services are available in a different checkout or execution host.
+Discord workflow and live recovery acceptance remain unverified here.
+
+## Earlier recorded deployment
+
 Executed on an Apple Silicon macOS host with Docker Engine 29.8.1 and
 Compose v5.5.1. This is a local deployment; no remote hosting was provisioned.
 

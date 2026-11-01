@@ -2,6 +2,22 @@
 
 ## Repeatable local deployment
 
+Check this checkout's host before relying on a previous deployment record:
+
+```sh
+python3 deploy/switch/preflight.py
+```
+
+This read-only check reports Docker/Compose availability, local HTTP health and
+missing or structurally invalid required configuration fields. It never prints
+configuration values. URLs can be overridden with `--switch-url`,
+`--gateway-url`, and `--crew-url`; probes reject URL credentials and redirects.
+Exit 0 means these prerequisites passed; it does not authenticate credentials or
+verify Discord permissions, identity ownership, addressing, workflow or recovery.
+Optional product Waggle is not required. Environment variables override the
+root `.env`; the lightweight env reader supports literal key/value lines and
+outer quotes, without shell evaluation or variable interpolation.
+
 With Docker Desktop running, from the SwitchCrew repository:
 
 ```sh

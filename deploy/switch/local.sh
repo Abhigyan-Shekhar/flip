@@ -6,6 +6,12 @@ SERVER="$ROOT/.switch/server"
 REVISION=557b62b23002548baa678339a97c8140c1ccaa8b
 ACTION="${1:-up}"
 case "$ACTION" in up|ps|stop|logs) ;; *) echo "Usage: $0 [up|ps|stop|logs]" >&2; exit 2 ;; esac
+command -v docker >/dev/null 2>&1 || {
+  echo "Docker CLI is unavailable. Install/start Docker Desktop before deploying." >&2; exit 1;
+}
+docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 || {
+  echo "Docker Engine or Compose is unavailable. Start Docker Desktop before deploying." >&2; exit 1;
+}
 if [[ "$ACTION" == up ]]; then
   umask 077
   mkdir -p "$ROOT/.switch"
