@@ -535,3 +535,188 @@ PM/Research worker configuration, room addressing and end-to-end handoff/recover
 acceptance remain pending. Infrastructure health does not establish those gates.
 Generated secrets, downloaded app files and upstream source live outside tracked
 files. Keep `.env` and `.switch/` private and preserve the Docker data volume.
+
+
+---
+
+# Master deployment acceptance — November 1, 2026
+
+This run used the verification Mac and the clean deployment checkout at
+`/Users/parthbhat/Coding/New Hackatho /flip`. Execution window was approximately
+13:39–13:48 IST (08:09–08:18 UTC). Timestamps below are UTC, with IST obtained by
+adding 05:30. Private `.env`, `.switch/` and existing Docker volumes were
+preserved. No application source was changed for this acceptance run.
+
+## Versions and deployment
+
+- Application/master commit: `50e24b272be99567b5411b435ebf744c6519ebb4`.
+- Switch source: `557b62b23002548baa678339a97c8140c1ccaa8b` (unchanged pin).
+- Runtime versions: Docker Engine `29.8.1`, Compose `5.5.1`, Console `0.40.1`.
+- Console control GET `/agents`: HTTP 200, empty agent list. No managed Codex
+  session ID or live Engineering tested SHA exists for this run.
+- Application image: `sha256:5ec9b4f148b66df578ad9ff88f5993f8cddcc9262908d32dd4f56bf679fcca87`.
+- PM image: `sha256:43fb4b0319310db6c9ffa4a3acfd99f0e0273aaa1fe053dcf7682e593b16f30d`.
+- Research image: `sha256:e685222b3c97764e956d28e68a4d6cbd4e048bd95c2b083c88291e80f213d131`.
+
+Executed `git fetch origin`, `git switch master`, `git pull --ff-only origin
+master`, `uv sync --frozen`, then `uv run pytest -q`: **171 passed, 3 skipped**.
+Those skips remained open until the separately opted-in live run below, which
+had **2 passed, 1 failed**. This report does not treat the initial skips as passes.
+`ruff check .`, `ruff format --check src tests scripts` and `git diff --check`
+passed.
+
+Rebuilt API, PM and Research using all three Compose files, including
+`deploy/switch/worker-recovery.yaml`. Docker inspection confirms both workers
+use `on-failure`; API retains `unless-stopped`. Initial post-deploy connections
+and role assumptions were observed at `08:10:14.959` (Research) and
+`08:10:15.065` (PM), generations `8589934691` and `8589934692`.
+Preflight passed Docker/Compose, private configuration, health and separate
+worker authentication. Both workers and the healthy API remain running after
+the final restart.
+
+## Normal Discord workflow — PASS
+
+Original anchored thread:
+[SwitchCrew anchored verification](https://discord.com/channels/1565566745622872115/1566349550032134197).
+It is attached to an already-bridged human message. This run reused the verified
+owner bindings and the official configured Discord Gateway Markdown source.
+
+- Task: `45b1fc57-a15d-55c3-8392-a217feaab298`, final `COMPLETED`.
+- Research handoff: `4653f91b-95bf-52db-a52d-26323fca84d8`, `completed`, version 2.
+- Switch source: `sw_a6c0f9184b3d7f6551bb27153f872501`; original Switch thread:
+  `sw_bcc6bd25ce4e6aff1355d594b96573da`.
+
+| Event | UTC | Discord evidence |
+| --- | --- | --- |
+| Human request | 08:11:57.868 | [request](https://discord.com/channels/1565566745622872115/1566349550032134197/1566364162035159071) |
+| PM reports delegation | 08:11:59.898 | [delegation](https://discord.com/channels/1565566745622872115/1566349550032134197/1566364170549596191) |
+| Research explicitly acknowledges | 08:12:01.210 | [acknowledgment](https://discord.com/channels/1565566745622872115/1566349550032134197/1566364176052523090) |
+| Research returns evidence | 08:12:02.690 | [evidence](https://discord.com/channels/1565566745622872115/1566349550032134197/1566364182260092949) |
+| PM reports result | 08:12:05.575 | [result](https://discord.com/channels/1565566745622872115/1566349550032134197/1566364194360659968) |
+
+Restarted PM and Research with the required override. Task/handoff/inbox/outbox
+counts stayed **8/6/26/59**, and the completed task/handoff result persisted.
+No duplicate completed Research execution was observed.
+
+## Live heartbeat and supervisor checks
+
+Disposable probe registration: `04494ed7-386a-4d7c-849d-4ff5936b46f9`, name
+`recovery-probe-acceptance`. No production PM/Research credentials or connection
+IDs were used by these probes. The live test run began at
+`2026-11-01T08:10:39.055947+00:00` and lasted about 40.8 seconds.
+
+| Gate | Result | Actual observation |
+| --- | --- | --- |
+| Heartbeat expiry reconnect | PASS | Real server TTL expiry reopened the stream under the same random connection ID with a newer generation. |
+| `no_stream` reattachment | PASS | Closing the stream yielded HTTP 409 `no_stream`; fenced reattachment advanced generation and accepted a heartbeat. |
+| `taken_over` strict losing-adapter behavior | FAIL | Old-generation beat returned HTTP 409 `taken_over` and the loser ultimately raised `SwitchOwnershipLost`, but the losing adapter made **two** stream-open requests; the test required one. Connection: `e1f3d33f-833e-43c9-b486-e22eeee2b6ab`. The second open was fenced; the no-reopen assertion remains unresolved. |
+| Supervised worker loser stays stopped | PASS | Separate actual worker container exited 0 after ownership loss, restart count remained 0, and the winning client continued accepted heartbeats for 12 seconds. |
+
+The supervised test used an isolated internal room
+`dcf82b4c-05af-412f-9dfe-e06405379b2b`, a separate application database/volume
+`flip-recovery-probe-data`, and container `flip-recovery-supervised` with
+`--restart on-failure`. It did no task work. Its stable test connection was
+`81fde3c1-43d2-5f02-a96d-e796e8b38880`.
+
+The losing worker connected at `08:11:47.812422`, generation `8589934700`, and
+assumed its role. At `08:12:04.570946` it logged `worker_ownership_lost` and
+exited 0. The winner held generation `8589934701` and accepted heartbeats through
+`08:12:16.859580`. Later inspection still showed `exited`, exit 0, restart count
+0. The isolated container is retained stopped, and its volume is preserved.
+The disposable registration was revoked with HTTP 200 after testing. Pytest's
+long failure traceback included its disposable key; revocation invalidated that
+key. No traceback or credential is committed in this report. Detailed test
+artifacts stay private under `.switch/`.
+
+The failing strict adapter probe must be resolved before claiming all heartbeat
+acceptance passed. Its source and test were not changed to weaken the assertion.
+The supervised pass does not erase this independent failed gate.
+
+## Request submitted during forced history gap — PASS
+
+Used the runbook's **application-cursor backup procedure**, not the earlier
+Switch-ticket-row procedure. Both workers were stopped at approximately
+`08:12:34`; API and Switch remained running. `gap_cursor.py arm` fsynced private
+backup `/app/data/gap-master-20261101T081234Z.json` in the existing data volume,
+then changed only PM's application cursor from `9007194959773786` to
+`9223372036854775807`. No Switch tickets, history or task records were deleted
+or renamed.
+
+The human posted exactly one marked request at `08:13:41.063`, while PM was
+stopped. Authenticated Switch history independently confirmed its presence
+before PM started. Research was started first and logged a fresh connection and
+role assumption at `08:15:50.340945` / `08:15:50.391333`.
+
+PM startup and replay evidence:
+
+| UTC | Observation |
+| --- | --- |
+| 08:16:06.475650 | `worker_connected`, generation `8589934705`, cursor `9223372036854775807` |
+| 08:16:06.529993 | `worker_role_assumed`, PM |
+| 08:16:06.543254 | `history_gap_received` |
+| 08:16:06.544917 | `history_gap_replayed`, durable inbox ingestion, resumed cursor `9007194959773790` |
+
+Task: `04a70def-5e99-5b2d-9c4f-19d0b155e447`, final `COMPLETED`.
+Research handoff: `d49c5df2-fafe-50ea-96c3-df2d9c1feaeb`, `completed`, version 2.
+Source message: `sw_64c7bf3f928b20708793d0ff86cde4f9`, same original Switch thread
+`sw_bcc6bd25ce4e6aff1355d594b96573da` and Discord thread as the normal test.
+
+| Event | UTC | Discord evidence |
+| --- | --- | --- |
+| Request while PM stopped | 08:13:41.063 | [request](https://discord.com/channels/1565566745622872115/1566349550032134197/1566364594866229340) |
+| PM delegation | 08:16:08.675 | [delegation](https://discord.com/channels/1565566745622872115/1566349550032134197/1566365213995835523) |
+| Research acknowledgment | 08:16:09.349 | [acknowledgment](https://discord.com/channels/1565566745622872115/1566349550032134197/1566365216823058466) |
+| Research evidence | 08:16:10.846 | [evidence](https://discord.com/channels/1565566745622872115/1566349550032134197/1566365223101800551) |
+| PM result | 08:16:11.560 | [result](https://discord.com/channels/1565566745622872115/1566349550032134197/1566365226096402462) |
+
+Exactly one new logical task, one Research handoff and one `handoff.completed`
+event were recorded. All six application deliveries (handoff, delegation,
+acceptance, acceptance report, completion and final report) were `sent`; no task
+delivery remained pending. Counts advanced only once from **8/6/26/59** to
+**9/7/30/68** (tasks/handoffs/inbox/outbox).
+
+After another PM/Research restart, tasks, handoffs and assignments compared
+identical to the pre-restart snapshot, including prior completed research;
+counts remained **9/7/30/68**. Cursors advanced normally to PM
+`9007194959773801` and Research `9007194959773802`. No repeated completed
+Research or additional result delivery was observed. The cursor backup is
+retained; it was **not restored after successful replay**, as the runbook
+requires. This proves an injected unavailable-ticket gap with an offline
+request, not natural retention expiry.
+
+## Real Engineering → independent QA — BLOCKED / OPEN
+
+A fresh Console control probe during this run returned HTTP 200 and
+`agents: []`. There is no registered Console-managed Codex provider to start;
+no actual managed implementation session, commit/diff or exact live QA-tested
+SHA can be supplied. The available Codex CLI alone does not establish the
+required Switch-managed session integration. No fabricated session, local CLI
+substitute or controlled fixture is presented as live evidence.
+
+| Scenario | Live status |
+| --- | --- |
+| Real Console Codex small implementation | BLOCKED: dedicated managed Codex agent/session absent |
+| Deliberately broken implementation → `qa_failed` | OPEN: no real managed implementation artifact |
+| Corrected assignment → exact-SHA `verified_success` | OPEN: no real managed implementation artifact |
+| Implementation changes after QA → `stale_qa` | OPEN for live execution; controlled tests only |
+| Console unavailable after delivery → pending/reconciled without duplicate | OPEN for live execution; no delivery occurred |
+| Cancellation during execution → blocked late result, no QA assignment | OPEN for live execution; no execution occurred |
+
+Provision a dedicated room, coordinator/Engineering/QA/Codex identities,
+provider login and isolated target checkout/application DB according to
+`docs/ENGINEERING_QA.md`, then run these six scenarios. No existing production
+identity or database was repurposed to pretend these gates passed. Automatic
+Discord PM routing remains pending as requested. Desktop Console connection,
+natural retention expiry and fresh-stack reproduction also remain separate
+open gates.
+
+## Evidence retention
+
+Private raw evidence is under `.switch/`: `live-heartbeats.xml`,
+`supervised-evidence.json`, `master-gap-run.json`, `master-task-evidence.json`,
+`master-message-evidence.json`, `master-offline-room-history.json`,
+`recovery-master-*.json` and `master-final-preflight.json`. Keys and raw traces
+are excluded from Git. Only this report is changed by the acceptance run.
+
+---
+
