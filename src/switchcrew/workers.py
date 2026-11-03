@@ -120,6 +120,7 @@ class Worker:
                 "repository": release_repository,
                 "base": release_base,
             },
+            company_brain=company_brain,
         )
         self.identity = pm_id if role == "pm" else research_id
         self.bindings = list(bindings)
@@ -202,7 +203,7 @@ class Worker:
             return
         if self.role == "pm":
             for row in self.store.connection.execute("SELECT task_id FROM plans").fetchall():
-                data = self.orchestrator.reconcile(row[0])
+                data = await self.orchestrator.reconcile_with_context(row[0])
                 if data and data["phase"] in {"completed", "blocked"}:
                     self._reply(
                         row[0],
@@ -297,7 +298,7 @@ class Worker:
                 task_id = incident["task_id"]
                 if self.orchestrator.get(task_id) is None:
                     self.orchestrator.start_incident(task_id, incident["incident"])
-                self.orchestrator.reconcile(task_id)
+                await self.orchestrator.reconcile_with_context(task_id)
                 task = self.store.get_task(task_id)
                 plan = self.orchestrator.get(task_id)
                 reason = plan["spec"].get("blocked_reason", "") if plan else ""
@@ -392,7 +393,7 @@ class Worker:
         if request.get("kind") == "orchestrate":
             try:
                 self.orchestrator.start(task_id)
-                self.orchestrator.reconcile(task_id)
+                await self.orchestrator.reconcile_with_context(task_id)
             except ValueError:
                 self._reply(
                     task_id, "plan_invalid", "Orchestration requires 1–12 bounded criteria."
@@ -423,35 +424,49 @@ class Worker:
                 else None
             )
             if self.company_brain is not None and existing_approval is None:
-                try:
-                    query = question + "\nAcceptance criteria:\n" + "\n".join(criteria)
-                    files = sorted(
-                        set(re.findall(r"\b(?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]{1,12}\b", query))
-                    )[:50]
-                    brain = (
-                        await self.company_brain.check_change(files)
-                        if files
-                        else await self.company_brain.get_context(query)
-                    )
-                    brain_metadata = {"context": brain.context, "warning": brain.warning}
-                except Exception as exc:
-                    brain_metadata = {
-                        "context": None,
-                        "warning": f"Company Brain unavailable ({type(exc).__name__})",
-                    }
-            self.approvals.request(
-                task_id,
-                self.pm_id,
-                self.engineering_id,
-                self.qa_id,
-                self.release_id,
-                job_key,
-                self.release_repository,
-                self.release_base,
-                reviewer=self.reviewer_id,
-                max_corrections=self.max_corrections,
-                company_brain=brain_metadata,
-            )
+                from .company_brain import capture_engineering_context
+
+                query = question + "\nAcceptance criteria:\n" + "\n".join(criteria)
+                brain_metadata = await capture_engineering_context(self.company_brain, query)
+            latest = self.store.get_task(task_id)
+            existing_approval = self.approvals.get(task_id)
+            if not latest or latest["status"] in {
+                "CANCELLED",
+                "COMPLETED",
+                "FAILED",
+                "BLOCKED",
+            }:
+                return
+            if latest["status"] != "DRAFT" and existing_approval is None:
+                return
+            if existing_approval is not None:
+                if existing_approval.get("phase") != "awaiting_engineering_approval":
+                    return
+                brain_metadata = existing_approval.get("spec", {}).get("company_brain")
+            try:
+                self.approvals.request(
+                    task_id,
+                    self.pm_id,
+                    self.engineering_id,
+                    self.qa_id,
+                    self.release_id,
+                    job_key,
+                    self.release_repository,
+                    self.release_base,
+                    reviewer=self.reviewer_id,
+                    max_corrections=self.max_corrections,
+                    company_brain=brain_metadata,
+                )
+            except ConflictError:
+                latest = self.store.get_task(task_id)
+                if latest and latest["status"] in {
+                    "CANCELLED",
+                    "COMPLETED",
+                    "FAILED",
+                    "BLOCKED",
+                }:
+                    return
+                raise
             self._reply(
                 task_id,
                 "engineering_approval",

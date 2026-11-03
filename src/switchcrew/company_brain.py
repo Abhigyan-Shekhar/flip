@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 
 MAX_EVIDENCE_CHARS = 8_000
 _SECRET = re.compile(
-    r"(?i)(?:bearer\s+\S+|(?:api[_ -]?key|password|secret|token)\s*[:=]\s*\S+"
+    r"(?i)(?:(?:bearer|basic)\s+\S+|(?:api[_ -]?key|password|secret|token|credential"
+    r"|authorization)[\"']?\s*[:=]\s*[\"']?\S+"
     r"|(?:sk-|sk_live_|sk_test_|ghp_|github_pat_)[A-Za-z0-9_.-]{12,}"
     r"|-----BEGIN .*PRIVATE KEY-----)"
 )
@@ -163,6 +164,16 @@ class CompanyBrain:
         return bool(_SECRET.search(rendered) or (self._token and self._token in rendered))
 
     @staticmethod
+    def _warnings(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value] if value else []
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            return value
+        raise ValueError("Invalid Company Brain warnings")
+
+    @staticmethod
     def _bound_envelope(value: Any, limit: int) -> tuple[Any, bool]:
         """Bound result arrays recursively while preserving the response's other fields."""
         truncated = False
@@ -215,7 +226,7 @@ class CompanyBrain:
                     warning="Company Brain repository status did not match the configured checkout."
                 )
             state = str(status.get("status", status.get("state", ""))).lower()
-            warnings = status.get("warnings", [])
+            warnings = self._warnings(status.get("warnings"))
             blocked_warnings = {
                 "sync_in_progress",
                 "repository_not_indexed",
@@ -223,7 +234,13 @@ class CompanyBrain:
             }.intersection(warnings)
             if state not in {"ok", "incomplete"} or blocked_warnings:
                 issue = (
-                    ", ".join(sorted(blocked_warnings)) if blocked_warnings else state or "unknown"
+                    ", ".join(sorted(blocked_warnings))
+                    if blocked_warnings
+                    else (
+                        state
+                        if state in {"unavailable", "unindexed", "syncing", "stale", "error"}
+                        else "unknown"
+                    )
                 )
                 return None, BrainResult(
                     warning=(f"Company Brain index is {issue}; local source remains authoritative.")
@@ -296,16 +313,13 @@ class CompanyBrain:
                     )
                 )
             evidence_status = str(data.get("status", "")).lower()
-            response_warnings = data.get("warnings", [])
+            response_warnings = self._warnings(data.get("warnings"))
             if evidence_status in {"unavailable", "unindexed", "syncing", "stale", "error"} or any(
                 item in {"sync_in_progress", "repository_not_indexed", "stale_index"}
                 for item in response_warnings
             ):
                 return BrainResult(
-                    warning=(
-                        "Company Brain evidence unavailable "
-                        f"({evidence_status or 'with warnings'})."
-                    )
+                    warning=("Company Brain evidence unavailable (index not ready).")
                 )
             if evidence_status not in {"ok", "incomplete"}:
                 return BrainResult(
@@ -332,12 +346,22 @@ class CompanyBrain:
                         "evidence omitted."
                     )
                 )
-            warning = data.get("warning") or data.get("warnings")
+            warnings = self._warnings(data.get("warning")) + response_warnings
+            warning = "; ".join(warnings[:10])
+            if self._sensitive(warnings):
+                return BrainResult(
+                    warning="Company Brain evidence omitted: sensitive content detected."
+                )
+            warning = warning[:500] or None
+            if evidence_status == "incomplete":
+                warning = (
+                    warning or "Company Brain retrieval is incomplete; coverage may be limited."
+                )
             context = {
                 "repo_root": self.repo_root,
                 "revision": status.get("graph_revision") if status else None,
                 "evidence": evidence,
-                "warnings": data.get("warnings", []),
+                "warnings": response_warnings,
             }
             if status and status.get("status") == "incomplete":
                 warning = warning or "Company Brain index is incomplete; coverage may be limited."
@@ -353,11 +377,19 @@ class CompanyBrain:
                 context = {
                     "repo_root": self.repo_root,
                     "revision": context["revision"],
-                    "evidence_excerpt": json.dumps(evidence, ensure_ascii=False, default=str)[
-                        :MAX_EVIDENCE_CHARS
-                    ],
+                    "evidence_excerpt": "",
                     "truncated": True,
                 }
+                excerpt = json.dumps(evidence, ensure_ascii=False, default=str)
+                low, high = 0, min(len(excerpt), MAX_EVIDENCE_CHARS)
+                while low < high:
+                    middle = (low + high + 1) // 2
+                    context["evidence_excerpt"] = excerpt[:middle]
+                    if len(json.dumps(context, ensure_ascii=False)) <= MAX_EVIDENCE_CHARS:
+                        low = middle
+                    else:
+                        high = middle - 1
+                context["evidence_excerpt"] = excerpt[:low]
                 warning = (
                     warning or "Company Brain evidence was truncated to the configured size limit."
                 )
@@ -421,3 +453,24 @@ class _UnavailableCompanyBrain(NullCompanyBrain):
 
     async def check_change(self, files: list[str], symbols: list[str] | None = None) -> BrainResult:
         return BrainResult(warning=self.warning)
+
+
+async def capture_engineering_context(brain: Brain, query: str) -> dict[str, Any]:
+    """Capture bounded graph context for an Engineering prompt, failing soft.
+
+    Only explicit file-like references trigger change analysis. Other requests
+    use general graph context. Exceptions are reduced to type-only warnings so
+    backend details and credentials cannot enter durable task records.
+    """
+    files = sorted(set(re.findall(r"\b(?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]{1,12}\b", query)))[:50]
+    try:
+        if files:
+            result = await brain.check_change(files)
+        else:
+            result = await brain.get_context(query, max_results=getattr(brain, "max_results", 5))
+        return {"context": result.context, "warning": result.warning}
+    except Exception as exc:
+        return {
+            "context": None,
+            "warning": f"Company Brain unavailable ({type(exc).__name__})",
+        }

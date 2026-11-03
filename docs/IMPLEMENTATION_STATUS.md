@@ -116,3 +116,27 @@ server exercises the real MCP SDK stdio path; this is transport validation, not
 live graph acceptance. Adapters reject missing/mismatched retrieval revisions,
 stale warnings, dirty checkouts and sensitive content. PM replay reuses the
 persisted context snapshot.
+
+## Company Brain orchestration follow-up — November 3, 2026
+
+Orchestrated and incident Engineering children now capture their own context
+snapshot when dependencies are ready. PM polling, incident/orchestration intake,
+and API creation/plan reconciliation use the async retrieval path. Graph I/O runs
+outside SQLite transactions; the final transaction rechecks cancellation and
+persists the child approval request and context together. Same-process concurrent
+pollers share the snapshot, and SQLite reopen/replay reuses it. Direct request
+cancellation and crash-before-prompt recovery are covered without bypassing human
+approval. API responses also redact the configured Company Brain credential.
+
+A new read-only `switchcrew.company_brain_acceptance` CLI checks identity,
+revision and source anchors and emits an excerpt-free report. The adapter now
+normalizes malformed/string warnings, omits sensitive warnings and credential
+fields, and enforces the serialized context size cap including wrapper overhead.
+
+Validation: full suite **348 passed, 3 live tests skipped**, 42.26 seconds.
+A subsequent API credential-redaction regression and related final tests passed
+(**37 passed**). Ruff lint, format check (64 Python files), and diff check passed.
+The connected Company Brain registry still lists only other repositories. Live
+graph retrieval, Discord/Console execution and release acceptance remain
+unverified; no registry/index/deployment was changed. See COMPANY_BRAIN.md for
+configuration and the operator probe.

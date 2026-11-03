@@ -298,3 +298,91 @@ async def test_factory_invalid_transport_is_fail_soft():
 def test_requires_absolute_root():
     with pytest.raises(ValueError, match="absolute"):
         CompanyBrain(repo_root="relative", transport=lambda *_: None)
+
+
+@pytest.mark.parametrize("phase", ["repository_status", "get_context"])
+async def test_string_stale_warning_cannot_bypass_validation(tmp_path, phase):
+    root, revision = make_repo(tmp_path / "repo")
+
+    async def transport(name, args):
+        if name == "list_repositories":
+            return [{"repo_root": str(root)}]
+        return {
+            "repo_root": str(root),
+            "local_revision": revision,
+            "graph_revision": revision,
+            "status": "ok",
+            "warnings": "stale_index" if name == phase else [],
+        }
+
+    result = await CompanyBrain(repo_root=str(root), transport=transport).get_context("topic")
+    assert not result.context
+    assert result.warning
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"warning": "Bearer private-value"},
+        {"evidence": [{"password": "private-value"}]},
+        {"warnings": {"status": "invalid"}},
+    ],
+)
+async def test_sensitive_or_malformed_warning_payload_is_omitted(tmp_path, payload):
+    root, revision = make_repo(tmp_path / "repo")
+
+    async def transport(name, args):
+        if name == "list_repositories":
+            return [{"repo_root": str(root)}]
+        result = {
+            "repo_root": str(root),
+            "local_revision": revision,
+            "graph_revision": revision,
+            "status": "ok",
+        }
+        if name == "get_context":
+            result.update(payload)
+        return result
+
+    result = await CompanyBrain(repo_root=str(root), transport=transport).get_context("topic")
+    assert not result.context
+    assert "private-value" not in result.warning
+
+
+async def test_large_escaped_evidence_and_warning_obey_output_limits(tmp_path):
+    import json
+
+    from switchcrew.company_brain import MAX_EVIDENCE_CHARS
+
+    root, revision = make_repo(tmp_path / "repo")
+
+    async def transport(name, args):
+        if name == "list_repositories":
+            return [{"repo_root": str(root)}]
+        result = {
+            "repo_root": str(root),
+            "local_revision": revision,
+            "graph_revision": revision,
+            "status": "ok",
+        }
+        if name == "get_context":
+            result.update(evidence=[{"excerpt": '\\"\n' * 10000}], warning="coverage " * 10000)
+        return result
+
+    result = await CompanyBrain(repo_root=str(root), transport=transport).get_context("topic")
+    assert result.context["truncated"]
+    assert len(json.dumps(result.context, ensure_ascii=False)) <= MAX_EVIDENCE_CHARS
+    assert len(result.warning) <= 500
+
+
+async def test_unknown_status_never_echoes_server_text(tmp_path):
+    root, revision = make_repo(tmp_path / "repo")
+
+    async def transport(name, args):
+        if name == "list_repositories":
+            return [{"repo_root": str(root)}]
+        return {"repo_root": str(root), "status": "Bearer private-value"}
+
+    result = await CompanyBrain(repo_root=str(root), transport=transport).get_context("topic")
+    assert not result.context
+    assert "private-value" not in result.warning

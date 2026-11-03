@@ -55,3 +55,18 @@ or live Company Brain/Switch acceptance is claimed. See COMPANY_BRAIN.md.
 Company Brain local validation: 326 passed, 3 live tests skipped; Ruff check,
 format check (61 Python files), and diff check passed. Controlled MCP stdio
 transport coverage passed. No live graph acceptance or external runtime changes.
+
+## November 3, 2026 IST — orchestration context and acceptance probe
+
+The user requested continued work. Luna workers extended Company Brain context
+into orchestrated/incident Engineering children and the API, added a read-only
+operator acceptance probe, and reviewed the changes. Parent review tightened
+warning handling, credential detection and the serialized context size limit.
+This remains pre-event implementation. The live registry still lacks this
+checkout; no registry mutation, index refresh, deployment or live graph acceptance
+was performed.
+
+Validation for this follow-up: 348 passed, 3 live tests skipped in 42.26 seconds;
+37 final targeted tests passed after the API credential-redaction regression was
+added. Ruff lint, format check (64 Python files), and diff check passed. Controlled
+transport fixtures are not live service acceptance evidence.

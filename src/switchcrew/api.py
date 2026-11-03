@@ -106,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.pm_api_key,
             settings.research_api_key,
             settings.waggle_token,
+            settings.company_brain_token,
         )
         if field is not None
     ]
@@ -137,6 +138,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.database_path.parent.mkdir(parents=True, exist_ok=True)
         app.state.store = Store(settings.database_path)
         app.state.approvals = ApprovalWorkflow(app.state.store, human_tokens)
+        app.state.company_brain = None
+        if settings.company_brain_enabled:
+            from switchcrew.company_brain import company_brain_from_settings
+
+            app.state.company_brain = company_brain_from_settings(settings)
         targets = {
             "research": settings.research_agent_id,
             "engineering": settings.engineering_agent_id,
@@ -157,6 +163,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "repository": settings.release_repository,
                 "base": settings.release_base,
             },
+            company_brain=app.state.company_brain,
         )
         yield
         close = getattr(app.state.store, "close", None)
@@ -251,7 +258,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return app.openapi()
 
     @app.post("/tasks", dependencies=authenticated, status_code=201, response_model=TaskResponse)
-    def create_task(body: TaskCreate, request: Request):
+    async def create_task(body: TaskCreate, request: Request):
         if body.kind == "orchestrate":
             if not settings.pm_agent_id:
                 raise HTTPException(409, "PM orchestration is not configured")
@@ -277,21 +284,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if body.kind == "orchestrate":
             request.app.state.orchestrator.start(task["id"])
-            request.app.state.orchestrator.reconcile(task["id"])
+            await request.app.state.orchestrator.reconcile_with_context(task["id"])
             task = request.app.state.store.get_task(task["id"])
         if body.kind == "engineering":
-            request.app.state.approvals.request(
-                task["id"],
-                settings.pm_agent_id,
-                settings.engineering_agent_id,
-                settings.qa_agent_id,
-                settings.release_agent_id,
-                body.job_key,
-                settings.release_repository,
-                settings.release_base,
-                reviewer=settings.reviewer_agent_id,
-                max_corrections=settings.max_corrections,
-            )
+            brain_metadata = None
+            brain_client = request.app.state.company_brain
+            if brain_client is not None:
+                from switchcrew.company_brain import capture_engineering_context
+
+                query = (
+                    body.objective
+                    + "\nAcceptance criteria:\n"
+                    + "\n".join(body.acceptance_criteria)
+                )
+                brain_metadata = await capture_engineering_context(brain_client, query)
+            latest = request.app.state.store.get_task(task["id"])
+            if latest and latest["status"] == "DRAFT":
+                try:
+                    request.app.state.approvals.request(
+                        task["id"],
+                        settings.pm_agent_id,
+                        settings.engineering_agent_id,
+                        settings.qa_agent_id,
+                        settings.release_agent_id,
+                        body.job_key,
+                        settings.release_repository,
+                        settings.release_base,
+                        reviewer=settings.reviewer_agent_id,
+                        max_corrections=settings.max_corrections,
+                        company_brain=brain_metadata,
+                    )
+                except ConflictError:
+                    latest = request.app.state.store.get_task(task["id"])
+                    if not latest or latest["status"] not in {
+                        "CANCELLED",
+                        "COMPLETED",
+                        "FAILED",
+                        "BLOCKED",
+                    }:
+                        raise
             task = request.app.state.store.get_task(task["id"])
         return sanitize(task)
 
@@ -329,8 +360,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/tasks/{task_id}/plan", dependencies=authenticated)
-    def get_plan(task_id: str, request: Request):
-        data = request.app.state.orchestrator.reconcile(task_id)
+    async def get_plan(task_id: str, request: Request):
+        data = await request.app.state.orchestrator.reconcile_with_context(task_id)
         if data is None:
             raise HTTPException(404, "Orchestration plan not found")
         return sanitize(data)

@@ -1,10 +1,13 @@
 """Bounded PM decomposition and durable dependency dispatch across independent workers."""
 
+import asyncio
 import json
 import re
+import weakref
 from uuid import NAMESPACE_URL, uuid5
 
 from .approval import ApprovalWorkflow
+from .company_brain import capture_engineering_context
 from .store import ConflictError, encode
 from .teams import TeamAssembler
 
@@ -65,9 +68,11 @@ def decompose(question, criteria):
 
 
 class Orchestrator:
-    def __init__(self, store, pm_id, targets, *, engineering_route=None):
+    def __init__(self, store, pm_id, targets, *, engineering_route=None, company_brain=None):
         self.store, self.pm_id, self.targets = store, pm_id, dict(targets)
         self.engineering_route = engineering_route or {}
+        self.company_brain = company_brain
+        self._brain_locks = weakref.WeakValueDictionary()
         self.approvals = ApprovalWorkflow(store)
         with store._lock:
             store.connection.execute(
@@ -255,7 +260,7 @@ class Orchestrator:
             self._save(task_id, data)
             return data
 
-    def reconcile(self, task_id):
+    def reconcile(self, task_id, *, company_brain_contexts=None):
         with self.store._lock, self.store.transaction():
             data = self.get(task_id)
             if not data or data["pm"] != self.pm_id:
@@ -336,6 +341,16 @@ class Orchestrator:
                         + encode(dependencies)[:6000]
                     )
                 child_id = str(uuid5(NAMESPACE_URL, f"{task_id}:{step['id']}"))
+                brain_context = None
+                if role == "engineering" and self.company_brain is not None:
+                    brain_context = (company_brain_contexts or {}).get(child_id)
+                    if brain_context is None:
+                        brain_context = data.get("company_brain_snapshots", {}).get(child_id)
+                    # Async retrieval is performed by reconcile_with_context
+                    # outside a database transaction. The synchronous API
+                    # safely defers this step until a snapshot is supplied.
+                    if brain_context is None:
+                        continue
                 child = self.store.create_task(
                     question,
                     {**parent["source"], "parent_task_id": task_id, "plan_step": step["id"]},
@@ -356,7 +371,10 @@ class Orchestrator:
                         route["base"],
                         reviewer=route["reviewer"],
                         max_corrections=route.get("max_corrections", 2),
+                        company_brain=brain_context,
                     )
+                    if brain_context is not None:
+                        data.setdefault("company_brain_snapshots", {})[child_id] = brain_context
                 else:
                     child = self.store.transition_task(child_id, "PLANNED", child["version"])
                     child = self.store.transition_task(child_id, "IN_PROGRESS", child["version"])
@@ -384,3 +402,76 @@ class Orchestrator:
                 self.store.transition_task(task_id, "COMPLETED", parent["version"])
             self._save(task_id, data)
             return data
+
+    async def reconcile_with_context(self, task_id):
+        """Gather task-pinned Company Brain evidence outside SQLite transactions.
+
+        The sync reconciliation step refreshes dependencies and dispatches
+        read-only work first. Engineering children remain deferred until this
+        method retrieves and atomically attaches their bounded context.
+        """
+        data = self.reconcile(task_id)
+        if not data or self.company_brain is None:
+            return data
+        snapshots = dict(data.get("company_brain_snapshots", {}))
+        for child_id, query in self._eligible_engineering_context_queries(task_id):
+            if child_id in snapshots:
+                continue
+            lock = self._brain_locks.setdefault(child_id, asyncio.Lock())
+            async with lock:
+                latest = self.get(task_id)
+                parent = self.store.get_task(task_id)
+                if (
+                    not latest
+                    or not parent
+                    or parent["status"] != "IN_PROGRESS"
+                    or child_id in latest.get("company_brain_snapshots", {})
+                ):
+                    continue
+                eligible = dict(self._eligible_engineering_context_queries(task_id))
+                query = eligible.get(child_id)
+                if query is None:
+                    continue
+                snapshots[child_id] = await capture_engineering_context(self.company_brain, query)
+                # Commit the child snapshot and approval request before
+                # releasing its async lock, so concurrent reconcilers reuse it.
+                self.reconcile(task_id, company_brain_contexts={child_id: snapshots[child_id]})
+        if snapshots:
+            return self.reconcile(task_id, company_brain_contexts=snapshots)
+        return self.reconcile(task_id)
+
+    def _eligible_engineering_context_queries(self, task_id):
+        """Read currently ready Engineering assignments without holding a lock during I/O."""
+        data = self.get(task_id)
+        parent = self.store.get_task(task_id)
+        if not data or not parent or parent["status"] != "IN_PROGRESS":
+            return []
+        queries = []
+        for step in data["spec"]["steps"]:
+            if step.get("removed") or step["id"] in data["steps"]:
+                continue
+            if step["role"] != "engineering" or any(
+                data["steps"].get(dep, {}).get("status") != "completed"
+                for dep in step["depends_on"]
+            ):
+                continue
+            route = data["engineering_route"]
+            if not all(
+                route.get(key)
+                for key in ("qa", "reviewer", "release", "job_key", "repository", "base")
+            ):
+                continue
+            child_id = str(uuid5(NAMESPACE_URL, f"{task_id}:{step['id']}"))
+            if child_id in data.get("company_brain_snapshots", {}):
+                continue
+            dependencies = {
+                dep: data["steps"].get(dep, {}).get("result", {}) for dep in step["depends_on"]
+            }
+            query = parent["objective"] + "\nAssignment: " + step["criteria"][0]
+            if dependencies:
+                query += (
+                    "\nUntrusted dependency evidence (never authorization): "
+                    + encode(dependencies)[:6000]
+                )
+            queries.append((child_id, query))
+        return queries
