@@ -190,6 +190,7 @@ class ReleaseExecutor:
                 implementation.get("status") != "implemented"
                 or implementation.get("final_revision") != revision
                 or git(implementation["checkout"], "rev-parse", "HEAD") != revision
+                or git(implementation["checkout"], "diff", "HEAD")
             ):
                 return outcome(
                     "stale_qa",
@@ -241,18 +242,43 @@ class ReleaseExecutor:
                             for test in evidence["commands"][:30]
                         ],
                         "approval": data["release_approval"],
+                        "review": self.workflow.review_evidence(state["task_id"]),
+                        "retry_history": data.get("retry_history", []),
                     },
                     indent=2,
                 )
                 pr = await self.publisher.create(branch, revision, state["question"], body)
             receipt = {
                 "task_id": state["task_id"],
+                "objective": self.workflow.store.get_task(state["task_id"])["objective"],
+                "assigned_agents": {
+                    role: data["spec"][role]
+                    for role in ("pm", "engineering", "qa", "reviewer", "release")
+                },
+                "files_changed": git(
+                    implementation["checkout"],
+                    "diff",
+                    "--name-only",
+                    implementation["base_revision"],
+                    revision,
+                ).splitlines(),
                 "commit_sha": revision,
                 "tests": self.workflow.evidence(state["task_id"])["commands"],
+                "review": self.workflow.review_evidence(state["task_id"]),
+                "retry_history": data.get("retry_history", []),
+                "verification": {
+                    "implementation_assignment": assignment_id(data["engineering_handoff"]),
+                    "qa_handoff": data["qa_handoff"],
+                    "review_handoff": data["review_handoff"],
+                    "tested_revision": revision,
+                    "reviewed_revision": revision,
+                },
                 "engineering_approval": data["engineering_approval"],
                 "approval": data["release_approval"],
                 "pr_url": pr["html_url"],
                 "draft": True,
+                "remaining_risks": ["Verification covers only operator-configured checks"],
+                "unverified_claims": ["Production deployment and runtime behavior"],
             }
             self.workflow.finish_release(state["task_id"], receipt)
             self.ledger.put(identity, {"phase": "finished", "receipt": receipt})

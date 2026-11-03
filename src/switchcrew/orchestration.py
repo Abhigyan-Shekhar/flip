@@ -6,6 +6,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from .approval import ApprovalWorkflow
 from .store import ConflictError, encode
+from .teams import TeamAssembler
 
 READ_ONLY_ROLES = frozenset(
     {
@@ -111,6 +112,149 @@ class Orchestrator:
             self._save(task_id, data)
             return data
 
+    def start_incident(self, task_id, incident):
+        """Persist a deterministic incident response team and its assignments."""
+        with self.store._lock, self.store.transaction():
+            task = self.store.get_task(task_id)
+            incident = {**incident, "engineering_route": self.engineering_route}
+            assembler = TeamAssembler(
+                role
+                for role, identity in self.targets.items()
+                if isinstance(identity, str) and identity.strip() and identity != self.pm_id
+            )
+            spec = assembler.assemble(incident)
+            identities = [self.pm_id] + [
+                self.targets.get(role) or self.engineering_route.get(role) for role in spec["team"]
+            ]
+            if len(set(identities)) != len(identities):
+                spec["blocked_reason"] = "Selected specialists require distinct Switch identities"
+            old = self.get(task_id)
+            if old:
+                if old.get("spec") != spec or old.get("pm") != self.pm_id:
+                    raise ConflictError("Incident plan inputs changed")
+                return old
+            if task["status"] != "DRAFT":
+                raise ConflictError("Incident plan requires a draft parent")
+            data = {
+                "spec": spec,
+                "pm": self.pm_id,
+                "steps": {},
+                "phase": "running",
+                "targets": self.targets,
+                "engineering_route": self.engineering_route,
+                "team": spec["team"],
+                "selection_reasons": spec["selection_reasons"],
+                "incident": incident,
+                "next_step_sequence": len(spec["steps"]) + 1,
+            }
+            task = self.store.transition_task(task_id, "PLANNED", task["version"])
+            task = self.store.transition_task(task_id, "IN_PROGRESS", task["version"])
+            if spec["blocked_reason"]:
+                data["phase"] = "blocked"
+                self.store.transition_task(
+                    task_id, "BLOCKED", task["version"], {"reason": spec["blocked_reason"]}
+                )
+            self._save(task_id, data)
+            return data
+
+    def update_team(self, task_id, required_roles, reason):
+        """Amend only undispatched read-only work using configured identities."""
+        with self.store._lock, self.store.transaction():
+            data = self.get(task_id)
+            if not data or not data.get("incident"):
+                raise ConflictError("Incident plan not found")
+            parent = self.store.get_task(task_id)
+            if parent["status"] != "IN_PROGRESS" or data.get("phase") != "running":
+                raise ConflictError("Only an active incident plan can be amended")
+            if not isinstance(reason, str) or not reason.strip() or len(reason) > 700:
+                raise ValueError("An amendment reason is required and limited to 700 characters")
+            if not isinstance(required_roles, list) or len(required_roles) > 12:
+                raise ValueError("required_roles must be a bounded list")
+            if len(set(required_roles)) != len(required_roles):
+                raise ValueError("required_roles must not contain duplicates")
+            if any(r not in READ_ONLY_ROLES for r in required_roles):
+                raise ValueError("Only known read-only roles may be amended")
+            for role in set(required_roles) | set(data["team"]):
+                if (
+                    role in data["targets"]
+                    and role in self.targets
+                    and data["targets"][role] != self.targets[role]
+                ):
+                    raise ConflictError(
+                        f"Configured identity changed for started-plan role: {role}"
+                    )
+            live = {
+                step["role"]
+                for step in data["spec"]["steps"]
+                if step["id"] in data["steps"] and step["role"] in {"engineering", "documentation"}
+            }
+            additions = [r for r in required_roles if r not in data["team"]]
+            if len(data["spec"]["steps"]) + len(additions) > 12:
+                raise ValueError("Incident plan cannot exceed 12 total steps")
+            for role in additions:
+                if role not in self.targets or self.targets[role] == self.pm_id:
+                    raise ValueError(f"Role is not configured: {role}")
+                if role in data["targets"] and data["targets"][role] != self.targets[role]:
+                    raise ConflictError(
+                        f"Configured identity changed for started-plan role: {role}"
+                    )
+                if role not in {
+                    "incident",
+                    "research",
+                    "security",
+                    "documentation",
+                    "knowledge",
+                    "community",
+                    "onboarding",
+                    "moderation",
+                    "scheduling",
+                    "analytics",
+                }:
+                    raise ValueError(f"Role has no incident capability: {role}")
+                identity = f"step-{data['next_step_sequence']}"
+                data["next_step_sequence"] += 1
+                data["spec"]["steps"].append(
+                    {
+                        "id": identity,
+                        "role": role,
+                        "criteria": [f"{reason.strip()} Incident: {data['incident']['summary']}"],
+                        "depends_on": [],
+                        "responsibilities": reason.strip(),
+                        "deliverable": f"{role} findings",
+                    }
+                )
+                data["team"].append(role)
+                data["targets"].setdefault(role, self.targets[role])
+                data["selection_reasons"][role] = {
+                    "capabilities": sorted(TeamAssembler.ROLE_CAPABILITIES.get(role, {role})),
+                    "reason": reason.strip(),
+                }
+            wanted = set(required_roles)
+            remove_ids = set()
+            for step in data["spec"]["steps"]:
+                if step["role"] in live or step["role"] in {
+                    "engineering",
+                    "documentation",
+                    "qa",
+                    "reviewer",
+                    "release",
+                }:
+                    continue
+                if step["role"] not in wanted and step["id"] not in data["steps"]:
+                    remove_ids.add(step["id"])
+            if any(remove_ids.intersection(step["depends_on"]) for step in data["spec"]["steps"]):
+                raise ValueError("Cannot remove a step required by a downstream step")
+            removed_roles = {s["role"] for s in data["spec"]["steps"] if s["id"] in remove_ids}
+            data["spec"]["steps"] = [s for s in data["spec"]["steps"] if s["id"] not in remove_ids]
+            data["team"] = [r for r in data["team"] if r not in removed_roles]
+            for role in removed_roles:
+                data["selection_reasons"].pop(role, None)
+            data.setdefault("amendments", []).append(
+                {"required_roles": required_roles, "reason": reason.strip()}
+            )
+            self._save(task_id, data)
+            return data
+
     def reconcile(self, task_id):
         with self.store._lock, self.store.transaction():
             data = self.get(task_id)
@@ -150,6 +294,8 @@ class Orchestrator:
                                 child["id"], "COMPLETED" if passed else "FAILED", child["version"]
                             )
             for step in data["spec"]["steps"]:
+                if step.get("removed"):
+                    continue
                 if step["id"] in data["steps"]:
                     continue
                 if any(
@@ -172,7 +318,7 @@ class Orchestrator:
                     continue
                 if role == "engineering" and not all(
                     data["engineering_route"].get(k)
-                    for k in ("qa", "release", "job_key", "repository", "base")
+                    for k in ("qa", "reviewer", "release", "job_key", "repository", "base")
                 ):
                     data["steps"][step["id"]] = {
                         "role": role,
@@ -208,6 +354,8 @@ class Orchestrator:
                         route["job_key"],
                         route["repository"],
                         route["base"],
+                        reviewer=route["reviewer"],
+                        max_corrections=route.get("max_corrections", 2),
                     )
                 else:
                     child = self.store.transition_task(child_id, "PLANNED", child["version"])

@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     engineering_agent_id: str = ""
     engineering_name: str = ""
     qa_agent_id: str = ""
+    reviewer_agent_id: str = ""
+    max_corrections: int = Field(default=2, ge=0, le=5)
     release_agent_id: str = ""
     release_name: str = ""
     release_repository: str = ""
@@ -42,6 +44,8 @@ class Settings(BaseSettings):
     discord_bindings: list[dict] = Field(default_factory=list)
     discord_guild_ids: list[str] = Field(default_factory=list)
     discord_user_ids: list[str] = Field(default_factory=list)
+    incident_channel_ids: list[str] = Field(default_factory=list)
+    incident_max_events_per_minute: int = Field(default=10, ge=1, le=100)
     discord_participant_ids: list[str] = Field(default_factory=list)
     specialist_targets: dict[str, dict[str, str]] = Field(default_factory=dict)
     orchestration_job_key: str = ""

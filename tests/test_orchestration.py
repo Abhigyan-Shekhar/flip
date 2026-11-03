@@ -86,6 +86,7 @@ def test_engineering_subtask_waits_for_approval_and_parent_cancellation_blocks_i
         {"engineering": "engineering"},
         engineering_route={
             "qa": "qa",
+            "reviewer": "reviewer",
             "release": "release",
             "job_key": "fix",
             "repository": "org/repo",
@@ -222,6 +223,7 @@ async def test_discord_plan_announces_child_approval_and_cancellation_stops_deli
         allowed_guilds=["guild"],
         engineering_id="engineering",
         qa_id="qa",
+        reviewer_id="reviewer",
         release_id="release",
         release_repository="org/repo",
         release_base="master",

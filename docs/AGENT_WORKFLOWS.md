@@ -1,4 +1,9 @@
-# Specialist LangGraph scaffolding
+# Specialist LangGraph workflows
+
+A separate Reviewer role now gates approved Engineering releases. See
+[review and correction contracts](REVIEW_CORRECTIONS.md) and
+[incident intake and teams](INCIDENTS.md). Historical roster descriptions below
+predate this additional role.
 
 Each of the specification's fifteen roles has a distinct registry entry and a
 compiled `StateGraph`. `src/switchcrew/agents.py` defines the roster and capability

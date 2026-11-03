@@ -178,11 +178,23 @@ class ConsoleCodex:
 
 
 class EngineeringExecutor:
-    def __init__(self, ledger, root, source, base_revision, session, authorize=None):
+    def __init__(
+        self,
+        ledger,
+        root,
+        source,
+        base_revision,
+        session,
+        authorize=None,
+        review_base_revision=None,
+        expected_source_revision=None,
+    ):
         self.ledger, self.root = ledger, Path(root).resolve()
         self.source, self.base = str(Path(source).resolve()), base_revision
         self.session = session
         self.authorize = authorize
+        self.review_base = review_base_revision
+        self.expected_source_revision = expected_source_revision
 
     def check_approval(self, state):
         if self.authorize is not None:
@@ -202,13 +214,30 @@ class EngineeringExecutor:
 
     async def execute(self, state):
         identity = assignment_id(state["handoff_id"])
-        base = git(self.source, "rev-parse", f"{self.base}^{{commit}}")
+        source = self.source
+        requested_base = self.base
+        if self.expected_source_revision:
+            if not Path(source).is_dir():
+                return outcome(
+                    "blocked_configuration", identity, reason="correction_source_invalid"
+                )
+            if git(source, "rev-parse", "HEAD") != self.expected_source_revision:
+                return outcome(
+                    "blocked_configuration", identity, reason="correction_source_revision_changed"
+                )
+        checkout_base = git(source, "rev-parse", f"{requested_base}^{{commit}}")
+        review_base = git(source, "rev-parse", f"{(self.review_base or checkout_base)}^{{commit}}")
+        git(source, "merge-base", "--is-ancestor", review_base, checkout_base)
         spec = {
-            "source": self.source,
-            "base_revision": base,
+            "source": source,
+            "base_revision": review_base,
             "question": state["question"],
             "acceptance_criteria": state["acceptance_criteria"],
         }
+        # Preserve immutable pre-correction ledger inputs for initial attempts.
+        # Only correction assignments need a distinct checkout starting revision.
+        if self.expected_source_revision is not None or review_base != checkout_base:
+            spec["checkout_base_revision"] = checkout_base
         data = self.ledger.reserve(identity, spec)
         checkout = self.root / identity
         if "result" in data:
@@ -218,11 +247,11 @@ class EngineeringExecutor:
         if not checkout.exists():
             self.root.mkdir(parents=True, exist_ok=True)
             subprocess.run(
-                ["git", "clone", "--no-hardlinks", "--no-checkout", self.source, str(checkout)],
+                ["git", "clone", "--no-hardlinks", "--no-checkout", source, str(checkout)],
                 check=True,
                 capture_output=True,
             )
-            git(checkout, "checkout", "--detach", base)
+            git(checkout, "checkout", "--detach", checkout_base)
             with (checkout / ".git/info/exclude").open("a") as excludes:
                 excludes.write("\n.claude/settings.local.json\n.switchcrew-result.json\n")
         # Console onboarding writes private local connection configuration. Keep it
@@ -233,7 +262,8 @@ class EngineeringExecutor:
                 excludes.write("\n/.switch/config/\n")
         # A partly created checkout is never silently reset on retry.
         if data["phase"] == "reserved" and (
-            git(checkout, "rev-parse", "HEAD") != base or git(checkout, "status", "--porcelain")
+            git(checkout, "rev-parse", "HEAD") != checkout_base
+            or git(checkout, "status", "--porcelain")
         ):
             return outcome("blocked_configuration", identity, reason="checkout_not_clean_at_base")
         if self.session is None:
@@ -241,7 +271,8 @@ class EngineeringExecutor:
                 "blocked_configuration",
                 identity,
                 checkout=str(checkout),
-                base_revision=base,
+                base_revision=review_base,
+                checkout_base_revision=checkout_base,
                 reason="managed_codex_session_not_configured",
             )
         try:
@@ -254,14 +285,16 @@ class EngineeringExecutor:
                     "pending_execution",
                     identity,
                     checkout=str(checkout),
-                    base_revision=base,
+                    base_revision=review_base,
+                    checkout_base_revision=checkout_base,
                     reason="managed_codex_identity_unavailable_or_misconfigured",
                 )
             return outcome(
                 "blocked_configuration",
                 identity,
                 checkout=str(checkout),
-                base_revision=base,
+                base_revision=review_base,
+                checkout_base_revision=checkout_base,
                 reason="managed_codex_agent_unavailable_or_misconfigured",
             )
         try:
@@ -281,7 +314,8 @@ class EngineeringExecutor:
                     phase="session_ready",
                     session_id=sid,
                     checkout=str(checkout),
-                    base_revision=base,
+                    base_revision=review_base,
+                    checkout_base_revision=checkout_base,
                 )
                 self.ledger.put(identity, data)
             if self.ledger.claim(identity, "session_ready", "delivering"):
@@ -298,7 +332,8 @@ class EngineeringExecutor:
                 identity,
                 reason="external_response_uncertain",
                 checkout=str(checkout),
-                base_revision=base,
+                base_revision=review_base,
+                checkout_base_revision=checkout_base,
             )
         receipt = checkout / ".switchcrew-result.json"
         if not receipt.exists():
@@ -307,7 +342,8 @@ class EngineeringExecutor:
                 identity,
                 reason="awaiting_managed_session_receipt",
                 checkout=str(checkout),
-                base_revision=base,
+                base_revision=review_base,
+                checkout_base_revision=checkout_base,
             )
         try:
             record = json.loads(receipt.read_text())
@@ -316,7 +352,8 @@ class EngineeringExecutor:
             final = git(checkout, "rev-parse", "HEAD")
             if record["assignment_id"] != identity or record["final_revision"] != final:
                 raise ValueError("Receipt identity/revision differs")
-            git(checkout, "merge-base", "--is-ancestor", base, final)
+            git(checkout, "merge-base", "--is-ancestor", checkout_base, final)
+            git(checkout, "merge-base", "--is-ancestor", review_base, final)
             dirty = git(checkout, "status", "--porcelain", "--untracked-files=all").splitlines()
             protected = git(
                 checkout,
@@ -334,10 +371,11 @@ class EngineeringExecutor:
                 status,
                 identity,
                 checkout=str(checkout),
-                base_revision=base,
+                base_revision=review_base,
+                checkout_base_revision=checkout_base,
                 final_revision=final,
                 session_id=sid,
-                diff=git(checkout, "diff", "--binary", base, final),
+                diff=git(checkout, "diff", "--binary", review_base, final),
             )
         except (KeyError, ValueError, OSError, subprocess.CalledProcessError):
             return outcome("implementation_failed", identity, reason="invalid_revision_receipt")

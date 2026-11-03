@@ -1,5 +1,9 @@
 # Engineering → independent QA
 
+The mandatory independent Reviewer and bounded correction loop are documented in
+[REVIEW_CORRECTIONS.md](REVIEW_CORRECTIONS.md). Reviewer identity/configuration is
+now required; older workflow diagrams below describe the pre-review lifecycle.
+
 Current deployment instructions are in [Approved Engineering and Release](APPROVAL_RELEASE.md).
 The runtime now requires a durable human-approved PM workflow for Engineering
 and QA, and also supports Release. Legacy manually seeded Engineering handoffs

@@ -17,6 +17,7 @@ from switchcrew.discord import DiscordBinding
 from switchcrew.engineering import EngineeringExecutor, Ledger, assignment_id, git
 from switchcrew.qa import QAExecutor
 from switchcrew.release import GitHubPublisher, ReleaseExecutor
+from switchcrew.reviewer import ReviewerExecutor
 from switchcrew.settings import Settings
 from switchcrew.store import ConflictError, InvalidTransitionError, Store
 from switchcrew.workers import Worker
@@ -30,7 +31,18 @@ def flow(tmp_path):
     task = store.create_task(
         "Correct answer.txt", {"room_id": "room", "thread_id": "thread"}, ["Answer equals correct"]
     )
-    workflow.request(task["id"], "pm", "engineering", "qa", "release", "fix", "org/repo", "master")
+    workflow.request(
+        task["id"],
+        "pm",
+        "engineering",
+        "qa",
+        "release",
+        "fix",
+        "org/repo",
+        "master",
+        reviewer="reviewer",
+        max_corrections=0,
+    )
     source = tmp_path / "source"
     source.mkdir()
     git(source, "init")
@@ -95,8 +107,36 @@ async def implement_and_review(flow, tmp_path, correct=True):
     qa = QAExecutor(ledger, tmp_path / "qa", assignment_id(identity), final, commands)
     qa_result = await qa(handoff_state(store, qa_id, "qa"))
     store.complete_handoff(qa_id, "qa", qa_result, "qa")
-    workflow.reconcile(task_id)
+    data = workflow.reconcile(task_id)
+    if qa_result["status"] == "verified_success":
+        review_id = data["review_handoff"]
+        store.accept_handoff(review_id, "reviewer")
+        review = ReviewerExecutor(
+            ledger, tmp_path / "reviewer", assignment_id(identity), final, review_commands()
+        )
+        reviewed = await review(handoff_state(store, review_id, "reviewer"))
+        assert reviewed["status"] == "review_accepted"
+        store.complete_handoff(review_id, "reviewer", reviewed, "reviewer")
+        workflow.reconcile(task_id)
     return final, session, qa_result
+
+
+def review_commands():
+    # A real independent command inspects the actual patch and committed file.
+    return [
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json, subprocess; from pathlib import Path; "
+                "diff = subprocess.check_output(['git','diff','{base_revision}','{revision}']); "
+                "assert b'answer.txt' in diff; "
+                "ok = Path('answer.txt').read_text() == 'correct'; "
+                "print(json.dumps({'accepted': ok, 'findings': [] if ok else "
+                "[{'path':'answer.txt','line':1,'message':'Answer must be correct'}]}))"
+            ),
+        ]
+    ]
 
 
 class GitHubDouble(GitHubPublisher):
@@ -312,6 +352,7 @@ async def test_pm_discord_engineering_route_and_authenticated_same_thread_decisi
         allowed_users=["owner"],
         engineering_id="engineering",
         qa_id="qa",
+        reviewer_id="reviewer",
         release_id="release",
         approval_users=["owner"],
         release_repository="org/repo",
@@ -365,6 +406,7 @@ def test_api_separate_human_credential_version_replay_and_lifecycle_bypass(tmp_p
         pm_agent_id="pm",
         engineering_agent_id="engineering",
         qa_agent_id="qa",
+        reviewer_agent_id="reviewer",
         release_agent_id="release",
         release_repository="org/repo",
         release_base="master",
@@ -483,10 +525,17 @@ async def test_configured_runtime_engineering_qa_release_delivery(flow, tmp_path
             role,
             "private",
             "room",
-            allowed_senders={"participant-pm": "pm", "participant-engineering": "engineering"}
-            if role != "engineering"
-            else {"participant-pm": "pm", "participant-qa": "qa"},
-            target_names={"pm": "pm", "qa": "qa", "engineering": "engineering"},
+            allowed_senders={
+                "participant-" + peer: peer
+                for peer in ("pm", "engineering", "qa", "reviewer")
+                if peer != role
+            },
+            target_names={
+                "pm": "pm",
+                "qa": "qa",
+                "engineering": "engineering",
+                "reviewer": "reviewer",
+            },
         )
         config = {
             "checkout_root": str(tmp_path / role),
@@ -544,6 +593,10 @@ async def test_configured_runtime_engineering_qa_release_delivery(flow, tmp_path
     )
     await deliver(qa, data["qa_handoff"], "engineering")
     data = workflow.reconcile(task_id)
+    assert data["phase"] == "review"
+    reviewer = runtime("reviewer", {"commands": review_commands()})
+    await deliver(reviewer, data["review_handoff"], "qa")
+    data = workflow.reconcile(task_id)
     assert data["phase"] == "human_review"
     data = decide(flow, "release")
     release = runtime("release", {})
@@ -554,7 +607,7 @@ async def test_configured_runtime_engineering_qa_release_delivery(flow, tmp_path
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", ["engineering", "qa", "release"])
+@pytest.mark.parametrize("role", ["engineering", "qa", "reviewer", "release"])
 async def test_configured_capability_blocks_arbitrary_legacy_jobs_without_approval(flow, role):
     from types import SimpleNamespace
 

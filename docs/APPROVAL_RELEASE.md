@@ -1,5 +1,9 @@
 # Approved Engineering and Release
 
+The mandatory independent Reviewer and bounded correction loop are documented in
+[REVIEW_CORRECTIONS.md](REVIEW_CORRECTIONS.md). Reviewer identity/configuration is
+now required; older workflow diagrams below describe the pre-review lifecycle.
+
 The PM worker accepts an explicit engineering request, records it as
 `AWAITING_APPROVAL`, and waits for an authorized human. Approval atomically records
 the authenticated identity, timestamp and version and creates the PM → Engineering

@@ -71,6 +71,8 @@ class Worker:
         engineering_id="",
         engineering_name="",
         qa_id="",
+        reviewer_id="",
+        max_corrections=2,
         release_id="",
         release_name="",
         release_repository="",
@@ -78,11 +80,14 @@ class Worker:
         approval_users=(),
         specialist_targets=None,
         orchestration_job_key="",
+        incident_channels=(),
+        incident_max_events_per_minute=10,
     ):
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
         self.role, self.store, self.switch = role, store, switch
         self.engineering_id, self.qa_id, self.release_id = engineering_id, qa_id, release_id
+        self.reviewer_id, self.max_corrections = reviewer_id, max_corrections
         self.release_repository, self.release_base = release_repository, release_base
         self.approvals = ApprovalWorkflow(store, approval_users)
         self.pm_id, self.research_id, self.room_id = pm_id, research_id, room_id
@@ -107,6 +112,8 @@ class Worker:
             targets,
             engineering_route={
                 "qa": qa_id,
+                "reviewer": reviewer_id,
+                "max_corrections": max_corrections,
                 "release": release_id,
                 "job_key": orchestration_job_key,
                 "repository": release_repository,
@@ -116,6 +123,11 @@ class Worker:
         self.identity = pm_id if role == "pm" else research_id
         self.bindings = list(bindings)
         self.allowed_guilds, self.allowed_users = set(allowed_guilds), set(allowed_users)
+        from .incidents import IncidentIntake
+
+        self.incidents = IncidentIntake(
+            store, incident_channels, max_events_per_minute=incident_max_events_per_minute
+        )
         self.graph = build_agent_graph(
             role,
             provider=provider or ResearchProvider([]),
@@ -252,12 +264,52 @@ class Worker:
             allowed_guilds=self.allowed_guilds,
             allowed_users=self.allowed_users,
         )
+        from .crew import handle_crew_command
+
+        command = handle_crew_command(
+            self.store, source, can_cancel=source.user_id in self.approvals.approvers
+        )
+        if command is not None:
+            if command.get("task_id"):
+                self._reply(
+                    command["task_id"],
+                    command["kind"] + "_" + source.message_id,
+                    command["text"],
+                    freeze=True,
+                )
+            else:
+                await self.switch.post_message(
+                    command["text"], thread_id=source.thread_id or source.message_id
+                )
+            return
         try:
             request = json.loads(source.body)
             if not isinstance(request, dict):
                 request = {}
         except ValueError:
             request = {}
+        if not request and source.channel_id in self.incidents.allowed_channels:
+            incident = self.incidents.ingest(source)
+            if incident is not None:
+                task_id = incident["task_id"]
+                if self.orchestrator.get(task_id) is None:
+                    self.orchestrator.start_incident(task_id, incident["incident"])
+                self.orchestrator.reconcile(task_id)
+                task = self.store.get_task(task_id)
+                plan = self.orchestrator.get(task_id)
+                reason = plan["spec"].get("blocked_reason", "") if plan else ""
+                self._reply(
+                    task_id,
+                    "incident_" + source.message_id,
+                    f"Incident {task_id}: {task['status']}. "
+                    "Investigation uses configured evidence; code changes require human approval. "
+                    + reason,
+                    freeze=True,
+                )
+                return
+            # Chatter, rejected reports, and exhausted intake budgets must not
+            # fall through into task creation in proactively monitored channels.
+            return
         if request.get("type") == "approval":
             try:
                 if (
@@ -355,7 +407,7 @@ class Worker:
             if (
                 not isinstance(job_key, str)
                 or not job_key.strip()
-                or not all((self.engineering_id, self.qa_id, self.release_id))
+                or not all((self.engineering_id, self.qa_id, self.reviewer_id, self.release_id))
             ):
                 self._reply(
                     task_id, "configuration", "Engineering route requires operator configuration."
@@ -370,6 +422,8 @@ class Worker:
                 job_key,
                 self.release_repository,
                 self.release_base,
+                reviewer=self.reviewer_id,
+                max_corrections=self.max_corrections,
             )
             self._reply(
                 task_id,
@@ -403,8 +457,25 @@ class Worker:
             "PM delegated the question and criteria to Research; awaiting acknowledgment.",
         )
 
-    def _reply(self, task_id, kind, text):
+    def _reply(self, task_id, kind, text, *, freeze=False):
         chunks = [text[i : i + 1600] for i in range(0, len(text), 1600)]
+        if freeze:
+            # A resumed status/cancel request must reuse its first durable reply,
+            # even if the task advanced before the inbox completion committed.
+            with self.store._lock, self.store.transaction():
+                if self.store.connection.execute(
+                    "SELECT 1 FROM outbox WHERE task_id=? AND idempotency_key=?",
+                    (task_id, f"{task_id}:{kind}:0"),
+                ).fetchone():
+                    return
+                for index, chunk in enumerate(chunks):
+                    self.store.enqueue_outbox(
+                        task_id,
+                        "discord",
+                        {"type": kind, "text": chunk, "worker_sender": self.identity},
+                        idempotency_key=f"{task_id}:{kind}:{index}",
+                    )
+            return
         for index, chunk in enumerate(chunks):
             self.store.enqueue_outbox(
                 task_id,
@@ -681,6 +752,8 @@ async def _main(role):
                 engineering_id=settings.engineering_agent_id,
                 engineering_name=settings.engineering_name,
                 qa_id=settings.qa_agent_id,
+                reviewer_id=settings.reviewer_agent_id,
+                max_corrections=settings.max_corrections,
                 release_id=settings.release_agent_id,
                 release_name=settings.release_name,
                 release_repository=settings.release_repository,
@@ -688,6 +761,8 @@ async def _main(role):
                 approval_users=settings.approval_user_ids,
                 specialist_targets=settings.specialist_targets,
                 orchestration_job_key=settings.orchestration_job_key,
+                incident_channels=settings.incident_channel_ids,
+                incident_max_events_per_minute=settings.incident_max_events_per_minute,
             )
             await worker.run()
     finally:

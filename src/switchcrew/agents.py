@@ -11,6 +11,7 @@ class AgentRole(StrEnum):
     RESEARCH = "research"
     ENGINEERING = "engineering"
     QA = "qa"
+    REVIEWER = "reviewer"
     RELEASE = "release"
     DOCUMENTATION = "documentation"
     KNOWLEDGE = "knowledge"
@@ -38,6 +39,7 @@ _SPECS = (
     AgentSpec(AgentRole.RESEARCH, "Research Agent", "source_retrieval", "retrieve_evidence"),
     AgentSpec(AgentRole.ENGINEERING, "Engineering Agent", "switch_codex_session", "request_codex"),
     AgentSpec(AgentRole.QA, "QA Agent", "isolated_qa_runner", "prepare_qa"),
+    AgentSpec(AgentRole.REVIEWER, "Reviewer Agent", "independent_diff_review", "review_changes"),
     AgentSpec(AgentRole.RELEASE, "Release Agent", "authorized_publication", "prepare_release"),
     AgentSpec(
         AgentRole.DOCUMENTATION, "Documentation Agent", "documentation_writer", "draft_docs", False

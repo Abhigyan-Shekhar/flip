@@ -150,6 +150,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             targets,
             engineering_route={
                 "qa": settings.qa_agent_id,
+                "reviewer": settings.reviewer_agent_id,
+                "max_corrections": settings.max_corrections,
                 "release": settings.release_agent_id,
                 "job_key": settings.orchestration_job_key,
                 "repository": settings.release_repository,
@@ -261,6 +263,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 settings.pm_agent_id,
                 settings.engineering_agent_id,
                 settings.qa_agent_id,
+                settings.reviewer_agent_id,
                 settings.release_agent_id,
                 settings.release_repository,
                 settings.release_base,
@@ -286,6 +289,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 body.job_key,
                 settings.release_repository,
                 settings.release_base,
+                reviewer=settings.reviewer_agent_id,
+                max_corrections=settings.max_corrections,
             )
             task = request.app.state.store.get_task(task["id"])
         return sanitize(task)
@@ -338,6 +343,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result = dict(data)
         if data.get("qa_handoff"):
             result["qa_result"] = request.app.state.store.get_handoff(data["qa_handoff"])["result"]
+        if data.get("review_handoff"):
+            result["review_result"] = request.app.state.store.get_handoff(data["review_handoff"])[
+                "result"
+            ]
         return sanitize(result)
 
     @app.post("/tasks/{task_id}/approvals")

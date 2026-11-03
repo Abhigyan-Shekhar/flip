@@ -1,0 +1,255 @@
+"""Private, read-only incident room commands for SwitchCrew tasks."""
+
+import json
+import re
+import sqlite3
+from uuid import UUID
+
+from .store import ConflictError, InvalidTransitionError
+
+_COMMAND = re.compile(r"^/crew\s+(status|team|why|replay|cancel)\s+([0-9a-fA-F-]{36})\s*$", re.I)
+_MAX_TEXT = 12_000
+_SAFE_EVENTS = {
+    "task.created",
+    "task.transitioned",
+    "plan.dispatched",
+    "handoff.created",
+    "handoff.accepted",
+    "handoff.completed",
+    "engineering.decision",
+    "release.decision",
+    "approval.requested",
+    "approval.decided",
+}
+_SECRET = re.compile(
+    r"(?i)(?:bearer\s+\S+|"
+    r"(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|"
+    r"prompt|raw[_ -]?tool[_ -]?output|diff|private[_ -]?context)\s*[:=]\s*\S+|"
+    r"(?:/[\w.-]+){2,})"
+)
+_CREW_PREFIX = re.compile(r"^/crew(?:\s|$)", re.I)
+
+
+def _clip(value, limit=160):
+    if not isinstance(value, str):
+        return ""
+    value = _SECRET.sub("[redacted]", value)
+    value = re.sub(
+        r"\b[A-Za-z0-9_-]{32,}\b",
+        lambda match: match.group(0) if _is_uuid(match.group(0)) else "[redacted]",
+        value,
+    )
+    return value[:limit]
+
+
+def _is_uuid(value):
+    try:
+        UUID(value)
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def _handoff_identifier(value):
+    if isinstance(value, str) and (
+        _is_uuid(value) or re.fullmatch(r"(?:qa|review|engineering|release)-[0-9a-f]{32,64}", value)
+    ):
+        return value
+    return "[redacted]"
+
+
+def _plan(store, task_id):
+    try:
+        with store._lock:
+            row = store.connection.execute(
+                "SELECT data FROM plans WHERE task_id=?", (task_id,)
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+    except sqlite3.OperationalError:
+        return None
+
+
+def _task_scope(task, source):
+    origin = task.get("source") or {}
+    return origin.get("room_id") == source.room_id and (
+        origin.get("thread_id") or origin.get("message_id")
+    ) == (source.thread_id or source.message_id)
+
+
+def _render(store, task, kind):
+    task_id = task["id"]
+    plan = _plan(store, task_id)
+    lines = []
+    if kind == "crew_status":
+        lines = [f"Task {task_id}: {task['status']} (version {task['version']})"]
+        if plan:
+            lines.append(f"Workflow: {_clip(plan.get('phase'), 80) or 'unknown'}")
+        try:
+            from .approval import ApprovalWorkflow
+
+            approval = ApprovalWorkflow(store).get(task_id)
+        except sqlite3.Error:
+            approval = None
+        if approval:
+            phase = _clip(approval.get("phase"), 80) or "unknown"
+            raw_attempt = approval.get("attempt", 0)
+            attempt = raw_attempt if type(raw_attempt) is int and 0 <= raw_attempt <= 100 else 0
+            lines.append(f"Approval phase: {phase}; attempt {attempt}")
+    elif kind == "crew_team":
+        if not plan or not isinstance(plan.get("team"), list):
+            lines = ["No incident team plan is recorded for this task."]
+        else:
+            lines = ["Team:"]
+            steps = plan.get("steps") if isinstance(plan.get("steps"), dict) else {}
+            step_roles = {}
+            for step in (
+                plan.get("spec", {}).get("steps", []) if isinstance(plan.get("spec"), dict) else []
+            ):
+                if isinstance(step, dict):
+                    step_roles[step.get("id")] = step.get("role")
+            for role in plan["team"][:20]:
+                if not isinstance(role, str):
+                    continue
+                target_id = (
+                    (plan.get("targets") or {}).get(role, "")
+                    if isinstance(plan.get("targets"), dict)
+                    else ""
+                )
+                matched = [
+                    (sid, v)
+                    for sid, v in steps.items()
+                    if isinstance(v, dict)
+                    and (v.get("role") == role or step_roles.get(sid) == role)
+                ]
+                spec_ids = [
+                    sid for sid, assigned_role in step_roles.items() if assigned_role == role
+                ]
+                identity = (
+                    f" (agent {_clip(target_id, 80)})"
+                    if isinstance(target_id, str) and target_id
+                    else ""
+                )
+                if matched:
+                    for sid, assignment in matched[:10]:
+                        state = _clip(assignment.get("status"), 40) or "pending"
+                        lines.append(f"- {_clip(role, 60)}{identity} [{_clip(sid, 64)}]: {state}")
+                elif spec_ids:
+                    for sid in spec_ids[:10]:
+                        lines.append(f"- {_clip(role, 60)}{identity} [{_clip(sid, 64)}]: pending")
+                else:
+                    lines.append(f"- {_clip(role, 60)}{identity}: pending")
+    elif kind == "crew_why":
+        reasons = plan.get("selection_reasons") if plan else None
+        if not isinstance(reasons, dict) or not reasons:
+            lines = ["No recorded team selection reasons are available."]
+        else:
+            lines = ["Recorded team selection reasons:"]
+            for role, details in list(reasons.items())[:20]:
+                if not isinstance(details, dict):
+                    continue
+                reason = _clip(details.get("reason"), 300)
+                caps = details.get("capabilities", [])
+                caps = (
+                    ", ".join(_clip(x, 60) for x in caps[:10] if isinstance(x, str))
+                    if isinstance(caps, list)
+                    else ""
+                )
+                lines.append(
+                    f"- {_clip(role, 60)}: {reason}" + (f" (capabilities: {caps})" if caps else "")
+                )
+    else:
+        lines = ["Recorded activity:"]
+        with store._lock:
+            events = [
+                store._row(row)
+                for row in store.connection.execute(
+                    "SELECT * FROM events WHERE task_id=? ORDER BY id LIMIT 1000", (task_id,)
+                )
+            ]
+        for event in events:
+            etype = event.get("type")
+            if etype not in _SAFE_EVENTS:
+                continue
+            d = event.get("details") if isinstance(event.get("details"), dict) else {}
+            parts = [f"{_clip(etype, 50)} at {_clip(event.get('created_at'), 40)}"]
+            if etype == "task.transitioned":
+                parts.append(f"{_clip(d.get('from'), 30)} → {_clip(d.get('to'), 30)}")
+            if etype.startswith("handoff.") or etype == "handoff.created":
+                hid = _handoff_identifier(d.get("handoff_id"))
+                if hid:
+                    parts.append(f"handoff {hid}")
+                for key in ("sender", "recipient"):
+                    val = _clip(d.get(key), 80)
+                    if val:
+                        parts.append(f"{key} {val}")
+                if etype != "handoff.created":
+                    parts.append(etype.split(".", 1)[1])
+            if etype.endswith(".decision"):
+                actor, decided = _clip(d.get("actor"), 100), _clip(d.get("decided_at"), 40)
+                if actor:
+                    parts.append(f"approval by {actor}")
+                if decided:
+                    parts.append(f"at {decided}")
+                if type(d.get("approved")) is bool:
+                    parts.append("approved" if d["approved"] else "rejected")
+            lines.append("- " + "; ".join(parts))
+    text = "\n".join(lines)
+    return text[:_MAX_TEXT]
+
+
+def handle_crew_command(store, source, *, can_cancel: bool = False) -> dict | None:
+    """Handle a text command from an already authenticated DiscordSource."""
+    match = _COMMAND.fullmatch(source.body)
+    if not match:
+        if _CREW_PREFIX.match(source.body):
+            return {
+                "handled": True,
+                "task_id": None,
+                "kind": "crew_invalid",
+                "text": "Use /crew status, team, why, replay, or cancel followed by a task UUID.",
+            }
+        return None
+    action, task_id = match.group(1).lower(), match.group(2).lower()
+    try:
+        task_id = str(UUID(task_id))
+    except ValueError:
+        return {
+            "handled": True,
+            "task_id": None,
+            "kind": "crew_invalid",
+            "text": "Use /crew status, team, why, replay, or cancel followed by a task UUID.",
+        }
+    kind = f"crew_{action}"
+    denied = {
+        "handled": True,
+        "task_id": None,
+        "kind": kind,
+        "text": "This command is unavailable in this room or thread.",
+    }
+    task = store.get_task(task_id)
+    if not task or not _task_scope(task, source):
+        return denied
+    if action == "cancel":
+        owner = (task.get("source") or {}).get("user_id") == source.user_id
+        if not owner and not can_cancel:
+            return {**denied, "text": "You are not authorized to cancel this task."}
+        if task["status"] == "CANCELLED":
+            text = "Task is already cancelled."
+        else:
+            try:
+                cancelled = store.transition_task(
+                    task_id,
+                    "CANCELLED",
+                    task["version"],
+                    {"actor": source.user_id, "reason": "crew_command"},
+                )
+                text = f"Task {task_id} cancelled (version {cancelled['version']})."
+            except (InvalidTransitionError, ConflictError):
+                latest = store.get_task(task_id)
+                text = (
+                    "Task is already cancelled."
+                    if latest and latest["status"] == "CANCELLED"
+                    else "Task cannot be cancelled in its current state."
+                )
+        return {"handled": True, "task_id": task_id, "kind": kind, "text": text}
+    return {"handled": True, "task_id": task_id, "kind": kind, "text": _render(store, task, kind)}

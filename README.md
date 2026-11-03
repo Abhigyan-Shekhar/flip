@@ -74,6 +74,20 @@ The worker recovery override restarts failures but leaves an evicted worker
 stopped. Start workers explicitly after restarting Docker; remove the local
 network override when using a separately configured remote Switch server.
 
+## Independent review and corrections
+
+Approved Engineering tasks now require a separate Reviewer identity and exact-SHA
+review before human Release approval. Failed checks can request bounded corrections
+through Switch; every corrected commit needs fresh QA and review. See
+[configuration and verification boundaries](docs/REVIEW_CORRECTIONS.md).
+
+## Incident intake
+
+Opt-in support-channel reports can create durable incident plans with capability-based
+teams, bounded intake, original-thread subscriptions, and approval-gated Engineering.
+See [incident configuration and limitations](docs/INCIDENTS.md) and
+[crew text commands](docs/CREW_COMMANDS.md).
+
 ## Scope
 
 Research retrieves bounded excerpts from operator-configured public HTTPS sources.

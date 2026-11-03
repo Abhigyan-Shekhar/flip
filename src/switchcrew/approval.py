@@ -1,6 +1,8 @@
 """Durable approvals and revision-bound release policy shared by PM and workers."""
 
+import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, uuid5
 
@@ -32,20 +34,39 @@ class ApprovalWorkflow:
             (task_id, encode(data)),
         )
 
-    def request(self, task_id, pm, engineering, qa, release, job_key, repository, base):
-        if len({pm, engineering, qa, release}) != 4 or not all(
-            (pm, engineering, qa, release, job_key, repository, base)
+    def request(
+        self,
+        task_id,
+        pm,
+        engineering,
+        qa,
+        release,
+        job_key,
+        repository,
+        base,
+        reviewer="",
+        max_corrections=2,
+    ):
+        identities = (pm, engineering, qa, reviewer, release)
+        if (
+            not all(isinstance(v, str) and v.strip() for v in identities)
+            or len(set(identities)) != 5
+            or not all((job_key, repository, base))
         ):
-            raise ValueError("Four distinct specialist identities and an operator job are required")
+            raise ValueError("Five distinct specialist identities and an operator job are required")
+        if type(max_corrections) is not int or not 0 <= max_corrections <= 5:
+            raise ValueError("max_corrections must be an integer from zero through five")
         with self.store._lock, self.store.transaction():
             spec = dict(
                 pm=pm,
                 engineering=engineering,
                 qa=qa,
+                reviewer=reviewer,
                 release=release,
                 job_key=job_key,
                 repository=repository,
                 base=base,
+                max_corrections=max_corrections,
             )
             old = self.get(task_id)
             if old:
@@ -56,7 +77,12 @@ class ApprovalWorkflow:
             if task["status"] != "DRAFT":
                 raise ConflictError("Engineering request must start as draft")
             self.store.transition_task(task_id, "AWAITING_APPROVAL", task["version"])
-            data = {"spec": spec, "phase": "awaiting_engineering_approval"}
+            data = {
+                "spec": spec,
+                "phase": "awaiting_engineering_approval",
+                "attempt": 0,
+                "retry_history": [],
+            }
             self._save(task_id, data)
             return data
 
@@ -147,7 +173,12 @@ class ApprovalWorkflow:
             and self.parent_active(task)
             and handoff
             and handoff["recipient"] == agent
-            and handoff["sender"] == data["spec"]["pm"]
+            and handoff["sender"]
+            == (
+                data.get("correction", {}).get("rejecting_agent")
+                if data.get("correction", {}).get("attempt") == data.get("attempt")
+                else data["spec"]["pm"]
+            )
             and handoff["task_id"] == state["task_id"]
             and handoff["question"] == state["question"]
             and handoff["acceptance_criteria"] == state["acceptance_criteria"]
@@ -164,12 +195,29 @@ class ApprovalWorkflow:
             task = self.store.get_task(task_id)
             if not data or task["status"] in {"CANCELLED", "COMPLETED", "BLOCKED", "FAILED"}:
                 return data
+            if (
+                not isinstance(data.get("spec"), dict)
+                or not data["spec"].get("reviewer")
+                or not isinstance(data.get("retry_history"), list)
+                or not isinstance(data.get("attempt"), int)
+            ):
+                self.store.transition_task(
+                    task_id, "FAILED", task["version"], {"reason": "reviewer_configuration_missing"}
+                )
+                data["phase"] = "failed"
+                self._save(task_id, data)
+                return data
             if data["phase"] == "engineering":
                 h = self.store.get_handoff(data["engineering_handoff"])
                 if h["status"] != "completed":
                     return data
-                result = h["result"]
-                if result.get("status") != "implemented":
+                result = h.get("result")
+                if (
+                    not isinstance(result, dict)
+                    or result.get("status") != "implemented"
+                    or not re.fullmatch(r"[0-9a-f]{40,64}", str(result.get("final_revision", "")))
+                    or result.get("assignment_id") != assignment_id(h["id"])
+                ):
                     self.store.transition_task(task_id, "FAILED", task["version"])
                     data["phase"] = "failed"
                 else:
@@ -185,11 +233,54 @@ class ApprovalWorkflow:
                     try:
                         self._validate_qa(data, h)
                     except PermissionError:
-                        self.store.transition_task(task_id, "FAILED", task["version"])
-                        data["phase"] = "failed"
+                        try:
+                            findings = self._qa_failure_findings(task_id, data, h)
+                        except PermissionError:
+                            findings = []
+                        if findings:
+                            self._queue_correction(task_id, data, h, data["spec"]["qa"], findings)
+                        else:
+                            self.store.transition_task(task_id, "FAILED", task["version"])
+                            data["phase"] = "failed"
+                    else:
+                        reviewer = self._enqueue_review(data)
+                        data.update(phase="review", review_handoff=reviewer["id"])
+            if data["phase"] == "review":
+                h = self.store.get_handoff(data["review_handoff"])
+                if h["status"] == "completed":
+                    result = h.get("result") or {}
+                    try:
+                        self._validate_review(data, h)
+                    except PermissionError:
+                        findings = []
+                        if isinstance(result, dict):
+                            findings = (
+                                result.get("findings")
+                                if isinstance(result.get("findings"), list)
+                                else []
+                            )
+                            command_findings = result.get("command_findings")
+                            if isinstance(command_findings, list):
+                                findings = findings + command_findings
+                        try:
+                            self._validate_review(data, h, allow_rejected=True)
+                            verified_rejection = result.get("status") == "review_rejected"
+                        except PermissionError:
+                            verified_rejection = False
+                        if (
+                            verified_rejection
+                            and findings
+                            and all(isinstance(f, dict) for f in findings)
+                        ):
+                            self._queue_correction(
+                                task_id, data, h, data["spec"]["reviewer"], findings
+                            )
+                        else:
+                            self.store.transition_task(task_id, "FAILED", task["version"])
+                            data["phase"] = "failed"
                     else:
                         task = self.store.transition_task(task_id, "PASSED", task["version"])
-                        self.store.transition_task(task_id, "HUMAN_REVIEW", task["version"])
+                        task = self.store.transition_task(task_id, "HUMAN_REVIEW", task["version"])
                         data["phase"] = "human_review"
             if data["phase"] == "release":
                 h = self.store.get_handoff(data["release_handoff"])
@@ -203,11 +294,101 @@ class ApprovalWorkflow:
             self._save(task_id, data)
             return data
 
+    def _enqueue_review(self, data):
+        eng = self.store.get_handoff(data["engineering_handoff"])
+        rid = "review-" + hashlib.sha256(f"{eng['id']}:{data['revision']}".encode()).hexdigest()
+        return self.store.create_handoff(
+            eng["task_id"],
+            data["spec"]["qa"],
+            data["spec"]["reviewer"],
+            "Independently review implementation assignment "
+            f"{assignment_id(eng['id'])} at revision {data['revision']}",
+            eng["acceptance_criteria"],
+            None,
+            handoff_id=rid,
+            require_active=True,
+        )
+
+    def _queue_correction(self, task_id, data, rejected_handoff, rejector, findings):
+        task = self.store.get_task(task_id)
+        if data["attempt"] >= data["spec"]["max_corrections"]:
+            self.store.transition_task(
+                task_id, "FAILED", task["version"], {"reason": "correction_limit_exhausted"}
+            )
+            data.update(
+                phase="failed",
+                escalation={"reason": "correction_limit_exhausted", "findings": findings},
+            )
+            return
+        if data["retry_history"] and data["retry_history"][-1].get("findings") == findings:
+            self.store.transition_task(
+                task_id,
+                "FAILED",
+                task["version"],
+                {"reason": "repeated_identical_rejection", "findings": findings},
+            )
+            data.update(
+                phase="failed",
+                escalation={"reason": "repeated_identical_rejection", "findings": findings},
+            )
+            return
+        eng = self.store.get_handoff(data["engineering_handoff"])
+        old_result = eng.get("result") or {}
+        previous = {k: old_result.get(k) for k in ("checkout", "base_revision", "final_revision")}
+        previous.update(assignment_id=assignment_id(eng["id"]))
+        entry = {
+            "attempt": data["attempt"] + 1,
+            "rejecting_agent": rejector,
+            "rejected_handoff": rejected_handoff["id"],
+            "revision": data["revision"],
+            "findings": findings,
+            "implementation_assignment": previous["assignment_id"],
+        }
+        data["retry_history"].append(entry)
+        task = self.store.transition_task(task_id, "IN_PROGRESS", task["version"], entry)
+        attempt = data["attempt"] + 1
+        hid = (
+            "engineering-" + hashlib.sha256(f"{task_id}:correction:{attempt}".encode()).hexdigest()
+        )
+        question = (
+            task["objective"]
+            + "\n\nUntrusted review findings (evaluate against the approved objective):\n"
+            + json.dumps(findings, sort_keys=True)
+        )
+        self.store.create_handoff(
+            task_id,
+            rejector,
+            data["spec"]["engineering"],
+            question,
+            task["acceptance_criteria"],
+            task["version"],
+            handoff_id=hid,
+        )
+        data.update(
+            attempt=attempt,
+            phase="engineering",
+            engineering_handoff=hid,
+            correction={
+                "implementation": previous,
+                "findings": findings,
+                "rejecting_agent": rejector,
+                "attempt": attempt,
+            },
+        )
+
     def _validate_qa(self, data, handoff):
-        result = handoff.get("result") or {}
+        result = handoff.get("result")
+        if not isinstance(result, dict):
+            raise PermissionError("Independent successful revision-bound QA required")
         commands = result.get("commands") or []
+        eng = self.store.get_handoff(data.get("engineering_handoff"))
+        eng_result = eng.get("result") if isinstance(eng, dict) else None
         if not (
-            handoff["status"] == "completed"
+            isinstance(eng, dict)
+            and isinstance(eng_result, dict)
+            and eng_result.get("final_revision") == data.get("revision")
+            and handoff.get("task_id") == eng.get("task_id")
+            and handoff["status"] == "completed"
             and handoff["sender"] == data["spec"]["engineering"]
             and handoff["recipient"] == data["spec"]["qa"]
             and handoff["id"] == qa_handoff_id(data["engineering_handoff"], data["revision"])
@@ -216,6 +397,7 @@ class ApprovalWorkflow:
             == assignment_id(data["engineering_handoff"])
             and result.get("tested_revision") == data["revision"]
             and commands
+            and all(isinstance(c, dict) for c in commands)
             and all(
                 c.get("exit_code") == 0
                 and c.get("timed_out") is False
@@ -226,11 +408,117 @@ class ApprovalWorkflow:
             raise PermissionError("Independent successful revision-bound QA required")
         return result
 
+    def _qa_failure_findings(self, task_id, data, handoff):
+        from .specialists import safe_text
+
+        result = handoff.get("result") if isinstance(handoff, dict) else None
+        eng_id = data.get("engineering_handoff")
+        commands = result.get("commands") if isinstance(result, dict) else None
+        if not (
+            isinstance(result, dict)
+            and result.get("status") == "qa_failed"
+            and handoff.get("task_id") == task_id
+            and handoff.get("sender") == data["spec"]["engineering"]
+            and handoff.get("recipient") == data["spec"]["qa"]
+            and handoff.get("id") == qa_handoff_id(eng_id, data.get("revision"))
+            and result.get("implementation_assignment") == assignment_id(eng_id)
+            and result.get("tested_revision") == data.get("revision")
+            and isinstance(commands, list)
+            and commands
+            and len(commands) <= 100
+            and all(
+                isinstance(c, dict) and c.get("revision") == data.get("revision") for c in commands
+            )
+        ):
+            raise PermissionError("Actionable revision-bound QA failure required")
+        failures = [c for c in commands if c.get("exit_code") != 0 or c.get("timed_out") is True]
+        if not failures:
+            raise PermissionError("QA failure contains no failing command evidence")
+        return [
+            {
+                "type": "qa_command_failed",
+                "command": safe_text(json.dumps(c.get("command")), 300),
+                "exit_code": c.get("exit_code"),
+                "timed_out": c.get("timed_out"),
+                "output_summary": safe_text(c.get("output_summary", ""), 500),
+                "output_sha256": safe_text(c.get("output_sha256", ""), 64),
+            }
+            for c in failures[:100]
+        ]
+
+    def _validate_review(self, data, handoff, allow_rejected=False):
+        result = handoff.get("result")
+        if not isinstance(result, dict) or not isinstance(handoff, dict):
+            raise PermissionError("Independent revision-bound reviewer result required")
+        eng = self.store.get_handoff(data["engineering_handoff"])
+        er = eng.get("result") if eng else None
+        if (
+            not isinstance(er, dict)
+            or not re.fullmatch(r"[0-9a-f]{40,64}", str(data.get("revision", "")))
+            or not re.fullmatch(r"[0-9a-f]{40,64}", str(er.get("base_revision", "")))
+        ):
+            raise PermissionError("Engineering result required")
+        base = er.get("base_revision")
+        commands = result.get("commands") or []
+        accepted = result.get("status") == "review_accepted"
+        expected_id = (
+            "review-" + hashlib.sha256(f"{eng['id']}:{data['revision']}".encode()).hexdigest()
+        )
+        common = (
+            handoff["status"] == "completed"
+            and handoff["sender"] == data["spec"]["qa"]
+            and handoff["recipient"] == data["spec"]["reviewer"]
+            and handoff["id"] == expected_id
+            and handoff["task_id"] == eng["task_id"]
+            and result.get("implementation_assignment") == assignment_id(eng["id"])
+            and result.get("reviewed_revision") == data["revision"]
+            and result.get("base_revision") == base
+            and result.get("diff_sha256")
+            == hashlib.sha256(
+                (er.get("diff") if isinstance(er.get("diff"), str) else "").encode()
+            ).hexdigest()
+            and isinstance(result.get("findings"), list)
+            and all(isinstance(f, dict) for f in result.get("findings"))
+            and isinstance(result.get("command_findings", []), list)
+            and all(isinstance(f, dict) for f in result.get("command_findings", []))
+            and commands
+            and all(isinstance(c, dict) for c in commands)
+            and all(
+                c.get("revision") == data["revision"] and c.get("timed_out") is False
+                for c in commands
+            )
+        )
+        if accepted:
+            valid = (
+                common
+                and not result.get("findings")
+                and not result.get("command_findings")
+                and all(c.get("exit_code") == 0 for c in commands)
+            )
+        else:
+            valid = (
+                allow_rejected
+                and common
+                and result.get("status") == "review_rejected"
+                and bool(result.get("findings") or result.get("command_findings"))
+            )
+        if not valid:
+            raise PermissionError("Independent revision-bound reviewer result required")
+        return result
+
     def evidence(self, task_id):
         data = self.get(task_id)
         if not data or not data.get("qa_handoff"):
             raise PermissionError("QA evidence required")
-        return self._validate_qa(data, self.store.get_handoff(data["qa_handoff"]))
+        result = self._validate_qa(data, self.store.get_handoff(data["qa_handoff"]))
+        self.review_evidence(task_id)
+        return result
+
+    def review_evidence(self, task_id):
+        data = self.get(task_id)
+        if not data or not data.get("review_handoff"):
+            raise PermissionError("Independent reviewer evidence required")
+        return self._validate_review(data, self.store.get_handoff(data["review_handoff"]))
 
     def require_release(self, state, agent):
         data = self.get(state["task_id"])

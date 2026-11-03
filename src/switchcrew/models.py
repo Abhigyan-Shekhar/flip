@@ -28,3 +28,16 @@ class TaskCreate(BaseModel):
     objective: str = Field(min_length=1, max_length=20000)
     source: dict = Field(default_factory=dict)
     acceptance_criteria: list[str] = Field(default_factory=list)
+
+
+class ReviewResult(BaseModel):
+    """Revision-bound independent reviewer receipt persisted on a handoff."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    status: str
+    implementation_assignment: str = Field(min_length=1)
+    reviewed_revision: str = Field(min_length=1)
+    base_revision: str = Field(min_length=1)
+    diff_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    findings: list[dict]
+    commands: list[dict] = Field(min_length=1)
