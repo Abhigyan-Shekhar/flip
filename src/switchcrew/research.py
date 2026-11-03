@@ -87,9 +87,61 @@ def retrieve_https(url: str, max_bytes: int = 262144, timeout: float = 10) -> st
             parser = _Text()
             parser.feed(text)
             text = " ".join(parser.parts)
-        return re.sub(r"\s+", " ", text).strip()
+        return "\n".join(re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()).strip()
     finally:
         connection.close()
+
+
+_RESEARCH_STOP = frozenset(
+    {
+        "what",
+        "which",
+        "how",
+        "are",
+        "the",
+        "and",
+        "for",
+        "from",
+        "with",
+        "about",
+        "does",
+        "find",
+        "return",
+        "source",
+        "sources",
+        "evidence",
+        "official",
+        "explaining",
+        "explain",
+    }
+)
+
+
+def research_terms(text):
+    """Whole tokens avoid matching unrelated substrings such as port in support."""
+    return set(re.findall(r"\b\w{3,}\b", text.lower())) - _RESEARCH_STOP
+
+
+def research_snippets(text, max_length=600):
+    """Bound paragraphs/code lines before ranking; do not return giant fenced blocks."""
+    snippets, seen = [], set()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("```") or line.startswith("~~~"):
+            continue
+        for sentence in re.split(r"(?<=[.!?])\s+", line):
+            sentence = re.sub(r"\s+", " ", sentence).strip()
+            while sentence:
+                split = min(len(sentence), max_length)
+                if split < len(sentence):
+                    boundary = sentence.rfind(" ", 0, split)
+                    split = boundary if boundary > max_length // 2 else split
+                chunk, sentence = sentence[:split].strip(), sentence[split:].strip()
+                normalized = chunk.casefold()
+                if chunk and normalized not in seen:
+                    snippets.append(chunk)
+                    seen.add(normalized)
+    return snippets
 
 
 @dataclass
@@ -105,31 +157,51 @@ class ResearchProvider:
             or any(not c.strip() for c in acceptance_criteria)
         ):
             raise ResearchError("A research question and explicit acceptance criteria are required")
-        terms = {word.lower() for word in re.findall(r"\w{3,}", question)}
+        terms = research_terms(question)
+        criterion_terms = [research_terms(c) for c in acceptance_criteria]
         evidence, errors = [], []
-        for url in self.source_urls[: self.max_sources]:
+        for url in list(dict.fromkeys(self.source_urls))[: self.max_sources]:
             try:
                 text = await asyncio.to_thread(self.fetch, url)
-                sentences = re.split(r"(?<=[.!?])\s+", text)
+                snippets = research_snippets(text)
                 ranked = sorted(
-                    enumerate(sentences),
-                    key=lambda item: -sum(term in item[1].lower() for term in terms),
+                    enumerate(snippets),
+                    key=lambda item: (
+                        -(
+                            2 * len(terms & research_terms(item[1]))
+                            + 3
+                            * sum(len(words & research_terms(item[1])) for words in criterion_terms)
+                        )
+                    ),
                 )
                 matches = [
-                    sentence[:1200]
-                    for _, sentence in ranked[:3]
-                    if any(term in sentence.lower() for term in terms)
-                ]
+                    sentence
+                    for _, sentence in ranked
+                    if (terms | set().union(*criterion_terms)) & research_terms(sentence)
+                ][:3]
                 if matches:
                     evidence.append({"url": url, "excerpts": matches})
             except (OSError, ValueError, http.client.HTTPException) as exc:
-                errors.append({"url": url, "error": str(exc)[:300]})
+                errors.append({"url": url, "error": type(exc).__name__})
+        criterion_evidence = [
+            {
+                "criterion": criterion,
+                "status": "human_review_required",
+                "source_urls": [
+                    source["url"]
+                    for source in evidence
+                    if any(words & research_terms(excerpt) for excerpt in source["excerpts"])
+                ],
+            }
+            for criterion, words in zip(acceptance_criteria, criterion_terms, strict=True)
+        ]
         return {
             "status": "evidence_found" if evidence else "blocked",
             "question": question,
             "acceptance_criteria": acceptance_criteria,
             "evidence": evidence,
             "errors": errors,
+            "criterion_evidence": criterion_evidence,
             "limitations": (
                 "Extractive matches from configured sources only; "
                 "acceptance criteria require human assessment."

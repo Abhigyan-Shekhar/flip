@@ -11,6 +11,7 @@ from .approval import ApprovalWorkflow
 from .discord import DiscordBinding, normalize_discord_event
 from .graphs import build_agent_graph, graph_result, invoke_agent_graph
 from .logging import configure_logging
+from .orchestration import Orchestrator
 from .research import ResearchProvider
 from .store import ConflictError, Store
 from .switch import SwitchClient, SwitchOwnershipLost
@@ -75,6 +76,8 @@ class Worker:
         release_repository="",
         release_base="",
         approval_users=(),
+        specialist_targets=None,
+        orchestration_job_key="",
     ):
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
@@ -90,6 +93,26 @@ class Worker:
             self.names[engineering_id] = engineering_name or engineering_id
         if release_id:
             self.names[release_id] = release_name or release_id
+        targets = {"research": research_id}
+        if engineering_id:
+            targets["engineering"] = engineering_id
+        for specialist, target in (specialist_targets or {}).items():
+            if not isinstance(target, dict) or not target.get("agent_id") or not target.get("name"):
+                raise ValueError("Specialist targets need agent_id and exact name")
+            targets[specialist] = target["agent_id"]
+            self.names[target["agent_id"]] = target["name"]
+        self.orchestrator = Orchestrator(
+            store,
+            pm_id,
+            targets,
+            engineering_route={
+                "qa": qa_id,
+                "release": release_id,
+                "job_key": orchestration_job_key,
+                "repository": release_repository,
+                "base": release_base,
+            },
+        )
         self.identity = pm_id if role == "pm" else research_id
         self.bindings = list(bindings)
         self.allowed_guilds, self.allowed_users = set(allowed_guilds), set(allowed_users)
@@ -163,11 +186,42 @@ class Worker:
         if not getattr(self.switch, "connected", True):
             return
         if self.role == "pm":
+            for row in self.store.connection.execute("SELECT task_id FROM plans").fetchall():
+                data = self.orchestrator.reconcile(row[0])
+                if data and data["phase"] in {"completed", "blocked"}:
+                    self._reply(
+                        row[0],
+                        "plan_" + data["phase"],
+                        "PM orchestration "
+                        + data["phase"]
+                        + ": "
+                        + json.dumps(
+                            {
+                                key: {
+                                    field: step[field]
+                                    for field in ("role", "status", "task_id", "reason")
+                                    if field in step
+                                }
+                                for key, step in data["steps"].items()
+                            }
+                        ),
+                    )
             for row in self.store.connection.execute(
                 "SELECT task_id FROM approval_workflows"
             ).fetchall():
                 task_id = row[0]
                 data = self.approvals.reconcile(task_id)
+                if (
+                    data
+                    and data["phase"] == "awaiting_engineering_approval"
+                    and data["spec"]["pm"] == self.pm_id
+                ):
+                    self._reply(
+                        task_id,
+                        "engineering_approval",
+                        f"Engineering request {task_id} awaits human approval. "
+                        "Task version: 1. No Engineering action has started.",
+                    )
                 if data and data["phase"] in {"human_review", "failed"}:
                     task = self.store.get_task(task_id)
                     if data["spec"]["pm"] != self.pm_id or task["status"] not in {
@@ -260,9 +314,10 @@ class Worker:
                 "handoff_id": "",
                 "session_id": task_id,
                 "question": question,
-                "requested_role": "engineering"
-                if request.get("kind") == "engineering"
-                else "research",
+                "requested_role": {
+                    "engineering": "engineering",
+                    "orchestrate": "orchestration",
+                }.get(request.get("kind"), "research"),
                 "acceptance_criteria": criteria,
             },
         )
@@ -277,6 +332,22 @@ class Worker:
                     "Send a new JSON request with question and nonempty acceptance_criteria. "
                     "This task remains awaiting clarification."
                 ),
+            )
+            return
+        if request.get("kind") == "orchestrate":
+            try:
+                self.orchestrator.start(task_id)
+                self.orchestrator.reconcile(task_id)
+            except ValueError:
+                self._reply(
+                    task_id, "plan_invalid", "Orchestration requires 1–12 bounded criteria."
+                )
+                return
+            self._reply(
+                task_id,
+                "plan_started",
+                f"PM created a durable plan for {task_id}. "
+                "Read-only specialists run independently; Engineering requires human approval.",
             )
             return
         if request.get("kind") == "engineering":
@@ -369,7 +440,12 @@ class Worker:
                 return
             self.store.accept_handoff(handoff["id"], self.identity)
             await self.flush_outbox()  # Explicit acceptance precedes evidence retrieval.
-            if self.store.get_task(handoff["task_id"])["status"] in {"CANCELLED", "COMPLETED"}:
+            current_task = self.store.get_task(handoff["task_id"])
+            parent_id = current_task["source"].get("parent_task_id")
+            parent = self.store.get_task(parent_id) if parent_id else None
+            if current_task["status"] in {"CANCELLED", "COMPLETED"} or (
+                parent_id and (not parent or parent["status"] != "IN_PROGRESS")
+            ):
                 self.store.complete_handoff(
                     handoff["id"],
                     self.identity,
@@ -435,6 +511,13 @@ class Worker:
             if owner != self.identity:
                 continue
             task = self.store.get_task(item["task_id"])
+            parent_id = task["source"].get("parent_task_id")
+            parent = self.store.get_task(parent_id) if parent_id else None
+            if payload.get("type") == "handoff" and (
+                task["status"] in {"CANCELLED", "COMPLETED"}
+                or (parent_id and (not parent or parent["status"] != "IN_PROGRESS"))
+            ):
+                continue
             thread = task["source"].get("thread_id") or task["source"].get("message_id")
             # Persisted logical delivery ID allows receiving workers to deduplicate
             # ambiguous transport outcomes; Switch itself has no POST idempotency API.
@@ -603,6 +686,8 @@ async def _main(role):
                 release_repository=settings.release_repository,
                 release_base=settings.release_base,
                 approval_users=settings.approval_user_ids,
+                specialist_targets=settings.specialist_targets,
+                orchestration_job_key=settings.orchestration_job_key,
             )
             await worker.run()
     finally:

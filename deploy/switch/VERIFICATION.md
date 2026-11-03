@@ -1,3 +1,22 @@
+# Integrated candidate and local evidence — November 3, 2026
+
+The onboarding fix `6b93d2b` and historical recovery-evidence branch are merged
+into the integration candidate on `master`. New recovery, configured specialist,
+Voice and PM orchestration changes are described in
+[the current status](../../docs/DAY1_STATUS.md). Controlled verification passes
+258 tests with 3 live tests skipped; real SIGKILL tests cover transaction rollback
+and durable pending handoff recovery.
+
+The real bundled Waggle MCP path separately passed cross-role persisted recall
+at `2026-11-02T06:17:50.419531+00:00`; see
+[the scoped evidence](../../docs/MEMORY.md#live-shared-memory-acceptance).
+No new Switch/Discord/Console/GitHub or paid Voice run was performed on this
+host. The older strict takeover failure remains an open **live** gate until the
+new EOF/heartbeat fix passes the original real-server probe. Historical passes
+and failures below are preserved rather than inferred from controlled tests.
+
+---
+
 # Console connection and onboarding integration — November 1, 2026
 
 Observation timestamp: `2026-11-01T13:59:46.938729+00:00` (UTC). Checkout before this fix:

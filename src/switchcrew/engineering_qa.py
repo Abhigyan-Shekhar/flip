@@ -105,6 +105,7 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                 managed["phase"] != "qa"
                 or not managed.get("engineering_approval", {}).get("approved")
                 or store.get_task(state["task_id"])["status"] != "QA_REVIEW"
+                or not approvals.parent_active(store.get_task(state["task_id"]))
                 or managed.get("qa_handoff") != state["handoff_id"]
                 or managed["spec"]["qa"] != connection.agent_id
             ):
@@ -132,6 +133,12 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                 authorize=lambda value: approvals.require_engineering(value, connection.agent_id),
             )
         else:
+
+            def qa_authorized(value):
+                task = store.get_task(value["task_id"])
+                if not task or task["status"] != "QA_REVIEW" or not approvals.parent_active(task):
+                    raise PermissionError("QA task/parent is no longer active")
+
             executor = QAExecutor(
                 ledger,
                 config["checkout_root"],
@@ -139,6 +146,7 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                 managed["revision"],
                 job.get("commands", []),
                 job.get("timeout", 120),
+                authorize=qa_authorized,
             )
         return await executor(state)
 

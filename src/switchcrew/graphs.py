@@ -89,7 +89,8 @@ def build_agent_graph(
         output = {
             "agent_role": spec.role.value,
             "valid": valid
-            and state.get("requested_role", "research") in {"research", "engineering"},
+            and state.get("requested_role", "research")
+            in {"research", "engineering", "orchestration"},
             "requested_role": state.get("requested_role", "research"),
             "memory_context": "",
             "memory_warnings": [],

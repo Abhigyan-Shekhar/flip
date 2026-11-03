@@ -70,6 +70,8 @@ class ApprovalWorkflow:
             raise ValueError("Unknown approval stage")
         with self.store._lock, self.store.transaction():
             task = self.store._check(task_id, expected_version)
+            if not self.parent_active(task):
+                raise PermissionError("Parent orchestration is no longer active")
             data = self.get(task_id)
             expected = "awaiting_engineering_approval" if stage == "engineering" else "human_review"
             if not data or data["phase"] != expected:
@@ -126,6 +128,11 @@ class ApprovalWorkflow:
             self._save(task_id, data)
             return data
 
+    def parent_active(self, task):
+        parent_id = task["source"].get("parent_task_id")
+        parent = self.store.get_task(parent_id) if parent_id else None
+        return not parent_id or bool(parent and parent["status"] == "IN_PROGRESS")
+
     def require_engineering(self, state, agent):
         data = self.get(state["task_id"])
         task = self.store.get_task(state["task_id"])
@@ -137,6 +144,7 @@ class ApprovalWorkflow:
             and data["spec"]["engineering"] == agent
             and data.get("engineering_handoff") == state["handoff_id"]
             and task["status"] == "IN_PROGRESS"
+            and self.parent_active(task)
             and handoff
             and handoff["recipient"] == agent
             and handoff["sender"] == data["spec"]["pm"]
@@ -232,6 +240,7 @@ class ApprovalWorkflow:
             data
             and data["phase"] == "release"
             and task["status"] in {"PUBLISH_APPROVED", "PUBLISHING"}
+            and self.parent_active(task)
             and data["spec"]["release"] == agent
             and data.get("release_handoff") == state["handoff_id"]
             and approval.get("approved") is True

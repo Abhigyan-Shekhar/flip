@@ -9,10 +9,14 @@ November 1. See the [evidence and remaining gates](deploy/switch/VERIFICATION.md
 and [recovery acceptance runbook](deploy/switch/RECOVERY_ACCEPTANCE.md). Deployment
 credentials and running services are local to that Mac, not supplied by Git.
 
-All 15 specified agents now have independent LangGraph scaffolds. PM and Research
-run their existing work through compiled graphs with SQLite checkpoints. Optional
-Waggle MCP memory provides project recall and curated outcome storage; a generic
-Switch runtime connects each additional specialist under its own identity. See
+All 15 specified agents have independent LangGraphs. PM and Research use durable
+SQLite checkpoints; configured specialists now produce cited documentation,
+support/knowledge/onboarding drafts, moderation/security reviews, schedule
+conflicts, analytics and incident timelines. A consent-gated Voice adapter handles
+uploaded WAV transcription and generated speech. Each specialist keeps its own
+Switch identity. [PM orchestration](docs/ORCHESTRATION.md) decomposes explicit
+criteria into bounded dependent tasks while preserving human Engineering approvals.
+Optional Waggle MCP memory provides shared recall and curated outcome storage. See
 [agent workflows](docs/AGENT_WORKFLOWS.md), [memory](docs/MEMORY.md), and
 [Switch runtimes](docs/AGENT_SWITCH.md).
 
@@ -33,7 +37,8 @@ uv run uvicorn switchcrew.api:create_app --factory --host 127.0.0.1 --no-access-
 `GET /health` is public. Task APIs require `Authorization: Bearer <token>`.
 Keep `.env`, SQLite files, and registration key files out of Git. A local macOS
 runtime that marks editable `.pth` files hidden may need `uv sync --frozen
---no-editable` before running the installed commands; tests use `src` directly.
+--no-editable --reinstall-package switchcrew` after source changes before running
+installed commands; tests use `src` directly.
 
 ```sh
 uv run pytest -q
@@ -80,8 +85,11 @@ release approval/rejection, and GitHub draft PR publication with an audit receip
 The route requires explicit identities, operator job templates and human approvers;
 unconfigured requests cannot execute Engineering or publish. Controlled local
 validation covers this pipeline; real Console-managed Codex and GitHub acceptance
-still need the verification host and private configuration. Discord voice and
-community workflows remain later work. Memory requires explicit configuration.
+still need the verification host and private configuration. Live Discord voice capture/DAVE remains unverified; the implemented
+[Voice workflow](docs/VOICE.md) processes consented files and generated replies.
+[Specialist outputs](docs/SPECIALISTS.md) are useful analyses/drafts rather than
+external account mutations. Memory requires explicit configuration; a real
+[cross-role MCP acceptance run](docs/MEMORY.md#live-shared-memory-acceptance) passed.
 
 Work began October 29, 2026 at the user's explicit request. The earlier
 [preparation notes](docs/PREPARATION.md) and [build plan](docs/BUILD_PLAN.md) remain

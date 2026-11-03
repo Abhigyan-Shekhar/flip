@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     discord_guild_ids: list[str] = Field(default_factory=list)
     discord_user_ids: list[str] = Field(default_factory=list)
     discord_participant_ids: list[str] = Field(default_factory=list)
+    specialist_targets: dict[str, dict[str, str]] = Field(default_factory=dict)
+    orchestration_job_key: str = ""
     research_source_urls: list[str] = Field(default_factory=list)
     research_max_sources: int = Field(default=5, ge=1, le=10)
     poll_interval_seconds: float = Field(default=1.0, ge=0.1, le=60)

@@ -492,3 +492,39 @@ async def test_console_onboarding_config_stays_private(setup, tmp_path, commit_c
     receipt(checkout, assignment_id(state()["handoff_id"]), final)
     result = await executor(state())
     assert result["status"] == ("implementation_failed" if commit_config else "implemented")
+
+
+@pytest.mark.asyncio
+async def test_qa_revocation_during_first_command_blocks_second_command(setup, tmp_path):
+    source, revision, ledger = setup
+    identity = assignment_id("implementation")
+    ledger.reserve(identity, {})
+    ledger.put(
+        identity,
+        {"result": {"status": "implemented", "checkout": str(source), "final_revision": revision}},
+    )
+    revoked = tmp_path / "revoked"
+    should_not_exist = tmp_path / "second-command"
+
+    def authorize(state):
+        if revoked.exists():
+            raise PermissionError("Parent cancelled")
+
+    commands = [
+        [
+            sys.executable,
+            "-c",
+            f"from pathlib import Path; Path({str(revoked)!r}).write_text('revoked')",
+        ],
+        [
+            sys.executable,
+            "-c",
+            f"from pathlib import Path; Path({str(should_not_exist)!r}).touch()",
+        ],
+    ]
+    qa = QAExecutor(ledger, tmp_path / "qa", identity, revision, commands, authorize=authorize)
+    result = await qa(state("qa-cancelled", "qa"))
+    assert result["status"] == "blocked"
+    assert len(result["commands"]) == 1
+    assert not should_not_exist.exists()
+    assert (await qa(state("qa-cancelled", "qa")))["status"] == "blocked"

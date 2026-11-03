@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from switchcrew.approval import ApprovalWorkflow
 from switchcrew.logging import configure_logging
 from switchcrew.models import TaskStatus
+from switchcrew.orchestration import Orchestrator
 from switchcrew.settings import Settings
 from switchcrew.store import ConflictError, InvalidTransitionError, Store
 
@@ -33,7 +34,7 @@ class SourceContext(RequestModel):
 
 
 class TaskCreate(RequestModel):
-    kind: Literal["research", "engineering"] = "research"
+    kind: Literal["research", "engineering", "orchestrate"] = "research"
     job_key: str | None = Field(default=None, min_length=1, max_length=200)
     objective: str = Field(min_length=1, max_length=10000)
     acceptance_criteria: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(
@@ -136,6 +137,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.database_path.parent.mkdir(parents=True, exist_ok=True)
         app.state.store = Store(settings.database_path)
         app.state.approvals = ApprovalWorkflow(app.state.store, human_tokens)
+        targets = {
+            "research": settings.research_agent_id,
+            "engineering": settings.engineering_agent_id,
+        }
+        targets.update(
+            {role: spec.get("agent_id", "") for role, spec in settings.specialist_targets.items()}
+        )
+        app.state.orchestrator = Orchestrator(
+            app.state.store,
+            settings.pm_agent_id,
+            targets,
+            engineering_route={
+                "qa": settings.qa_agent_id,
+                "release": settings.release_agent_id,
+                "job_key": settings.orchestration_job_key,
+                "repository": settings.release_repository,
+                "base": settings.release_base,
+            },
+        )
         yield
         close = getattr(app.state.store, "close", None)
         if close:
@@ -230,6 +250,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/tasks", dependencies=authenticated, status_code=201, response_model=TaskResponse)
     def create_task(body: TaskCreate, request: Request):
+        if body.kind == "orchestrate":
+            if not settings.pm_agent_id:
+                raise HTTPException(409, "PM orchestration is not configured")
+            if len(body.acceptance_criteria) > 12:
+                raise HTTPException(422, "Orchestration supports at most 12 criteria")
         if body.kind == "engineering" and not all(
             (
                 body.job_key,
@@ -247,6 +272,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             body.source.model_dump(exclude_none=True),
             body.acceptance_criteria,
         )
+        if body.kind == "orchestrate":
+            request.app.state.orchestrator.start(task["id"])
+            request.app.state.orchestrator.reconcile(task["id"])
+            task = request.app.state.store.get_task(task["id"])
         if body.kind == "engineering":
             request.app.state.approvals.request(
                 task["id"],
@@ -282,7 +311,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "/tasks/{task_id}/transitions", dependencies=authenticated, response_model=TaskResponse
     )
     def transition_task(task_id: str, body: TaskTransition, request: Request):
-        if request.app.state.approvals.get(task_id) and body.status != "CANCELLED":
+        if (
+            request.app.state.approvals.get(task_id) or request.app.state.orchestrator.get(task_id)
+        ) and body.status != "CANCELLED":
             raise HTTPException(409, "Engineering lifecycle is controlled by approvals and QA")
         return sanitize(
             request.app.state.store.transition_task(
@@ -291,6 +322,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 body.expected_version,
             )
         )
+
+    @app.get("/tasks/{task_id}/plan", dependencies=authenticated)
+    def get_plan(task_id: str, request: Request):
+        data = request.app.state.orchestrator.reconcile(task_id)
+        if data is None:
+            raise HTTPException(404, "Orchestration plan not found")
+        return sanitize(data)
 
     @app.get("/tasks/{task_id}/workflow", dependencies=authenticated)
     def get_workflow(task_id: str, request: Request):

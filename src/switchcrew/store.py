@@ -168,6 +168,13 @@ class Store:
         status = TaskStatus(str(status).upper()).value
         with self.transaction():
             task = self._check(task_id, expected_version)
+            publishing_child = self.connection.execute(
+                "SELECT id FROM tasks WHERE json_extract(source, '$.parent_task_id')=? "
+                "AND status='PUBLISHING' LIMIT 1",
+                (task_id,),
+            ).fetchone()
+            if publishing_child:
+                raise InvalidTransitionError("A child publication is already in flight")
             allowed = set(TRANSITIONS.get(task["status"], set()))
             if task["status"] not in {"COMPLETED", "CANCELLED", "PUBLISHING"}:
                 allowed.update({"BLOCKED", "CANCELLED", "FAILED"})
@@ -291,7 +298,20 @@ class Store:
                 raise InvalidTransitionError("Handoff must be accepted before completion")
             task = self.get_task(handoff["task_id"])
             if execution_role is not None and status == "completed":
-                if task["status"] in {"CANCELLED", "COMPLETED"}:
+                parent_id = task["source"].get("parent_task_id")
+                parent = self.get_task(parent_id) if parent_id else None
+                recorded_release = (
+                    execution_role == "release"
+                    and task["status"] == "PR_OPEN"
+                    and result.get("status") == "completed"
+                    and parent
+                    and parent["status"] == "COMPLETED"
+                )
+                if task["status"] in {"CANCELLED", "COMPLETED"} or (
+                    parent_id
+                    and (not parent or parent["status"] != "IN_PROGRESS")
+                    and not recorded_release
+                ):
                     result = {
                         "status": "blocked",
                         "reason": "task_terminal",

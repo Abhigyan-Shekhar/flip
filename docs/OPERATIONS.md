@@ -36,6 +36,7 @@ responses omit request values; API logs record request IDs, methods and status.
 | `POST /tasks/{id}/transitions` | Bearer | Checked research state change or pre-publication cancellation |
 | `GET /tasks/{id}/workflow` | Service bearer | Engineering workflow, approvals, QA and receipt |
 | `POST /tasks/{id}/approvals` | Human bearer | Version-checked Engineering/release approval or rejection |
+| `GET /tasks/{id}/plan` | Service bearer | Persisted orchestration steps, child IDs and results |
 
 Task creation takes `{"objective":"Research Switch reconnect behavior",
 "acceptance_criteria":["Find source excerpts"],"source":{"room_id":"...",
@@ -50,6 +51,14 @@ API-created research tasks are stored only. Explicit engineering requests with
 after human approval PM delivers the durable handoff to Engineering. See the
 [new runbook](APPROVAL_RELEASE.md) for bodies, setup and authorization limits.
 Voice endpoints remain outside this implementation.
+
+`kind: "orchestrate"` creates a bounded dependent plan from 1–12 criteria. PM
+routes only to configured specialist identities, polls durable completions and
+requires separate approvals for every Engineering child. See
+[orchestration setup](ORCHESTRATION.md). Generic configured specialists launch
+with `--capability-config /private/role.json`; the protected file selects local
+snapshot analysis or consented Voice I/O. It cannot replace the privileged
+Engineering/QA/Release entry point.
 
 ## Independent workers
 

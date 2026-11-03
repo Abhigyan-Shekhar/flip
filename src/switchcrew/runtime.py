@@ -129,7 +129,11 @@ class AgentRuntime:
                 if not self.is_ready():
                     return
                 task = self.store.get_task(handoff["task_id"])
-                if task["status"] in {"CANCELLED", "COMPLETED"}:
+                parent_id = task["source"].get("parent_task_id")
+                parent = self.store.get_task(parent_id) if parent_id else None
+                if task["status"] in {"CANCELLED", "COMPLETED"} or (
+                    parent_id and (not parent or parent["status"] != "IN_PROGRESS")
+                ):
                     self.store.complete_handoff(
                         handoff["id"],
                         c.agent_id,
@@ -172,7 +176,12 @@ class AgentRuntime:
             if owner != c.agent_id:
                 continue
             task = self.store.get_task(item["task_id"])
-            if p["type"] == "handoff" and task["status"] in {"CANCELLED", "COMPLETED"}:
+            parent_id = task["source"].get("parent_task_id")
+            parent = self.store.get_task(parent_id) if parent_id else None
+            if p["type"] == "handoff" and (
+                task["status"] in {"CANCELLED", "COMPLETED"}
+                or (parent_id and (not parent or parent["status"] != "IN_PROGRESS"))
+            ):
                 continue
             target = c.target_names.get(item["recipient"])
             if not target:
@@ -216,7 +225,9 @@ class AgentRuntime:
         cursor = self.store.get_cursor(identity)
         self.switch.cursor = int(cursor) if cursor is not None else None
         # A restart can have durable work even if the stream has no new messages.
-        async for event in self.switch.events():
+        from .workers import polling_events
+
+        async for event in polling_events(self.switch.events()):
             if event.get("type") == "connection_state":
                 await self.on_connected()
             elif event.get("type") == "gap":
@@ -241,7 +252,7 @@ def load_connection(path, role):
     return connection
 
 
-async def _main(role, registry, database, url):
+async def _main(role, registry, database, url, capability_config=None):
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
     from .graphs import build_agent_graph
@@ -249,9 +260,28 @@ async def _main(role, registry, database, url):
     from .research import ResearchProvider
     from .settings import Settings
 
+    if capability_config and Path(registry).stat().st_mode & 0o077:
+        raise ValueError("Capability runtime registry must be private")
     c = load_connection(registry, role)
-    settings = Settings(**({"switch_base_url": url} if url else {}))
+    private_config = {}
+    if capability_config:
+        path = Path(capability_config)
+        if path.stat().st_mode & 0o077:
+            raise ValueError("Capability configuration must be private")
+        private_config = json.loads(path.read_text())
+        if private_config.get("role") != role:
+            raise ValueError("Capability configuration role differs from registry")
+    settings = Settings(
+        **({"_env_file": None, **private_config.get("memory", {})} if capability_config else {}),
+        **({"switch_base_url": url} if url else {}),
+    )
     database = database or settings.database_path
+    if (
+        capability_config
+        and role == "voice"
+        and (Path(private_config["ledger"]).resolve() == Path(database).resolve())
+    ):
+        raise ValueError("Application state and Voice execution ledger require separate files")
     settings.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     store = Store(database)
     client = SwitchClient(
@@ -261,7 +291,36 @@ async def _main(role, registry, database, url):
         connection_id=str(uuid5(NAMESPACE_URL, f"switchcrew:{c.role}:{c.agent_id}")),
         rooms=[c.room_id],
     )
+    executor, execution_ledger = None, None
     try:
+        if capability_config:
+            from .specialists import SPECIALIST_ROLES, specialist_executor
+
+            if role in SPECIALIST_ROLES:
+                executor = specialist_executor(role, private_config["capability"])
+            elif role == "voice":
+                from .engineering import Ledger
+                from .voice import voice_executor_from_config
+
+                execution_ledger = Ledger(private_config["ledger"])
+
+                def voice_authorized(state):
+                    task = store.get_task(state["task_id"])
+                    if not task or task["status"] not in {"IN_PROGRESS", "QA_REVIEW"}:
+                        raise PermissionError("Voice task is not active")
+                    parent_id = task["source"].get("parent_task_id")
+                    if parent_id and not (
+                        (parent := store.get_task(parent_id)) and parent["status"] == "IN_PROGRESS"
+                    ):
+                        raise PermissionError("Voice parent task is not active")
+
+                executor = voice_executor_from_config(
+                    private_config["capability"], execution_ledger, authorize=voice_authorized
+                )
+            else:
+                raise ValueError(
+                    "Use the approval-gated entry point for privileged Engineering/QA/Release"
+                )
         async with AsyncSqliteSaver.from_conn_string(str(settings.checkpoint_path)) as saver:
             graph = build_agent_graph(
                 role,
@@ -269,17 +328,23 @@ async def _main(role, registry, database, url):
                     settings.research_source_urls, settings.research_max_sources
                 ),
                 memory=memory_from_settings(settings),
-                checkpointer=saver,
+                executor=executor,
+                checkpointer=None if role == "voice" else saver,
             )
             await AgentRuntime(c, store, client, graph).run()
     finally:
         await client.close()
         store.close()
+        if execution_ledger is not None:
+            execution_ledger.close()
 
 
-async def run_runtime(role, registry, database, url):
+async def run_runtime(role, registry, database, url, capability_config=None):
     try:
-        await _main(role, registry, database, url)
+        if capability_config:
+            await _main(role, registry, database, url, capability_config)
+        else:
+            await _main(role, registry, database, url)
     except Exception as exc:
         terminal = ownership_lost(exc)
         log.error(
@@ -298,10 +363,17 @@ if __name__ == "__main__":
     )
     parser.add_argument("--database")
     parser.add_argument("--url")
+    parser.add_argument(
+        "--capability-config", help="Private operator-owned specialist/voice config"
+    )
     args = parser.parse_args()
     if not args.registry:
         parser.error("--registry or SWITCHCREW_AGENT_REGISTRY is required")
     from .logging import configure_logging
 
     configure_logging()
-    raise SystemExit(asyncio.run(run_runtime(args.role, args.registry, args.database, args.url)))
+    raise SystemExit(
+        asyncio.run(
+            run_runtime(args.role, args.registry, args.database, args.url, args.capability_config)
+        )
+    )

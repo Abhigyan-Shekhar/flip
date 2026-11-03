@@ -36,10 +36,24 @@ def generated_inputs(checkout):
 
 
 class QAExecutor:
-    def __init__(self, ledger, root, implementation_assignment, revision, commands, timeout=120):
+    def __init__(
+        self,
+        ledger,
+        root,
+        implementation_assignment,
+        revision,
+        commands,
+        timeout=120,
+        authorize=None,
+    ):
         self.ledger, self.root = ledger, Path(root).resolve()
         self.implementation = implementation_assignment
         self.revision, self.commands, self.timeout = revision, commands, timeout
+        self.authorize = authorize
+
+    def check_approval(self, state):
+        if self.authorize is not None and self.authorize(state) is False:
+            raise PermissionError("QA task authorization denied")
 
     def current(self):
         data = self.ledger.get(self.implementation)
@@ -56,6 +70,10 @@ class QAExecutor:
 
     async def __call__(self, state):
         identity = "qa-" + assignment_id(state["handoff_id"])
+        try:
+            self.check_approval(state)
+        except PermissionError:
+            return outcome("blocked", identity, reason="qa_task_no_longer_active")
         if (
             self.timeout <= 0
             or not self.commands
@@ -96,6 +114,7 @@ class QAExecutor:
         try:
             revision_unchanged = True
             for index, command in enumerate(self.commands):
+                self.check_approval(state)
                 checkout = run_dir / f"command-{index}"
                 subprocess.run(
                     [
@@ -126,6 +145,7 @@ class QAExecutor:
                     },
                 )
                 with tempfile.TemporaryFile() as output:
+                    self.check_approval(state)
                     process = await asyncio.create_subprocess_exec(
                         *command,
                         cwd=checkout,
@@ -180,6 +200,7 @@ class QAExecutor:
                 and all(r["exit_code"] == 0 and not r["timed_out"] for r in records)
                 else "qa_failed"
             )
+            self.check_approval(state)
             if self.stale():
                 status = "stale_qa"
             result = outcome(
@@ -189,6 +210,14 @@ class QAExecutor:
                 tested_revision=self.revision,
                 commands=records,
                 checkout=str(checkout),
+            )
+        except PermissionError:
+            result = outcome(
+                "blocked",
+                identity,
+                tested_revision=self.revision,
+                commands=records,
+                reason="qa_task_no_longer_active",
             )
         except (OSError, ValueError, subprocess.CalledProcessError):
             result = outcome(

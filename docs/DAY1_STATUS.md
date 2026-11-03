@@ -1,5 +1,41 @@
 # Day 1 implementation and review — October 29, 2026
 
+## Integration update — November 3, 2026
+
+Merged the checkout/onboarding branch through `6b93d2b` into local `master` and
+retained the separately recorded recovery evidence through merge `ba35bff`.
+Three requested subagents implemented/reviewed recovery, Voice, and specialist
+executors; the coordinating agent integrated runtime/PM behavior and reviewed
+cross-agent authorization and cancellation.
+
+| Workstream | Local result | Live acceptance boundary |
+| --- | --- | --- |
+| Checkout/onboarding | Merged private `.switch/config/` exclusion and tracked-credential rejection; regression tests pass. | Retry a new genuinely human-approved managed assignment on the verification Mac; the failed prior task remains evidence. |
+| Recovery | Fixed clean-EOF/heartbeat takeover race without weakening the one-open assertion. Added real SIGKILL transaction/outbox recovery checks. | Earlier live record had 2 heartbeat probes pass and strict takeover fail. Candidate fix needs the same live probe rerun; no Switch services are reachable here. |
+| Voice | Real ElevenLabs file STT/TTS adapters, explicit revocable per-subject consent, bounded inputs/outputs, private artifacts and durable billed-call claims. | No paid provider request or Discord audio capture was performed. Live DAVE receive remains unverified. |
+| Specialist executors | Nine roles now compute cited documentation/support/knowledge/onboarding drafts, moderation/security reviews, scheduling conflicts, analytics and incident timelines. Private-config CLI wiring is tested. | These are read-only local snapshot analyses/drafts, not external mutations or proof of deployment in Discord. |
+| Waggle | Real bundled MCP server stored an Engineering fixture and a fresh Documentation client recalled it across sessions on November 2. | Isolated synthetic acceptance scope; this does not enable memory on the other Mac's Discord workers. |
+| PM orchestration | Bounded criterion-based decomposition, stable dependent children, immutable routes, durable dispatch/results and child Engineering approval prompts. | Deterministic rules rather than an LLM planner. Live multi-specialist Discord acceptance still needs provisioning. |
+| Research/documentation | Criteria-aware whole-token ranking, deduplication, bounded Markdown excerpts, criterion evidence links and cited document artifacts. | Evidence and completed drafts still require human criterion assessment. |
+
+Integrated verification: **258 tests passed; 3 live tests skipped**. Ruff lint,
+format, lockfile and diff checks passed; source/wheel builds and installed CLI
+smoke checks passed. No private acceptance database or provider configuration is
+included. On this host, refreshing an existing noneditable installation required
+`uv sync --frozen --no-editable --reinstall-package switchcrew`.
+
+Integration review fixed Research-completion notification ordering, missing
+Engineering-child approval prompts, inactive-parent delivery/execution, and QA
+revocation between commands. Parent cancellation is transactionally refused
+while a child publication is in flight. Existing external work already in flight
+cannot be recalled by a database update.
+
+Runbooks: [orchestration](ORCHESTRATION.md), [specialists](SPECIALISTS.md),
+[Voice](VOICE.md), [memory evidence](MEMORY.md#live-shared-memory-acceptance),
+[recovery](../deploy/switch/RECOVERY_ACCEPTANCE.md), and
+[approval/release](APPROVAL_RELEASE.md). Earlier reports below retain their
+original dates, test counts and live scope.
+
 ## Approved Engineering and Release — November 1, 2026
 
 PM now accepts explicit engineering requests, waits for a separately authorized

@@ -590,3 +590,28 @@ async def test_pm_graph_routes_engineering_to_approval_without_execution():
     result = await invoke_agent_graph(build_agent_graph("pm"), state)
     assert result["result"]["status"] == "awaiting_approval"
     assert result["result"]["selected_role"] == "engineering"
+
+
+@pytest.mark.asyncio
+async def test_parent_completion_after_durable_pr_receipt_preserves_release_result(flow, tmp_path):
+    store, _, workflow, task_id, *_ = flow
+    parent = store.create_task("Release orchestration", {}, ["Fix the bug"])
+    parent = store.transition_task(parent["id"], "PLANNED", 0)
+    store.transition_task(parent["id"], "IN_PROGRESS", parent["version"])
+    source = store.get_task(task_id)["source"]
+    store.connection.execute(
+        "UPDATE tasks SET source=? WHERE id=?",
+        (json.dumps({**source, "parent_task_id": parent["id"]}), task_id),
+    )
+    await implement_and_review(flow, tmp_path)
+    decide(flow, "release")
+    executor, state = release_executor(flow, GitHubDouble())
+    store.accept_handoff(state["handoff_id"], "release")
+    result = await executor(state)
+    assert workflow.get(task_id)["receipt"]
+    # PM can see the durable receipt while Release's graph is still awaiting memory I/O.
+    parent = store.get_task(parent["id"])
+    store.transition_task(parent["id"], "COMPLETED", parent["version"])
+    completed = store.complete_handoff(state["handoff_id"], "release", result, "release")
+    assert completed["result"]["status"] == "completed"
+    assert completed["result"]["receipt"]["pr_url"] == "https://github.com/org/repo/pull/1"

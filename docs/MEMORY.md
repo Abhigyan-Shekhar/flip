@@ -70,3 +70,49 @@ Unit tests verify scoped tool dispatch, opt-out, error handling and credential
 filtering, including a real SDK stdio subprocess roundtrip against an isolated
 minimal MCP test server. They do not claim a live production Waggle connection or successful
 production writes.
+
+## Live shared-memory acceptance
+
+A real bundled Waggle MCP acceptance run passed at
+`2026-11-02T06:17:50.419531+00:00` (11:47:50 IST). The application adapter wrote
+an explicitly synthetic decision as Engineering and a newly created Documentation
+client recalled its unique marker under another session. `verbatim_stored=true`,
+`recalled_marker=true`, prime available, and no warnings were observed. Each MCP
+call starts a fresh server process, so the result exercised persisted SQLite
+state rather than a local Python cache. No HTTP/stdio doubles were used.
+
+Scope: `github.com/Abhigyan-Shekhar/flip/acceptance/shared-memory-20261102`.
+The real bundled runtime used SQLite and deterministic extraction in a separate
+ignored acceptance database. This does not change the production project's
+facts or prove that the verification Mac's Discord workers have memory enabled.
+Private configuration/database/report are under `.switch/local-acceptance/` on
+the development host and are not committed.
+
+Repeat with the opt-in CLI and a chmod-600 config using existing memory settings:
+
+```json
+{
+  "memory_enabled": true,
+  "memory_project": "github.com/Abhigyan-Shekhar/flip/acceptance/UNIQUE_RUN",
+  "waggle_command": [
+    "/usr/bin/env",
+    "WAGGLE_BACKEND=sqlite",
+    "WAGGLE_MODEL=deterministic",
+    "WAGGLE_DB_PATH=/private/crew/acceptance-memory.sqlite3",
+    "/absolute/path/to/real/waggle-server",
+    "serve", "--transport", "stdio", "--quiet"
+  ]
+}
+```
+
+```sh
+uv run python -m switchcrew.memory_acceptance \
+  --config /private/crew/memory-acceptance.json \
+  --report /private/crew/new-memory-report.json
+```
+
+A dedicated `/acceptance/` project is required; never place synthetic business
+facts in the production project. Report creation refuses to overwrite an existing
+file. The command exits nonzero if persistence or cross-client recall is not
+confirmed. Provider errors are summarized without raw payloads. Use production
+memory settings only for real curated outcomes after the acceptance run.

@@ -6,6 +6,13 @@ contracts; `src/switchcrew/graphs.py` builds the graphs. There is no graph that
 privately executes the entire workforce. Independent workers exchange durable
 addressed handoffs through Switch.
 
+Configured execution is now available for all nine snapshot-based specialist
+roles plus consented Voice file I/O. Use the generic runtime's protected
+`--capability-config` flag; unconfigured default graphs still return blocked.
+See [specialist contracts](SPECIALISTS.md), [Voice](VOICE.md), and
+[bounded PM orchestration](ORCHESTRATION.md). These analyses/drafts do not grant
+moderation, calendar-write, deployment or publication authority.
+
 ## Role coverage
 
 | Role | Internal work node | Default implementation |
@@ -43,7 +50,7 @@ requires the documented verification host checks.
 ## State and routing
 
 The common typed state includes `agent_role`, `task_id`, `handoff_id`, `session_id`,
-`question`, `acceptance_criteria`, `valid`, `memory_context`, `memory_warnings`,
+`question`, `requested_role`, `acceptance_criteria`, `valid`, `memory_context`, `memory_warnings`,
 `memory_persisted` and structured `result`. Each graph follows:
 
 `validate_request → recall_memory → role work node → observe_outcome`
