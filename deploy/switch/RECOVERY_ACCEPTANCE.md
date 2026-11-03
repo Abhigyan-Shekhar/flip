@@ -10,11 +10,28 @@ on another computer do not reach it. Keep the deployed identities and data.
 | --- | --- | --- |
 | Real original-thread workflow | Recorded in [VERIFICATION.md](VERIFICATION.md) | Repeat after deploying this branch |
 | Worker/API restart and disconnected workers | Recorded on verification Mac | Repeat after deploying this branch |
-| Gap callback/replay | Real injected missing-ticket gap recorded | Request submitted while PM is absent must complete after the forced gap |
-| Heartbeat/refusal handling | Controlled regressions; live probes below | Run all three probes on the real pinned server |
+| Gap callback/replay | Verification Mac on `50e24b2`: offline request survived injected application-cursor gap; counts advanced once and stayed stable after restart | Repeat after deploying the candidate; keep natural retention separate |
+| Heartbeat/refusal handling | Verification Mac on `50e24b2`: expiry and `no_stream` PASS; strict `taken_over` loser probe FAIL because it opened twice | Candidate EOF/heartbeat fix has controlled regressions; rerun all three real probes |
+| Supervised takeover | Verification Mac on `50e24b2`: isolated loser exited 0, no restart, winner stayed healthy | Repeat using candidate image and retain container observations |
 | Natural retention expiry | Not exercised | Keep separate from injected missing-ticket evidence |
 | Fresh provisioning | Existing deployment used | Reproduce with new credentials/data on an isolated stack |
-| Desktop Console connection | Not established | Verify separately; authenticated gateway provisioning worked |
+| Desktop Console connection | Later November 1 onboarding record verifies connection and a dedicated agent/location, but no managed implementation | Continue the separate approval/Engineering/QA live runbook |
+
+Historical live results above are from the separate evidence branch
+`codex/live-recovery-evidence` (`a5fe2ff`, `ee27655`). Its strict takeover failure
+remains an open live gate; later supervised and gap passes do not erase it.
+The candidate now checks the old generation after clean stream EOF before
+opening a replacement stream, and no longer suppresses a completed heartbeat's
+terminal ownership-loss error during cleanup. Controlled regressions cover a
+clean EOF with `taken_over` (one open only) and a clean EOF with `no_stream`
+(reconnects with the persisted cursor and generation fence). A live rerun is
+required before marking that failed gate resolved.
+
+Development-host check on November 2, 2026: Docker is unavailable, localhost
+ports 8080/3001/8000 are unreachable and the private disposable probe file is
+absent. No new live recovery test was executed here. Preserve the verification
+Mac's existing configuration and evidence; these host limitations do not
+invalidate its recorded runs.
 
 Automated controlled tests do not establish external acceptance. A skipped live
 test is an open gate. Record actual timestamps, commit/server versions, task and
@@ -67,7 +84,7 @@ unset SWITCH_REGISTRATION_TOKEN
 SWITCHCREW_LIVE_RECOVERY=1 \
 SWITCHCREW_LIVE_AGENT_FILE="$PWD/.switch/recovery-probe.json" \
 SWITCHCREW_LIVE_SWITCH_URL=http://127.0.0.1:8080 \
-uv run pytest -q -m live tests/test_switch.py
+uv run pytest -q --tb=short --no-showlocals -m live tests/test_switch.py
 ```
 
 The three opt-in tests use fresh random connection IDs and no PM/Research room
@@ -91,7 +108,11 @@ Do not take over a production worker to perform this check. Revoke the disposabl
 probe registration after acceptance and retain its key only until cleanup.
 
 Without explicit opt-in, the tests skip. Missing/bad private probe configuration
-after opt-in fails. Credentials are not supplied as command arguments or printed.
+after opt-in fails. The credential fixture redacts its key from its representation;
+the command also suppresses locals to keep failure reports credential-safe.
+Do not enable `--showlocals` or attach raw private HTTP traces. Revoke the
+probe even if a test fails, and redact artifacts before sharing them.
+Credentials are not supplied as command arguments or intentionally printed.
 
 ## Request submitted during a forced gap
 

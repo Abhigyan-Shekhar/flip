@@ -213,6 +213,7 @@ class SwitchClient:
                 ) as response:
                     response.raise_for_status()
                     first = True
+                    stream_ended = False
                     frames = parse_sse(response.aiter_lines()).__aiter__()
                     while True:
                         next_frame = asyncio.create_task(anext(frames))
@@ -226,6 +227,7 @@ class SwitchClient:
                             try:
                                 frame = next_frame.result()
                             except StopAsyncIteration:
+                                stream_ended = True
                                 break
                         finally:
                             if not next_frame.done():
@@ -278,6 +280,20 @@ class SwitchClient:
                             if self.cursor is not None and sequence <= self.cursor:
                                 continue
                         yield event
+                    if stream_ended and self.generation is not None:
+                        self._disconnected()
+                        # A server may close the displaced stream before its eviction
+                        # frame reaches us. Check the old generation before opening
+                        # another stream: an ordinary EOF alone is not permission to
+                        # reclaim a connection now owned by a newer holder.
+                        await self._request(
+                            "POST",
+                            f"/agents/{self.agent_id}/connection/beat",
+                            json={
+                                "connection_id": self.connection_id,
+                                "generation": self.generation,
+                            },
+                        )
             except httpx.HTTPStatusError as exc:
                 if _taken_over(exc.response):
                     raise SwitchOwnershipLost("Connection incarnation taken over") from exc
@@ -306,9 +322,7 @@ class SwitchClient:
                 self._disconnected()
                 if beat:
                     beat.cancel()
-                    with contextlib.suppress(
-                        asyncio.CancelledError, httpx.HTTPError, SwitchOwnershipLost
-                    ):
+                    with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError):
                         await beat
             await asyncio.sleep(delay)
             delay = min(delay * 2, 10)

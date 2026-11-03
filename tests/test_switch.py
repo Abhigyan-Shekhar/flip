@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
@@ -189,6 +190,8 @@ async def test_fenced_reconnect_stands_down_if_socket_missed_eviction():
     opens = []
 
     def handle(request):
+        if request.url.path.endswith("/beat"):
+            return httpx.Response(409, json={"detail": {"code": "no_stream"}})
         opens.append(request)
         if len(opens) == 1:
             state = {
@@ -211,6 +214,69 @@ async def test_fenced_reconnect_stands_down_if_socket_missed_eviction():
         with pytest.raises(SwitchOwnershipLost, match="taken over"):
             await asyncio.wait_for(anext(stream), 1)
         assert len(opens) == 2
+
+
+@pytest.mark.asyncio
+async def test_clean_eof_probes_generation_before_reopening_a_taken_over_stream():
+    opens, beats = [], []
+
+    def handle(request):
+        if request.url.path.endswith("/beat"):
+            beats.append(json.loads(request.content))
+            return httpx.Response(409, json={"detail": {"code": "taken_over"}})
+        opens.append(request)
+        state = {
+            "connection_id": "c",
+            "agent_id": "a",
+            "rooms": [],
+            "generation": 7,
+            "heartbeat_interval_seconds": 10,
+        }
+        # Model the server closing a losing stream without delivering eviction.
+        return httpx.Response(200, text=f"event: connection_state\ndata: {json.dumps(state)}\n\n")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        client = SwitchClient("https://s.test", "a", "key", "c", client=http)
+        stream = client.events()
+        await anext(stream)
+        with pytest.raises(SwitchOwnershipLost, match="taken over"):
+            await asyncio.wait_for(anext(stream), 1)
+        assert len(opens) == 1
+        assert beats == [{"connection_id": "c", "generation": 7}]
+        assert not client.connected
+
+
+@pytest.mark.asyncio
+async def test_clean_eof_no_stream_refusal_reconnects_with_cursor_and_fence():
+    opens, beats = [], []
+
+    def handle(request):
+        if request.url.path.endswith("/beat"):
+            beats.append(json.loads(request.content))
+            return httpx.Response(409, json={"detail": {"code": "no_stream"}})
+        opens.append(request)
+        if len(opens) == 2:
+            assert request.url.params["expected_generation"] == "7"
+            assert request.headers["Last-Event-ID"] == "42"
+        state = {
+            "connection_id": "c",
+            "agent_id": "a",
+            "rooms": [],
+            "generation": 6 + len(opens),
+            "heartbeat_interval_seconds": 10,
+        }
+        return httpx.Response(200, text=f"event: connection_state\ndata: {json.dumps(state)}\n\n")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        client = SwitchClient("https://s.test", "a", "key", "c", client=http)
+        stream = client.events()
+        await anext(stream)
+        await client.acknowledge(42)
+        await asyncio.wait_for(anext(stream), 1)
+        assert len(opens) == 2
+        assert beats == [{"connection_id": "c", "generation": 7}]
+        assert client.generation == 8 and client.cursor == 42
+        await stream.aclose()
 
 
 @pytest.mark.asyncio
@@ -332,6 +398,20 @@ async def test_history_pagination_converts_epoch_millis_to_iso8601():
     assert len(history["room"]) == 2
 
 
+@dataclass(frozen=True)
+class LiveRecoveryCredentials:
+    # Pytest displays fixture arguments on failures, including short tracebacks.
+    # Keep the disposable credential out of that representation.
+    url: str
+    agent_id: str
+    api_key: str = field(repr=False)
+
+    def __iter__(self):
+        yield self.url
+        yield self.agent_id
+        yield self.api_key
+
+
 @pytest.fixture
 def live_recovery_credentials():
     """Opt-in only: use a newly registered probe agent, never PM or Research."""
@@ -357,7 +437,7 @@ def live_recovery_credentials():
         pytest.fail(
             "Configure a valid private isolated probe identity and Switch URL", pytrace=False
         )
-    return url, identity, key
+    return LiveRecoveryCredentials(url, identity, key)
 
 
 @pytest.mark.live
