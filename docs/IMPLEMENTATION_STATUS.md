@@ -100,3 +100,19 @@ Final full run: `.venv/bin/python -m pytest -q --tb=short` — **306 passed,
 `git diff --check` passed. No live service results were included in this count.
 The last follow-ups verify initial execution-ledger backward compatibility and
 reusing a committed status reply after a crash before inbox completion.
+
+## Company Brain follow-up — November 3, 2026
+
+The prior implementation was committed and pushed as `82e3a99`. Three Luna
+agents contributed the optional Company Brain adapter, runtime wiring and review.
+Research and direct PM Engineering requests now retain bounded graph context and
+coverage warnings; Engineering receives it after human approval. See
+COMPANY_BRAIN.md for setup and remaining integration boundaries. Live retrieval
+remains unverified because this checkout is absent from the connected registry.
+
+Company Brain checkpoint: **326 passed, 3 live tests skipped** in 28.35 seconds;
+Ruff check, format check (61 Python files), and git diff --check passed. A controlled
+server exercises the real MCP SDK stdio path; this is transport validation, not
+live graph acceptance. Adapters reject missing/mismatched retrieval revisions,
+stale warnings, dirty checkouts and sensitive content. PM replay reuses the
+persisted context snapshot.

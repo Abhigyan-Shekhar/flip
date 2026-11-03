@@ -110,3 +110,5 @@ Work began October 29, 2026 at the user's explicit request. The earlier
 as dated history. The competition rules reserve Switch workflow work for
 November 4–7; this earlier implementation must not be represented as event-built.
 The verbatim supplied [specification](docs/SPECIFICATION.md) is preserved.
+
+Optional repository graph context: see [Company Brain setup](docs/COMPANY_BRAIN.md).

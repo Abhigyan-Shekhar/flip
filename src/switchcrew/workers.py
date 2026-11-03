@@ -82,6 +82,7 @@ class Worker:
         orchestration_job_key="",
         incident_channels=(),
         incident_max_events_per_minute=10,
+        company_brain=None,
     ):
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
@@ -133,7 +134,9 @@ class Worker:
             provider=provider or ResearchProvider([]),
             memory=memory,
             checkpointer=checkpointer,
+            company_brain=company_brain,
         )
+        self.company_brain = company_brain
 
     async def receive(self, event):
         if event.get("type") != "message" or event.get("room_id") != self.room_id:
@@ -413,6 +416,29 @@ class Worker:
                     task_id, "configuration", "Engineering route requires operator configuration."
                 )
                 return
+            existing_approval = self.approvals.get(task_id)
+            brain_metadata = (
+                existing_approval.get("spec", {}).get("company_brain")
+                if existing_approval
+                else None
+            )
+            if self.company_brain is not None and existing_approval is None:
+                try:
+                    query = question + "\nAcceptance criteria:\n" + "\n".join(criteria)
+                    files = sorted(
+                        set(re.findall(r"\b(?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]{1,12}\b", query))
+                    )[:50]
+                    brain = (
+                        await self.company_brain.check_change(files)
+                        if files
+                        else await self.company_brain.get_context(query)
+                    )
+                    brain_metadata = {"context": brain.context, "warning": brain.warning}
+                except Exception as exc:
+                    brain_metadata = {
+                        "context": None,
+                        "warning": f"Company Brain unavailable ({type(exc).__name__})",
+                    }
             self.approvals.request(
                 task_id,
                 self.pm_id,
@@ -424,6 +450,7 @@ class Worker:
                 self.release_base,
                 reviewer=self.reviewer_id,
                 max_corrections=self.max_corrections,
+                company_brain=brain_metadata,
             )
             self._reply(
                 task_id,
@@ -703,6 +730,11 @@ async def _main(role):
     from .settings import Settings
 
     settings = Settings()
+    company_brain = None
+    if settings.company_brain_enabled:
+        from .company_brain import company_brain_from_settings
+
+        company_brain = company_brain_from_settings(settings)
     key = settings.pm_api_key if role == "pm" else settings.research_api_key
     if key is None or not key.get_secret_value():
         raise ValueError(f"{role} API key is required")
@@ -748,6 +780,7 @@ async def _main(role):
                 pm_name=settings.pm_name,
                 research_name=settings.research_name,
                 memory=memory_from_settings(settings),
+                company_brain=company_brain,
                 checkpointer=saver,
                 engineering_id=settings.engineering_agent_id,
                 engineering_name=settings.engineering_name,

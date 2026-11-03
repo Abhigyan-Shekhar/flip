@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     orchestration_job_key: str = ""
     research_source_urls: list[str] = Field(default_factory=list)
     research_max_sources: int = Field(default=5, ge=1, le=10)
+    # Optional, read-only Company Brain adapter. Enabling it requires an
+    # operator-provisioned registry rooted at the exact checkout and revision.
+    company_brain_enabled: bool = False
+    company_brain_command: list[str] = Field(default_factory=list)
+    company_brain_url: str | None = None
+    company_brain_token: SecretStr | None = None
+    company_brain_repo_root: Path | None = None
+    company_brain_revision: str = ""
+    company_brain_max_results: int = Field(default=5, ge=1, le=20)
     poll_interval_seconds: float = Field(default=1.0, ge=0.1, le=60)
 
     @field_validator("approval_credentials")
@@ -66,6 +75,11 @@ class Settings(BaseSettings):
     @field_validator("waggle_url", mode="before")
     @classmethod
     def optional_waggle_url(cls, value):
+        return None if value == "" else value
+
+    @field_validator("company_brain_url", mode="before")
+    @classmethod
+    def optional_company_brain_url(cls, value):
         return None if value == "" else value
 
     @field_validator("api_token")

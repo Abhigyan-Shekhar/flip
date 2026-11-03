@@ -43,3 +43,15 @@ Final local checkpoint: 306 passed, 3 live tests skipped in 28.47 seconds;
 Ruff lint, formatting (57 Python files), and git diff --check passed. Full file
 inventory and remaining scope are in IMPLEMENTATION_STATUS.md. No commit was
 made; this evidence refers to the uncommitted working tree.
+
+## November 3, 2026 IST — Company Brain follow-up
+
+The user authorized committing/pushing existing work and starting Company Brain
+integration with Luna agents. Prior work was pushed as `82e3a99`. Three Luna
+agents handled the adapter, runtime integration and independent review, with
+parent integration. This remains pre-event work. No registry refresh, deployment
+or live Company Brain/Switch acceptance is claimed. See COMPANY_BRAIN.md.
+
+Company Brain local validation: 326 passed, 3 live tests skipped; Ruff check,
+format check (61 Python files), and diff check passed. Controlled MCP stdio
+transport coverage passed. No live graph acceptance or external runtime changes.

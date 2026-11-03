@@ -76,6 +76,7 @@ def build_agent_graph(
     executor: Executor | None = None,
     memory=None,
     checkpointer=None,
+    company_brain=None,
 ):
     """Compile one specialist. Missing integrations produce explicit blocked results."""
     spec = AGENTS[AgentRole(role).value]
@@ -140,6 +141,23 @@ def build_agent_graph(
             }
         elif spec.role == AgentRole.RESEARCH:
             result = await provider.investigate(state["question"], state["acceptance_criteria"])
+            if company_brain is not None:
+                try:
+                    brain = await company_brain.get_context(
+                        state["question"],
+                        max_results=getattr(company_brain, "max_results", 5),
+                    )
+                    result["company_brain"] = {
+                        "context": brain.context,
+                        "warning": brain.warning,
+                    }
+                except Exception as exc:
+                    # Brain enriches evidence but cannot block the independent
+                    # Switch handoff or turn an outage into a research claim.
+                    result["company_brain"] = {
+                        "context": None,
+                        "warning": f"Company Brain unavailable ({type(exc).__name__})",
+                    }
         else:
             result = {
                 "status": "blocked",

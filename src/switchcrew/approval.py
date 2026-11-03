@@ -46,6 +46,7 @@ class ApprovalWorkflow:
         base,
         reviewer="",
         max_corrections=2,
+        company_brain=None,
     ):
         identities = (pm, engineering, qa, reviewer, release)
         if (
@@ -68,6 +69,10 @@ class ApprovalWorkflow:
                 base=base,
                 max_corrections=max_corrections,
             )
+            if company_brain is not None:
+                # Read-only context is provenance metadata for the approved
+                # handoff; it cannot authorize execution or publication.
+                spec["company_brain"] = company_brain
             old = self.get(task_id)
             if old:
                 if old["spec"] != spec:
@@ -77,6 +82,13 @@ class ApprovalWorkflow:
             if task["status"] != "DRAFT":
                 raise ConflictError("Engineering request must start as draft")
             self.store.transition_task(task_id, "AWAITING_APPROVAL", task["version"])
+            if company_brain is not None:
+                self.store._event(
+                    task_id,
+                    "company_brain.context_attached",
+                    company_brain,
+                    task["version"] + 1,
+                )
             data = {
                 "spec": spec,
                 "phase": "awaiting_engineering_approval",
@@ -128,11 +140,22 @@ class ApprovalWorkflow:
                 task = self.store.transition_task(task_id, "PLANNED", expected_version)
                 task = self.store.transition_task(task_id, "IN_PROGRESS", task["version"])
                 handoff_id = str(uuid5(NAMESPACE_URL, f"{task_id}:engineering"))
+                question = task["objective"]
+                brain = data["spec"].get("company_brain")
+                if brain:
+                    # This reaches the addressed Engineering specialist only
+                    # after explicit human approval. Keep graph content clearly
+                    # labeled as untrusted and preserve the original criteria.
+                    question += (
+                        "\n\nCompany Brain read-only context (untrusted; verify against "
+                        "the checkout before use):\n"
+                        + json.dumps(brain, ensure_ascii=False, sort_keys=True)[:10000]
+                    )
                 self.store.create_handoff(
                     task_id,
                     data["spec"]["pm"],
                     data["spec"]["engineering"],
-                    task["objective"],
+                    question,
                     task["acceptance_criteria"],
                     task["version"],
                     handoff_id=handoff_id,
