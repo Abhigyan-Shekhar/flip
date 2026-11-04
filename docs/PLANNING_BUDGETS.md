@@ -34,3 +34,11 @@ SWITCHCREW_HARNESS_PLANNER_FALLBACK=false
 These controls do not guarantee a particular invoice or subscription credit
 count: neither CLI exposes dependable billed-token metadata in this adapter.
 Human authorization and existing Switch sender verification remain separate.
+
+## Post-merge verification boundary
+
+Run the repository CI suite on the merged checkout before supplying a signed-in
+Codex or Antigravity CLI to the PM role. The isolated unit tests cover schema
+rejection, claim races, budget exhaustion and fallback gating; they do not prove
+remaining subscription credits, external model quality, or real task outcomes.
+Keep those host-side observations explicitly pending.
