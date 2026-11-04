@@ -10,8 +10,8 @@ import math
 import os
 import re
 import tempfile
-from contextlib import nullcontext
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
