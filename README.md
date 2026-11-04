@@ -34,6 +34,8 @@ Restricted QA/review/security container execution is described in
 private operator policy before running untrusted code on the verification host.
 For Voice + Notes, use the [recorded-meeting acceptance inspector](docs/RECORDED_MEETING_ACCEPTANCE.md)
 before separately attempting live Discord capture or interactive clarifications.
+The PM harness also has [per-task invocation and planning budgets](docs/PLANNING_BUDGETS.md)
+with an explicitly configured, role-constrained deterministic fallback.
 
 ## Run locally
 

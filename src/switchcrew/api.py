@@ -159,7 +159,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         harness_roles = load_harness_config(settings.harness_config)
         harness_planner = (
-            HarnessPlanner(harness_roles["pm"], available_roles=set(harness_roles))
+            HarnessPlanner(
+                harness_roles["pm"],
+                available_roles=set(harness_roles),
+                max_calls=settings.harness_planner_max_calls,
+                max_steps=settings.harness_planner_max_steps,
+                max_prompt_chars=settings.harness_planner_max_prompt_chars,
+                fallback_on_failure=settings.harness_planner_fallback,
+            )
             if "pm" in harness_roles
             else None
         )

@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     checkpoint_path: Path = Path("data/checkpoints.sqlite3")
     organization_config: Path | None = None
     harness_config: Path | None = None
+    harness_planner_max_calls: int = Field(default=2, ge=1, le=3)
+    harness_planner_max_steps: int = Field(default=12, ge=1, le=12)
+    harness_planner_max_prompt_chars: int = Field(default=24000, ge=1000, le=32000)
+    harness_planner_fallback: bool = False
     memory_enabled: bool = False
     memory_project: str = "github.com/Abhigyan-Shekhar/flip"
     waggle_command: list[str] = Field(default_factory=list)
