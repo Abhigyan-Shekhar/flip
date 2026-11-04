@@ -10,7 +10,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .crew import handle_crew_command
-from .discord import DiscordBinding, DiscordSource
+from .discord import DiscordBinding, DiscordSource, DiscordThreadBinding
 
 _COMMANDS = ("status", "team", "why", "dependencies", "trace", "evidence")
 _HEX = re.compile(r"^[0-9a-fA-F]+$")
@@ -88,12 +88,36 @@ def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None
     user = member["user"].get("id")
     if guild not in settings.discord_guild_ids or user not in settings.discord_user_ids:
         raise PermissionError("Discord user/guild not authorized")
+    parent_channel = channel
+    switch_thread = channel
+    mapped_room = None
+    channel_info = document.get("channel") or {}
+    if not isinstance(channel_info, dict):
+        raise ValueError("Discord channel must be an object")
+    if channel_info.get("type") in {10, 11, 12}:
+        if channel_info.get("id") != channel:
+            raise PermissionError("Discord thread identity mismatch")
+        parent_channel = channel_info.get("parent_id")
+        threads = [
+            thread
+            for item in settings.discord_thread_bindings
+            if (thread := DiscordThreadBinding(**item)).guild_id == guild
+            and thread.thread_id == channel
+            and thread.channel_id == parent_channel
+        ]
+        if len(threads) != 1 or not isinstance(threads[0].switch_thread_id, str):
+            raise PermissionError("A unique verified Discord thread mapping is required")
+        switch_thread = threads[0].switch_thread_id
+        mapped_room = threads[0].room_id
+        if not switch_thread or not mapped_room:
+            raise PermissionError("Discord thread mapping is incomplete")
     matches = [
         b
         for item in settings.discord_bindings
         if (b := DiscordBinding(**item)).guild_id == guild
-        and b.channel_id == channel
+        and b.channel_id == parent_channel
         and b.user_id == user
+        and (mapped_room is None or b.room_id == mapped_room)
     ]
     if len(matches) != 1:
         raise PermissionError("An exact unique verified Discord binding is required")
@@ -118,12 +142,12 @@ def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None
     binding = matches[0]
     source = DiscordSource(
         guild,
-        channel,
+        parent_channel,
         user,
         binding.room_id,
         binding.participant_id,
         document.get("id", ""),
-        channel,
+        switch_thread,
         f"/crew {selected['name']} {args[0]['value']}",
         binding.roles,
     )

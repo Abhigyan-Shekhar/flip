@@ -20,6 +20,17 @@ class DiscordBinding:
 
 
 @dataclass(frozen=True)
+class DiscordThreadBinding:
+    """Operator-verified bridge mapping, separate from human identity bindings."""
+
+    guild_id: str
+    channel_id: str
+    thread_id: str
+    room_id: str
+    switch_thread_id: str
+
+
+@dataclass(frozen=True)
 class DiscordSource:
     guild_id: str
     channel_id: str

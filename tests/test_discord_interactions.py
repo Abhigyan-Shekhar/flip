@@ -117,3 +117,78 @@ def test_malformed_signed_command_returns_client_error(tmp_path, changes):
         response = client.post("/discord/interactions", content=payload, headers=headers)
         assert response.status_code == 400
     store.close()
+
+
+def thread_request(task_id):
+    return {
+        "type": 2,
+        "id": "interaction-thread",
+        "guild_id": "guild",
+        "channel_id": "discord-thread",
+        "channel": {"id": "discord-thread", "type": 11, "parent_id": "thread"},
+        "member": {"user": {"id": "alice"}},
+        "data": {
+            "name": "crew",
+            "options": [{"name": "status", "options": [{"name": "task_id", "value": task_id}]}],
+        },
+    }
+
+
+def configure_thread(settings):
+    settings.discord_thread_bindings = [
+        {
+            "guild_id": "guild",
+            "channel_id": "thread",
+            "thread_id": "discord-thread",
+            "room_id": "room",
+            "switch_thread_id": "sw-root",
+        }
+    ]
+
+
+def test_real_discord_thread_uses_verified_switch_root(tmp_path):
+    private, settings, store, _ = setup(tmp_path)
+    configure_thread(settings)
+    task = store.create_task(
+        "Scoped task", {"room_id": "room", "message_id": "sw-root"}, ["Evidence"]
+    )
+    payload, headers = signed(private, thread_request(task["id"]))
+    response = respond_to_interaction(store, settings, payload, headers)
+    assert response["data"]["flags"] == 64
+    assert f"Task {task['id']}: DRAFT" in response["data"]["content"]
+    assert store.get_task(task["id"])["version"] == task["version"]
+    store.close()
+
+
+@pytest.mark.parametrize("change", ["missing", "duplicate", "parent", "room", "identity"])
+def test_thread_mapping_fails_closed(tmp_path, change):
+    private, settings, store, task = setup(tmp_path)
+    configure_thread(settings)
+    request = thread_request(task["id"])
+    if change == "missing":
+        settings.discord_thread_bindings = []
+    elif change == "duplicate":
+        settings.discord_thread_bindings *= 2
+    elif change == "parent":
+        request["channel"]["parent_id"] = "other-parent"
+    elif change == "room":
+        settings.discord_thread_bindings[0]["room_id"] = "other-room"
+    elif change == "identity":
+        request["channel"]["id"] = "other-thread"
+    payload, headers = signed(private, request)
+    with pytest.raises(PermissionError):
+        respond_to_interaction(store, settings, payload, headers)
+    store.close()
+
+
+def test_verified_thread_cannot_read_other_thread_task(tmp_path):
+    private, settings, store, _ = setup(tmp_path)
+    configure_thread(settings)
+    task = store.create_task(
+        "Private other thread", {"room_id": "room", "thread_id": "sw-other-root"}, ["Evidence"]
+    )
+    payload, headers = signed(private, thread_request(task["id"]))
+    response = respond_to_interaction(store, settings, payload, headers)
+    assert "Private other thread" not in response["data"]["content"]
+    assert "DRAFT" not in response["data"]["content"]
+    store.close()
