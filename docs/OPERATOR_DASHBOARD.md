@@ -43,6 +43,38 @@ independent human approval workflow.
    threads. The HTTP endpoint and parsing have offline tests; registration
    and actual Discord acceptance are **not yet verified**.
 
+### Verified thread identifiers
+
+Discord sends a thread's channel ID for commands invoked inside it. Switch
+stores its own opaque thread-root message ID. Keep the human identity binding
+on the parent Discord channel, and configure a separate operator-verified
+mapping in `SWITCHCREW_DISCORD_THREAD_BINDINGS`:
+
+```json
+[
+  {
+    "guild_id": "DISCORD_GUILD_ID",
+    "channel_id": "DISCORD_PARENT_CHANNEL_ID",
+    "thread_id": "DISCORD_THREAD_CHANNEL_ID",
+    "room_id": "SWITCH_ROOM_ID",
+    "switch_thread_id": "SWITCH_ROOT_MESSAGE_ID"
+  }
+]
+```
+
+Resolve these values from the actual Discord thread and Switch bridge message
+records, not from request text or the task ID supplied to a command. The signed
+Discord channel's ID and parent must match the mapping, and the mapped room must
+match the authenticated user's existing binding. Missing, ambiguous or mismatched
+mappings fail closed. A mapping never authorizes access to a different task
+thread. Add mappings for new threads before enabling inspection there.
+
+An application's HTTP interactions endpoint also takes over delivery of its
+other slash commands. When testing with the same bot as Switch's built-in
+commands, restore its original endpoint and remove the temporary `/crew`
+registration afterward. A persistent deployment needs a separate application
+or a dispatcher that handles every command offered by that application.
+
 ## Code-only verification
 
 Before live Discord provisioning, run the reproducible offline gates on the
