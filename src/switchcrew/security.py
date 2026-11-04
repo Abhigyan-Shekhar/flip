@@ -136,8 +136,11 @@ def _extract_findings(data: Any) -> list[Any] | None:
 class SecurityRunner:
     """Run operator configured argv only, in temporary source extracted at one SHA."""
 
-    def __init__(self, scanners: list[ScannerConfig] | tuple[ScannerConfig, ...]):
+    def __init__(
+        self, scanners: list[ScannerConfig] | tuple[ScannerConfig, ...], *, isolation=None
+    ):
         self.scanners = tuple(scanners)
+        self.isolation = isolation
 
     async def run(self, repo_root: str | Path, revision: str) -> SecurityReport:
         root = Path(repo_root).resolve()
@@ -193,9 +196,11 @@ class SecurityRunner:
                     revision,
                     warnings=("Scanner configuration is invalid.",),
                 )
-            if not (
-                Path(scanner.argv[0]).is_absolute() and Path(scanner.argv[0]).is_file()
-            ) and not shutil.which(scanner.argv[0]):
+            if (
+                self.isolation is None
+                and not (Path(scanner.argv[0]).is_absolute() and Path(scanner.argv[0]).is_file())
+                and not shutil.which(scanner.argv[0])
+            ):
                 return SecurityReport(
                     "blocked_configuration",
                     revision,
@@ -230,7 +235,12 @@ class SecurityRunner:
                     command = [
                         _PLACEHOLDER.sub(
                             lambda match: str(
-                                {"repo_root": checkout, "revision": revision}[match.group(1)]
+                                {
+                                    "repo_root": "/workspace"
+                                    if self.isolation is not None
+                                    else checkout,
+                                    "revision": revision,
+                                }[match.group(1)]
                             ),
                             arg,
                         )
@@ -322,8 +332,11 @@ class SecurityRunner:
         home = Path(temp) / ("home-" + str(len(list(Path(temp).glob("home-*")))))
         home.mkdir()
         env = {"PATH": os.defpath, "HOME": str(home), "LANG": "C.UTF-8"}
+        execution = (
+            self.isolation.command(command, checkout) if self.isolation is not None else command
+        )
         process = await asyncio.create_subprocess_exec(
-            *command,
+            *execution,
             cwd=checkout,
             env=env,
             stdout=asyncio.subprocess.PIPE,

@@ -28,8 +28,10 @@ _SECRET = re.compile(
 _PLACEHOLDER = re.compile(r"\$\{([^{}]+)\}")
 
 
-def _expand_args(configured: list[str], checkout: Path, revision: str) -> list[str]:
-    replacements = {"repo_root": str(checkout), "revision": revision}
+def _expand_args(
+    configured: list[str], checkout: Path, revision: str, *, isolated: bool = False
+) -> list[str]:
+    replacements = {"repo_root": "/workspace" if isolated else str(checkout), "revision": revision}
     result = []
     for arg in configured:
         keys = _PLACEHOLDER.findall(arg)
@@ -300,6 +302,7 @@ class TriggeredQAExecutor:
         commands: list[list[str]],
         timeout: float = 120,
         authorize: Callable[[dict[str, Any], dict[str, Any]], bool] | None = None,
+        isolation=None,
     ):
         self.store = store
         self.root = Path(repo_root).resolve()
@@ -308,6 +311,7 @@ class TriggeredQAExecutor:
         self.commands = commands
         self.timeout = timeout
         self.authorize = authorize
+        self.isolation = isolation
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:
         handoff_id = state.get("handoff_id") if isinstance(state, dict) else None
@@ -381,7 +385,11 @@ class TriggeredQAExecutor:
                             "reason": "exact_revision_checkout_failed",
                             "tested_revision": revision,
                         }
-                    command = _expand_args(configured, checkout, revision)
+                    command = _expand_args(
+                        configured, checkout, revision, isolated=self.isolation is not None
+                    )
+                    if self.isolation is not None:
+                        command = self.isolation.command(command, checkout, writable=True)
                     # Commands are operator-owned argv. Webhook payloads never reach this list.
                     code, output = await _process(command, checkout, self.timeout, home)
                     from .qa import generated_inputs

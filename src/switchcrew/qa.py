@@ -45,11 +45,13 @@ class QAExecutor:
         commands,
         timeout=120,
         authorize=None,
+        isolation=None,
     ):
         self.ledger, self.root = ledger, Path(root).resolve()
         self.implementation = implementation_assignment
         self.revision, self.commands, self.timeout = revision, commands, timeout
         self.authorize = authorize
+        self.isolation = isolation
 
     def check_approval(self, state):
         if self.authorize is not None and self.authorize(state) is False:
@@ -146,8 +148,13 @@ class QAExecutor:
                 )
                 with tempfile.TemporaryFile() as output:
                     self.check_approval(state)
+                    execution = (
+                        self.isolation.command(command, checkout, writable=True)
+                        if self.isolation is not None
+                        else command
+                    )
                     process = await asyncio.create_subprocess_exec(
-                        *command,
+                        *execution,
                         cwd=checkout,
                         env=env,
                         stdout=output,

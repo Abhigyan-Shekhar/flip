@@ -40,11 +40,13 @@ class ReviewerExecutor:
         commands,
         timeout=120,
         authorize=None,
+        isolation=None,
     ):
         self.ledger, self.root = ledger, Path(root).resolve()
         self.implementation = implementation_assignment
         self.revision, self.commands, self.timeout = revision, commands, timeout
         self.authorize = authorize
+        self.isolation = isolation
 
     def _approved(self, state):
         if self.authorize is not None:
@@ -188,8 +190,13 @@ class ReviewerExecutor:
                 )
                 with tempfile.TemporaryFile() as output:
                     self._approved(state)
+                    execution = (
+                        self.isolation.command(command, checkout, writable=True)
+                        if self.isolation is not None
+                        else command
+                    )
                     proc = await asyncio.create_subprocess_exec(
-                        *command,
+                        *execution,
                         cwd=checkout,
                         env=env,
                         stdout=output,
