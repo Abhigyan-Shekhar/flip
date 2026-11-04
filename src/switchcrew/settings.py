@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     incident_channel_ids: list[str] = Field(default_factory=list)
     incident_max_events_per_minute: int = Field(default=10, ge=1, le=100)
     discord_participant_ids: list[str] = Field(default_factory=list)
+    discord_application_public_key: str = ""
     specialist_targets: dict[str, dict[str, str]] = Field(default_factory=dict)
     orchestration_job_key: str = ""
     research_source_urls: list[str] = Field(default_factory=list)
