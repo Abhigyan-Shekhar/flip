@@ -32,6 +32,8 @@ readiness never substitutes for the recorded Switch, Discord, Codex, QA and PR c
 Restricted QA/review/security container execution is described in
 [Engineering isolation](docs/ENGINEERING_ISOLATION.md); enable it explicitly in
 private operator policy before running untrusted code on the verification host.
+For Voice + Notes, use the [recorded-meeting acceptance inspector](docs/RECORDED_MEETING_ACCEPTANCE.md)
+before separately attempting live Discord capture or interactive clarifications.
 
 ## Run locally
 
