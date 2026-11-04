@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from switchcrew.approval import ApprovalWorkflow
@@ -314,6 +314,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/openapi.json", dependencies=authenticated, include_in_schema=False)
     def schema():
         return app.openapi()
+
+    @app.get("/dashboard", include_in_schema=False)
+    def operator_dashboard():
+        from .dashboard import DASHBOARD_PAGE
+
+        return HTMLResponse(
+            DASHBOARD_PAGE,
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Security-Policy": (
+                    "default-src 'none'; style-src 'unsafe-inline'; "
+                    "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
+                    "form-action 'none'; frame-ancestors 'none'"
+                ),
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @app.get("/operator/snapshot", dependencies=authenticated)
+    def operator_snapshot(request: Request, limit: int = 40):
+        from .operator_dashboard import snapshot
+
+        return sanitize(snapshot(request.app.state.store, settings, limit=limit))
+
+    @app.post("/discord/interactions", include_in_schema=False)
+    async def discord_interaction(request: Request):
+        from .discord_interactions import respond_to_interaction
+
+        if not settings.discord_application_public_key:
+            raise HTTPException(503, "Discord interactions are not provisioned")
+        content = bytearray()
+        async for chunk in request.stream():
+            content.extend(chunk)
+            if len(content) > 32768:
+                raise HTTPException(413, "Discord interaction too large")
+        try:
+            return respond_to_interaction(
+                request.app.state.store,
+                settings,
+                bytes(content),
+                {k.lower(): v for k, v in request.headers.items()},
+            )
+        except PermissionError:
+            raise HTTPException(401, "Discord signature or scope denied") from None
+        except (ValueError, TypeError, KeyError):
+            raise HTTPException(400, "Invalid Discord interaction") from None
 
     @app.post("/tasks", dependencies=authenticated, status_code=201, response_model=TaskResponse)
     async def create_task(body: TaskCreate, request: Request):

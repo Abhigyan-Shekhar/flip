@@ -38,6 +38,8 @@ The PM harness also has [per-task invocation and planning budgets](docs/PLANNING
 with an explicitly configured, role-constrained deterministic fallback.
 The [combined Waggle + Company Brain probe](docs/COMBINED_MEMORY_ACCEPTANCE.md)
 requires a clean SHA-pinned checkout and keeps live cross-task learning pending.
+The [Flip Control Room](docs/OPERATOR_DASHBOARD.md) adds a read-only operator
+dashboard and signed, scoped Discord slash-command handling to the API.
 
 ## Run locally
 
