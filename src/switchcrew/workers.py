@@ -88,6 +88,7 @@ class Worker:
         project_id="github.com/Abhigyan-Shekhar/flip",
         harness_roles=None,
         harness_runner=None,
+        planner_policy=None,
     ):
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
@@ -127,11 +128,13 @@ class Worker:
         from .harnesses import HarnessExecutor, HarnessPlanner
 
         harness_roles = harness_roles or {}
+        planner_policy = planner_policy or {}
         planner = (
             HarnessPlanner(
                 harness_roles["pm"],
                 runner=harness_runner,
                 available_roles=set(harness_roles),
+                **planner_policy,
             )
             if role == "pm" and "pm" in harness_roles
             else None
@@ -1164,6 +1167,12 @@ async def _main(role):
                 incident_channels=settings.incident_channel_ids,
                 incident_max_events_per_minute=settings.incident_max_events_per_minute,
                 harness_roles=harness_roles,
+                planner_policy={
+                    "max_calls": settings.harness_planner_max_calls,
+                    "max_steps": settings.harness_planner_max_steps,
+                    "max_prompt_chars": settings.harness_planner_max_prompt_chars,
+                    "fallback_on_failure": settings.harness_planner_fallback,
+                },
             )
             from .organization import load_organization_config, meeting_service
 

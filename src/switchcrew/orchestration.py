@@ -69,12 +69,12 @@ def decompose(question, criteria):
     return {"planner": "bounded_criterion_rules_v1", "question": question, "steps": steps}
 
 
-def validate_harness_plan(question, criteria, response, allowed_roles):
+def validate_harness_plan(question, criteria, response, allowed_roles, *, max_steps=12):
     """Normalize a model proposal; it never grants authority or changes routing identity."""
     if not question.strip() or not 1 <= len(criteria) <= 12:
         raise ValueError("A bounded objective and criteria are required")
     raw_steps = response.get("steps") if isinstance(response, dict) else None
-    if not isinstance(raw_steps, list) or not 1 <= len(raw_steps) <= 12:
+    if not isinstance(raw_steps, list) or not 1 <= len(raw_steps) <= max_steps:
         raise ValueError("Harness plan must contain one to twelve steps")
     steps, previous = [], None
     for index, proposed in enumerate(raw_steps, 1):
@@ -116,6 +116,10 @@ class Orchestrator:
             store.connection.execute(
                 "CREATE TABLE IF NOT EXISTS plans "
                 "(task_id TEXT PRIMARY KEY REFERENCES tasks(id), data TEXT NOT NULL)"
+            )
+            store.connection.execute(
+                "CREATE TABLE IF NOT EXISTS harness_plan_attempts "
+                "(task_id TEXT PRIMARY KEY REFERENCES tasks(id), attempts INTEGER NOT NULL)"
             )
 
     def get(self, task_id):
@@ -182,10 +186,40 @@ class Orchestrator:
             for key in ("qa", "reviewer", "release", "job_key", "repository", "base")
         ):
             allowed.remove("engineering")
-        response = await self.planner.plan(task["objective"], task["acceptance_criteria"], allowed)
-        spec = validate_harness_plan(
-            task["objective"], task["acceptance_criteria"], response, set(allowed)
-        )
+        # Reserve a limited number of model invocations durably across retries.
+        # A crash consumes a call; no concurrent retry can silently exceed the cap.
+        with self.store._lock, self.store.transaction():
+            row = self.store.connection.execute(
+                "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task_id,)
+            ).fetchone()
+            attempts = row[0] if row else 0
+            if attempts >= self.planner.max_calls:
+                raise ValueError("PM planning invocation budget exhausted")
+            self.store.connection.execute(
+                "INSERT INTO harness_plan_attempts(task_id,attempts) VALUES(?,?) "
+                "ON CONFLICT(task_id) DO UPDATE SET attempts=excluded.attempts",
+                (task_id, attempts + 1),
+            )
+        try:
+            response = await self.planner.plan(
+                task["objective"], task["acceptance_criteria"], allowed
+            )
+            spec = validate_harness_plan(
+                task["objective"],
+                task["acceptance_criteria"],
+                response,
+                set(allowed),
+                max_steps=self.planner.max_steps,
+            )
+        except (ValueError, RuntimeError):
+            if not self.planner.fallback_on_failure:
+                raise
+            spec = decompose(task["objective"], task["acceptance_criteria"])
+            if any(step["role"] not in allowed for step in spec["steps"]):
+                raise ValueError("Fallback would dispatch to an unconfigured role") from None
+            if len(spec["steps"]) > self.planner.max_steps:
+                raise ValueError("Fallback exceeds configured step budget") from None
+            spec["planner"] = "bounded_criterion_rules_explicit_fallback_v1"
         return self.start(task_id, spec=spec)
 
     def start_incident(self, task_id, incident):

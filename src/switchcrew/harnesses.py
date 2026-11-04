@@ -290,17 +290,36 @@ class HarnessPlanner:
         spec: HarnessRole,
         runner: HarnessRunner | None = None,
         available_roles: set[str] | None = None,
+        *,
+        max_calls: int = 2,
+        max_steps: int = 12,
+        max_prompt_chars: int = 24000,
+        fallback_on_failure: bool = False,
     ):
         if spec.role != "pm":
             raise ValueError("Only the PM can plan")
+        if (
+            type(max_calls) is not int
+            or not 1 <= max_calls <= 3
+            or type(max_steps) is not int
+            or not 1 <= max_steps <= 12
+            or type(max_prompt_chars) is not int
+            or not 1000 <= max_prompt_chars <= MAX_PROMPT
+            or type(fallback_on_failure) is not bool
+        ):
+            raise ValueError("PM planning policy must have bounded budgets")
         self.spec = spec
         self.runner = runner or HarnessRunner()
         self.available_roles = frozenset(available_roles) if available_roles is not None else None
+        self.max_calls = max_calls
+        self.max_steps = max_steps
+        self.max_prompt_chars = max_prompt_chars
+        self.fallback_on_failure = fallback_on_failure
 
     async def plan(self, question: str, criteria: list[str], allowed_roles: list[str]) -> dict:
         prompt = (
-            "You are SwitchCrew's planning agent. Decompose the objective into 1-12 bounded, "
-            "SEQUENTIAL specialist steps. Select each role only from allowed_roles. "
+            f"You are SwitchCrew's planning agent. Decompose the objective into 1-{self.max_steps} "
+            "bounded, SEQUENTIAL specialist steps. Select each role only from allowed_roles. "
             "Do not grant permission; Engineering will independently require human approvals. "
             'Return ONLY JSON: {"steps":[{"role":"research","criterion":"..."}]}. '
             "Each step criterion must be specific and nonempty. Do not claim work was done.\n"
@@ -313,4 +332,6 @@ class HarnessPlanner:
                 ensure_ascii=False,
             )
         )
+        if len(prompt) > self.max_prompt_chars:
+            raise HarnessError("PM prompt exceeds configured planning budget")
         return await self.runner.run_json(self.spec, prompt)
