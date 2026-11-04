@@ -260,8 +260,7 @@ class Orchestrator:
                 await asyncio.sleep(5)
                 with self.store._lock, self.store.transaction():
                     result = self.store.connection.execute(
-                        "UPDATE harness_plan_claims SET expires_at=? "
-                        "WHERE task_id=? AND token=?",
+                        "UPDATE harness_plan_claims SET expires_at=? WHERE task_id=? AND token=?",
                         (time.time() + lease_seconds, task_id, token),
                     )
                     if result.rowcount == 0:

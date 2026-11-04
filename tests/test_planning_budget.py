@@ -94,9 +94,12 @@ async def test_prompt_preflight_does_not_consume_model_budget(tmp_path):
     with pytest.raises(HarnessError, match="prompt exceeds"):
         await orchestration.start_with_planner(task["id"])
     assert runner.calls == 0
-    assert store.connection.execute(
-        "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task["id"],)
-    ).fetchone() is None
+    assert (
+        store.connection.execute(
+            "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task["id"],)
+        ).fetchone()
+        is None
+    )
 
     # A corrected operator policy can retry the same draft with its full budget.
     orchestration.planner = HarnessPlanner(
@@ -114,9 +117,7 @@ async def test_prompt_preflight_does_not_consume_model_budget(tmp_path):
 
 @pytest.mark.asyncio
 async def test_enabling_fallback_recovers_exhausted_model_calls(tmp_path):
-    store, orchestration, runner = setup(
-        tmp_path, HarnessError("offline"), max_calls=1
-    )
+    store, orchestration, runner = setup(tmp_path, HarnessError("offline"), max_calls=1)
     task = store.create_task("Explore", {}, ["Investigate evidence"])
     with pytest.raises(HarnessError):
         await orchestration.start_with_planner(task["id"])
@@ -131,9 +132,12 @@ async def test_enabling_fallback_recovers_exhausted_model_calls(tmp_path):
     plan = await orchestration.start_with_planner(task["id"])
     assert plan["spec"]["planner"] == "bounded_criterion_rules_explicit_fallback_v1"
     assert runner.calls == 1
-    assert store.connection.execute(
-        "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task["id"],)
-    ).fetchone()[0] == 1
+    assert (
+        store.connection.execute(
+            "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task["id"],)
+        ).fetchone()[0]
+        == 1
+    )
     store.close()
 
 
@@ -179,12 +183,16 @@ async def test_concurrent_planners_share_persisted_plan_across_connections(tmp_p
     runner.release.set()
     first_plan, second_plan = await asyncio.gather(first, second)
     assert first_plan == second_plan
-    assert first_store.connection.execute(
-        "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task["id"],)
-    ).fetchone()[0] == 1
-    assert first_store.connection.execute(
-        "SELECT COUNT(*) FROM harness_plan_claims"
-    ).fetchone()[0] == 0
+    assert (
+        first_store.connection.execute(
+            "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task["id"],)
+        ).fetchone()[0]
+        == 1
+    )
+    assert (
+        first_store.connection.execute("SELECT COUNT(*) FROM harness_plan_claims").fetchone()[0]
+        == 0
+    )
     first_store.close()
     second_store.close()
 
@@ -202,7 +210,5 @@ async def test_expired_claim_can_be_recovered_after_crash(tmp_path):
     plan = await orchestration.start_with_planner(task["id"])
     assert plan["spec"]["planner"] == "harness_structured_v1"
     assert runner.calls == 1
-    assert store.connection.execute(
-        "SELECT COUNT(*) FROM harness_plan_claims"
-    ).fetchone()[0] == 0
+    assert store.connection.execute("SELECT COUNT(*) FROM harness_plan_claims").fetchone()[0] == 0
     store.close()
