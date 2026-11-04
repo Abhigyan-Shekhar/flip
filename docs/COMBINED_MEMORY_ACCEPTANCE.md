@@ -42,6 +42,14 @@ remain `not_verified`. This distinction is essential: a controlled fixture
 showing an approved lesson fixing a second test task is **not** proof that a
 real approved lesson altered behavior on a second live Switch assignment.
 
+## Code-only verification
+
+On the final merged checkout, run the full repository tests and packaging checks.
+The unit tests intentionally use a temporary Git repository and controlled
+adapters; they verify fail-closed behavior but do not connect to a production
+Waggle graph or a deployed Company Brain index. Retain the exact-SHA evidence
+requirements above for the later host-side acceptance run.
+
 ## Final live acceptance remains pending
 
 Record a real task with a revision-anchored graph lookup, a failed regression,
