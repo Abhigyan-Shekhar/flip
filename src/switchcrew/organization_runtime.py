@@ -191,8 +191,16 @@ def configured_executor(role, capability, store, connection, settings):
             company_brain_from_settings(settings) if settings.company_brain_enabled else None,
         )
     if role == "qa" and mode == "triggered_qa":
+        from .isolation import DockerIsolation
         from .triggers import TriggeredQAExecutor
 
+        isolation = (
+            DockerIsolation.from_config(capability["container"])
+            if capability.get("container") is not None
+            else None
+        )
+        if capability.get("require_isolation") and isolation is None:
+            raise ValueError("Isolated triggered QA runner required")
         return TriggeredQAExecutor(
             store,
             capability["repo_root"],
@@ -200,26 +208,46 @@ def configured_executor(role, capability, store, connection, settings):
             capability["repository"],
             capability["commands"],
             timeout=capability.get("timeout", 120),
+            isolation=isolation,
         )
     if role == "security" and mode == "triggered_security":
+        from .isolation import DockerIsolation
         from .security import ScannerConfig, SecurityRunner
         from .triggers import TriggeredSecurityExecutor
 
         scanners = [ScannerConfig(**item) for item in capability.get("scanners", [])]
+        isolation = (
+            DockerIsolation.from_config(capability["container"])
+            if capability.get("container") is not None
+            else None
+        )
+        if capability.get("require_isolation") and isolation is None:
+            raise ValueError("Isolated security scanner runner required")
         return TriggeredSecurityExecutor(
             store,
             capability["repo_root"],
             connection.agent_id,
             capability["repository"],
-            SecurityRunner(scanners),
+            SecurityRunner(scanners, isolation=isolation),
         )
     if role == "security" and mode == "engineering_security_gate":
+        from .isolation import DockerIsolation
         from .security import ScannerConfig, SecurityRunner
         from .security_gate import GateSecurityExecutor
 
+        isolation = (
+            DockerIsolation.from_config(capability["container"])
+            if capability.get("container") is not None
+            else None
+        )
+        if capability.get("require_isolation") and isolation is None:
+            raise ValueError("Isolated security scanner runner required")
         return GateSecurityExecutor(
             store,
             connection.agent_id,
-            SecurityRunner([ScannerConfig(**item) for item in capability.get("scanners", [])]),
+            SecurityRunner(
+                [ScannerConfig(**item) for item in capability.get("scanners", [])],
+                isolation=isolation,
+            ),
         )
     return None

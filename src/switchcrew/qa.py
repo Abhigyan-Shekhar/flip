@@ -6,6 +6,8 @@ import os
 import signal
 import subprocess
 import tempfile
+from contextlib import nullcontext
+from dataclasses import asdict
 from pathlib import Path
 
 from .engineering import assignment_id, git, outcome
@@ -45,11 +47,13 @@ class QAExecutor:
         commands,
         timeout=120,
         authorize=None,
+        isolation=None,
     ):
         self.ledger, self.root = ledger, Path(root).resolve()
         self.implementation = implementation_assignment
         self.revision, self.commands, self.timeout = revision, commands, timeout
         self.authorize = authorize
+        self.isolation = isolation
 
     def check_approval(self, state):
         if self.authorize is not None and self.authorize(state) is False:
@@ -88,15 +92,17 @@ class QAExecutor:
             return outcome("blocked_configuration", identity, reason="implementation_not_available")
         if self.stale():
             return outcome("stale_qa", identity, tested_revision=self.revision)
-        data = self.ledger.reserve(
-            identity,
-            {
-                "implementation": self.implementation,
-                "revision": self.revision,
-                "commands": self.commands,
-                "timeout": self.timeout,
-            },
-        )
+        spec = {
+            "implementation": self.implementation,
+            "revision": self.revision,
+            "commands": self.commands,
+            "timeout": self.timeout,
+            **({"isolation": asdict(self.isolation)} if self.isolation is not None else {}),
+        }
+        try:
+            data = self.ledger.reserve(identity, spec)
+        except ValueError:
+            return outcome("blocked_configuration", identity, reason="qa_assignment_inputs_changed")
         if "result" in data:
             return data["result"]
         if not self.ledger.claim(identity, "reserved", "running"):
@@ -146,23 +152,29 @@ class QAExecutor:
                 )
                 with tempfile.TemporaryFile() as output:
                     self.check_approval(state)
-                    process = await asyncio.create_subprocess_exec(
-                        *command,
-                        cwd=checkout,
-                        env=env,
-                        stdout=output,
-                        stderr=asyncio.subprocess.STDOUT,
-                        start_new_session=True,
+                    context = (
+                        self.isolation.launch(command, checkout, writable=True)
+                        if self.isolation is not None
+                        else nullcontext(command)
                     )
-                    timed_out = False
-                    try:
-                        await asyncio.wait_for(process.wait(), self.timeout)
-                    except (TimeoutError, asyncio.CancelledError) as exc:
-                        os.killpg(process.pid, signal.SIGKILL)
-                        await process.wait()
-                        if isinstance(exc, asyncio.CancelledError):
-                            raise
-                        timed_out = True
+                    with context as execution:
+                        process = await asyncio.create_subprocess_exec(
+                            *execution,
+                            cwd=checkout,
+                            env=env,
+                            stdout=output,
+                            stderr=asyncio.subprocess.STDOUT,
+                            start_new_session=True,
+                        )
+                        timed_out = False
+                        try:
+                            await asyncio.wait_for(process.wait(), self.timeout)
+                        except (TimeoutError, asyncio.CancelledError) as exc:
+                            os.killpg(process.pid, signal.SIGKILL)
+                            await process.wait()
+                            if isinstance(exc, asyncio.CancelledError):
+                                raise
+                            timed_out = True
                     output.seek(0)
                     digest = hashlib.sha256()
                     size = 0

@@ -29,6 +29,9 @@ for review, not trusted evidence or execution authorization.
 For an honest live-host handoff, run `uv run python -m switchcrew.deployment_preflight`
 and follow the [verification runbook](docs/DEPLOYMENT_ACCEPTANCE.md). Offline
 readiness never substitutes for the recorded Switch, Discord, Codex, QA and PR checks.
+Restricted QA/review/security container execution is described in
+[Engineering isolation](docs/ENGINEERING_ISOLATION.md); enable it explicitly in
+private operator policy before running untrusted code on the verification host.
 
 ## Run locally
 

@@ -229,6 +229,15 @@ def configured_executor(config, connection, client, store, ledger, approvals):
         job = config.get("job_templates", {}).get(managed["spec"]["job_key"])
         if job is None:
             return {"status": "blocked_configuration", "reason": "operator_job_not_configured"}
+        from .isolation import DockerIsolation
+
+        isolation = (
+            DockerIsolation.from_config(job["container"])
+            if job.get("container") is not None
+            else None
+        )
+        if config.get("require_isolation") and isolation is None:
+            return {"status": "blocked_configuration", "reason": "isolated_runner_required"}
         if role == "engineering":
             correction = (
                 workflow.get("correction") if workflow.get("phase") == "engineering" else None
@@ -388,6 +397,7 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                 job.get("commands", []),
                 job.get("timeout", 120),
                 authorize=qa_authorized,
+                isolation=isolation,
             )
         else:
 
@@ -419,6 +429,7 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                 job.get("review_commands", job.get("commands", [])),
                 job.get("review_timeout", job.get("timeout", 120)),
                 authorize=review_authorized,
+                isolation=isolation,
             )
         if role == "engineering" and lesson_service is not None:
             from .learning_runtime import lesson_prompt
