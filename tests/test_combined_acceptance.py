@@ -185,7 +185,5 @@ async def test_missing_change_evidence_cannot_pass(tmp_path, monkeypatch):
 
     monkeypatch.setattr(combined, "verify_company_brain", brain)
     monkeypatch.setattr(combined, "verify_shared_memory", memory)
-    result = await run_combined_acceptance(
-        settings, files=["code.py"], learning_probe=lesson
-    )
+    result = await run_combined_acceptance(settings, files=["code.py"], learning_probe=lesson)
     assert result["status"] == "BLOCKED"
