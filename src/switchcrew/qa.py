@@ -6,6 +6,8 @@ import os
 import signal
 import subprocess
 import tempfile
+from contextlib import nullcontext
+from dataclasses import asdict
 from pathlib import Path
 
 from .engineering import assignment_id, git, outcome
@@ -90,15 +92,17 @@ class QAExecutor:
             return outcome("blocked_configuration", identity, reason="implementation_not_available")
         if self.stale():
             return outcome("stale_qa", identity, tested_revision=self.revision)
-        data = self.ledger.reserve(
-            identity,
-            {
-                "implementation": self.implementation,
-                "revision": self.revision,
-                "commands": self.commands,
-                "timeout": self.timeout,
-            },
-        )
+        spec = {
+            "implementation": self.implementation,
+            "revision": self.revision,
+            "commands": self.commands,
+            "timeout": self.timeout,
+            **({"isolation": asdict(self.isolation)} if self.isolation is not None else {}),
+        }
+        try:
+            data = self.ledger.reserve(identity, spec)
+        except ValueError:
+            return outcome("blocked_configuration", identity, reason="qa_assignment_inputs_changed")
         if "result" in data:
             return data["result"]
         if not self.ledger.claim(identity, "reserved", "running"):
@@ -148,28 +152,29 @@ class QAExecutor:
                 )
                 with tempfile.TemporaryFile() as output:
                     self.check_approval(state)
-                    execution = (
-                        self.isolation.command(command, checkout, writable=True)
+                    context = (
+                        self.isolation.launch(command, checkout, writable=True)
                         if self.isolation is not None
-                        else command
+                        else nullcontext(command)
                     )
-                    process = await asyncio.create_subprocess_exec(
-                        *execution,
-                        cwd=checkout,
-                        env=env,
-                        stdout=output,
-                        stderr=asyncio.subprocess.STDOUT,
-                        start_new_session=True,
-                    )
-                    timed_out = False
-                    try:
-                        await asyncio.wait_for(process.wait(), self.timeout)
-                    except (TimeoutError, asyncio.CancelledError) as exc:
-                        os.killpg(process.pid, signal.SIGKILL)
-                        await process.wait()
-                        if isinstance(exc, asyncio.CancelledError):
-                            raise
-                        timed_out = True
+                    with context as execution:
+                        process = await asyncio.create_subprocess_exec(
+                            *execution,
+                            cwd=checkout,
+                            env=env,
+                            stdout=output,
+                            stderr=asyncio.subprocess.STDOUT,
+                            start_new_session=True,
+                        )
+                        timed_out = False
+                        try:
+                            await asyncio.wait_for(process.wait(), self.timeout)
+                        except (TimeoutError, asyncio.CancelledError) as exc:
+                            os.killpg(process.pid, signal.SIGKILL)
+                            await process.wait()
+                            if isinstance(exc, asyncio.CancelledError):
+                                raise
+                            timed_out = True
                     output.seek(0)
                     digest = hashlib.sha256()
                     size = 0

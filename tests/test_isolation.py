@@ -2,6 +2,10 @@ import json
 
 import pytest
 
+from switchcrew.engineering import Ledger, assignment_id
+from switchcrew.qa import QAExecutor
+from switchcrew.reviewer import ReviewerExecutor
+
 from switchcrew.isolation import DockerIsolation
 from switchcrew.organization_runtime import configured_executor
 from switchcrew.security import ScannerConfig, SecurityRunner
@@ -51,8 +55,12 @@ async def test_scanner_runs_via_container_command_without_host_scanner(tmp_path)
     fake_docker.write_text(
         "#!/usr/bin/env python3\n"
         "import json, pathlib, sys\n"
-        f"pathlib.Path({str(marker)!r}).write_text(json.dumps(sys.argv[1:]))\n"
-        "print(json.dumps({'findings': []}))\n"
+        "args = sys.argv[1:]\n"
+        "if 'run' in args:\n"
+        f"    pathlib.Path({str(marker)!r}).write_text(json.dumps(args))\n"
+        "    print(json.dumps({'findings': []}))\n"
+        "elif 'ps' in args:\n"
+        "    print('')\n"
     )
     fake_docker.chmod(0o700)
     (tmp_path / "checkout").mkdir()
@@ -87,3 +95,111 @@ def test_strict_security_gate_rejects_unisolated_configuration(tmp_path):
             Stub(),
             SettingsStub(),
         )
+
+
+def test_rootless_config_uses_explicit_socket_and_namespace_uid(tmp_path):
+    with pytest.raises(ValueError, match="Rootless"):
+        DockerIsolation(PIN, rootless=True)
+    policy = DockerIsolation(PIN, daemon_socket="/run/user/1000/docker.sock", rootless=True)
+    argv = policy.command(["python"], tmp_path, writable=True)
+    assert argv[:3] == ["docker", "--host=unix:///run/user/1000/docker.sock", "run"]
+    assert "--user=0:0" in argv
+    assert "readonly" not in next(x for x in argv if x.startswith("--mount="))
+
+
+def test_container_is_reaped_when_worker_times_out(tmp_path):
+    marker = tmp_path / "still-running"
+    fake_docker = tmp_path / "fake-docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        "args = sys.argv[1:]\n"
+        f"marker = pathlib.Path({str(marker)!r})\n"
+        "if 'ps' in args and marker.exists(): print('c' * 64)\n"
+        "if 'rm' in args: marker.unlink(missing_ok=True)\n"
+    )
+    fake_docker.chmod(0o700)
+    policy = DockerIsolation(PIN, binary=str(fake_docker))
+    with pytest.raises(TimeoutError):
+        with policy.launch(["python"], tmp_path) as command:
+            assert any(x.startswith("--name=switchcrew-") for x in command)
+            marker.write_text("running")
+            raise TimeoutError("worker timeout")
+    assert not marker.exists()
+
+
+def test_rootless_mode_requires_a_verified_rootless_daemon(tmp_path):
+    fake_docker = tmp_path / "fake-docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "if 'info' in sys.argv: print('[\"name=seccomp\"]')\n"
+    )
+    fake_docker.chmod(0o700)
+    policy = DockerIsolation(
+        PIN,
+        binary=str(fake_docker),
+        daemon_socket="/run/user/1000/docker.sock",
+        rootless=True,
+    )
+    with pytest.raises(OSError, match="not rootless"):
+        with policy.launch(["python"], tmp_path):
+            pytest.fail("unverified daemon should never execute the job")
+
+
+@pytest.mark.asyncio
+async def test_cached_unisolated_qa_result_cannot_satisfy_strict_policy(tmp_path, monkeypatch):
+    ledger = Ledger(tmp_path / "qa.db")
+    handoff = "qa-retry"
+    identity = "qa-" + assignment_id(handoff)
+    revision = "a" * 40
+    commands = [["python", "-m", "pytest"]]
+    ledger.reserve(
+        identity,
+        {
+            "implementation": "implementation",
+            "revision": revision,
+            "commands": commands,
+            "timeout": 120,
+        },
+    )
+    ledger.put(identity, {"phase": "finished", "result": {"status": "verified_success"}})
+    executor = QAExecutor(
+        ledger, tmp_path, "implementation", revision, commands, isolation=DockerIsolation(PIN),
+    )
+    monkeypatch.setattr(executor, "current", lambda: {"status": "implemented"})
+    monkeypatch.setattr(executor, "stale", lambda: False)
+    result = await executor({"handoff_id": handoff})
+    assert result["status"] == "blocked_configuration"
+    assert result["reason"] == "qa_assignment_inputs_changed"
+    ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_cached_unisolated_review_cannot_satisfy_strict_policy(tmp_path, monkeypatch):
+    ledger = Ledger(tmp_path / "review.db")
+    handoff = "review-retry"
+    identity = "review-" + assignment_id(handoff)
+    revision, base = "a" * 40, "b" * 40
+    commands = [["review", "--json"]]
+    ledger.reserve(
+        identity,
+        {
+            "implementation": "implementation",
+            "revision": revision,
+            "base": base,
+            "commands": commands,
+            "timeout": 120,
+        },
+    )
+    ledger.put(identity, {"phase": "finished", "result": {"status": "review_accepted"}})
+    executor = ReviewerExecutor(
+        ledger, tmp_path, "implementation", revision, commands, isolation=DockerIsolation(PIN)
+    )
+    monkeypatch.setattr(
+        executor, "_current", lambda: ({"status": "implemented"}, tmp_path, base, b"diff", [])
+    )
+    result = await executor({"handoff_id": handoff})
+    assert result["status"] == "blocked_configuration"
+    assert result["reason"] == "review_assignment_inputs_changed"
+    ledger.close()
