@@ -22,7 +22,50 @@ def _digest(value):
     return hashlib.sha256(encode(value).encode()).hexdigest()
 
 
-def inspect_recorded_meeting(database: str | Path, meeting_id: str) -> dict:
+def _completed_handoff_result(db, handoff_id, task_id, *, recipient=None):
+    if not handoff_id or not task_id:
+        return None
+    row = db.execute(
+        "SELECT h.recipient,h.result FROM handoffs h "
+        "JOIN assignments a ON a.id=h.id AND a.task_id=h.task_id "
+        "AND a.agent=h.recipient AND a.status='completed' "
+        "WHERE h.id=? AND h.task_id=? AND h.status='completed'",
+        (handoff_id, task_id),
+    ).fetchone()
+    if row is None or (recipient is not None and row["recipient"] != recipient):
+        return None
+    try:
+        result = json.loads(row["result"] or "null")
+    except (TypeError, ValueError):
+        return None
+    return result if isinstance(result, dict) and result.get("status") == "completed" else None
+
+
+def _recording_digest_matches(root, filename, expected_sha256):
+    if root is None or not isinstance(filename, str) or not expected_sha256:
+        return False
+    try:
+        root_path = Path(root).resolve(strict=True)
+        recording = (root_path / filename).resolve(strict=True)
+        if (
+            not root_path.is_dir()
+            or not recording.is_relative_to(root_path)
+            or not recording.is_file()
+            or recording.stat().st_size > 100 * 1024 * 1024
+        ):
+            return False
+        digest = hashlib.sha256()
+        with recording.open("rb") as audio:
+            while chunk := audio.read(1024 * 1024):
+                digest.update(chunk)
+        return digest.hexdigest() == expected_sha256
+    except (OSError, ValueError):
+        return False
+
+
+def inspect_recorded_meeting(
+    database: str | Path, meeting_id: str, *, recordings_root: str | Path | None = None
+) -> dict:
     if not isinstance(meeting_id, str) or not 1 <= len(meeting_id) <= 200:
         raise ValueError("A bounded meeting ID is required")
     database = Path(database).resolve(strict=True)
@@ -56,15 +99,34 @@ def inspect_recorded_meeting(database: str | Path, meeting_id: str) -> dict:
         checks["all_participants_consented"] = bool(consents) and all(consents)
         checks["meeting_not_revoked"] = record["status"] not in {"cancelled", "consent_revoked"}
         job = db.execute(
-            "SELECT status,input_sha256,transcript_sha256 FROM meeting_recording_jobs "
+            "SELECT id,task_id,handoff_id,voice_agent_id,filename,status,"
+            "input_sha256,transcript_sha256 FROM meeting_recording_jobs "
             "WHERE meeting_id=?",
             (meeting_id,),
         ).fetchone()
+        voice_result = (
+            _completed_handoff_result(
+                db, job["handoff_id"], job["task_id"], recipient=job["voice_agent_id"]
+            )
+            if job is not None
+            else None
+        )
         checks["registered_voice_handoff"] = (
             job is not None
             and job["status"] == "completed"
             and job["input_sha256"] == record["input_sha256"]
             and job["transcript_sha256"] == record["transcript_sha256"]
+            and voice_result is not None
+            and voice_result.get("role") == "voice"
+            and voice_result.get("meeting_id") == meeting_id
+            and voice_result.get("recording_job_id") == job["id"]
+            and voice_result.get("transcript_sha256") == record["transcript_sha256"]
+        )
+        checks["recording_file_digest_valid"] = bool(
+            job is not None
+            and _recording_digest_matches(
+                recordings_root, job["filename"], record["input_sha256"]
+            )
         )
         try:
             transcript = json.loads(record["transcript_json"] or "null")
@@ -96,13 +158,21 @@ def inspect_recorded_meeting(database: str | Path, meeting_id: str) -> dict:
             )
         }
         checks["audit_history_present"] = _AUDIT_EVENTS <= audit
+        notes_result = _completed_handoff_result(
+            db, record["notes_handoff_id"], record["notes_task_id"]
+        )
+        public_notes = (
+            {key: value for key, value in notes.items() if key != "segments"}
+            if isinstance(notes, dict)
+            else None
+        )
         checks["notes_assignment_registered"] = bool(
-            record["notes_task_id"]
-            and record["notes_handoff_id"]
-            and db.execute(
-                "SELECT 1 FROM handoffs WHERE id=? AND task_id=?",
-                (record["notes_handoff_id"], record["notes_task_id"]),
-            ).fetchone()
+            notes_result is not None
+            and public_notes is not None
+            and notes_result.get("role") == "notes"
+            and notes_result.get("meeting_id") == meeting_id
+            and notes_result.get("notes_sha256") == _digest(public_notes)
+            and notes_result.get("notes") == public_notes
         )
         presence_count = db.execute(
             "SELECT COUNT(*) FROM meeting_presence_events WHERE meeting_id=?", (meeting_id,)
@@ -124,11 +194,15 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Inspect consented recorded-meeting evidence")
     parser.add_argument("--database", required=True)
     parser.add_argument("--meeting-id", required=True)
+    parser.add_argument("--recordings-root", required=True)
     args = parser.parse_args(argv)
-    report = inspect_recorded_meeting(args.database, args.meeting_id)
+    report = inspect_recorded_meeting(
+        args.database, args.meeting_id, recordings_root=args.recordings_root
+    )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["status"] == "recorded_artifacts_valid" else 2
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
