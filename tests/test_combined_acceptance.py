@@ -29,6 +29,11 @@ def test_checkout_gate_requires_clean_exact_revision(tmp_path):
     root, sha = setup_repo(tmp_path)
     settings = Settings(_env_file=None, company_brain_repo_root=root, company_brain_revision=sha)
     assert check_checkout(settings)["status"] == "PASS"
+    nested = root / "nested"
+    nested.mkdir()
+    settings.company_brain_repo_root = nested
+    assert check_checkout(settings)["reason"] == "repository_root_mismatch"
+    settings.company_brain_repo_root = root
     (root / "code.py").write_text("value = 2\n")
     assert check_checkout(settings)["status"] == "BLOCKED"
     (root / "code.py").write_text("value = 1\n")
@@ -75,7 +80,8 @@ async def test_successful_probes_still_label_live_learning_pending(tmp_path, mon
     )
 
     async def brain(*args, **kwargs):
-        return {"status": "PASS", "source_count": 3}
+        assert kwargs["files"] == ["code.py"]
+        return {"status": "PASS", "source_count": 3, "change_source_count": 2}
 
     async def memory(factory):
         return {"status": "PASS", "fresh_client": True}
@@ -85,7 +91,99 @@ async def test_successful_probes_still_label_live_learning_pending(tmp_path, mon
 
     monkeypatch.setattr(combined, "verify_company_brain", brain)
     monkeypatch.setattr(combined, "verify_shared_memory", memory)
-    result = await run_combined_acceptance(settings, learning_probe=lesson)
+    result = await run_combined_acceptance(settings, files=["code.py"], learning_probe=lesson)
     assert result["status"] == "integration_probes_passed"
     assert result["live_learning"] == "not_verified"
     assert result["live_checkout_indexing"] == "not_verified"
+
+
+@pytest.mark.asyncio
+async def test_change_file_is_required_before_probes(tmp_path):
+    root, sha = setup_repo(tmp_path)
+    settings = Settings(
+        _env_file=None,
+        company_brain_enabled=True,
+        company_brain_repo_root=root,
+        company_brain_revision=sha,
+        memory_enabled=True,
+        memory_project="demo/acceptance/isolation",
+    )
+
+    def forbid():
+        raise AssertionError("No memory probe should be called without change files")
+
+    result = await run_combined_acceptance(settings, memory_factory=forbid)
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "change_file_required"
+
+
+def test_checkout_timeout_returns_blocked(tmp_path, monkeypatch):
+    root, sha = setup_repo(tmp_path)
+    settings = Settings(_env_file=None, company_brain_repo_root=root, company_brain_revision=sha)
+
+    def timed_out(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="git", timeout=8)
+
+    monkeypatch.setattr(combined.subprocess, "check_output", timed_out)
+    result = check_checkout(settings)
+    assert result == {"status": "BLOCKED", "reason": "git_checkout_unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_probe_exception_is_reported_as_blocked(tmp_path, monkeypatch):
+    root, sha = setup_repo(tmp_path)
+    settings = Settings(
+        _env_file=None,
+        company_brain_enabled=True,
+        company_brain_repo_root=root,
+        company_brain_revision=sha,
+        memory_enabled=True,
+        memory_project="demo/acceptance/isolation",
+    )
+
+    async def brain(*args, **kwargs):
+        return {"status": "PASS", "change_source_count": 1}
+
+    async def memory(factory):
+        return {"status": "PASS"}
+
+    async def broken_lesson():
+        raise RuntimeError("An internal detail that must not reach the report")
+
+    monkeypatch.setattr(combined, "verify_company_brain", brain)
+    monkeypatch.setattr(combined, "verify_shared_memory", memory)
+    result = await run_combined_acceptance(
+        settings, files=["code.py"], learning_probe=broken_lesson
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["controlled_two_task_learning"] == {
+        "status": "BLOCKED",
+        "reason": "controlled_learning_probe_error",
+    }
+
+
+@pytest.mark.asyncio
+async def test_missing_change_evidence_cannot_pass(tmp_path, monkeypatch):
+    root, sha = setup_repo(tmp_path)
+    settings = Settings(
+        _env_file=None,
+        company_brain_enabled=True,
+        company_brain_repo_root=root,
+        company_brain_revision=sha,
+        memory_enabled=True,
+        memory_project="demo/acceptance/isolation",
+    )
+
+    async def brain(*args, **kwargs):
+        return {"status": "PASS", "source_count": 3}
+
+    async def memory(factory):
+        return {"status": "PASS"}
+
+    async def lesson():
+        return {"status": "PASS"}
+
+    monkeypatch.setattr(combined, "verify_company_brain", brain)
+    monkeypatch.setattr(combined, "verify_shared_memory", memory)
+    result = await run_combined_acceptance(settings, files=["code.py"], learning_probe=lesson)
+    assert result["status"] == "BLOCKED"

@@ -14,10 +14,10 @@ paid inference service or changes an existing workflow.
 | Boundary | Runtime v1 behavior |
 | --- | --- |
 | PM | Authenticated local CLI generates structured 1–12 step plans; Python validates roles and dependencies, then stores a plan in SQLite. |
-| Research | Existing LangGraph and optional bounded research retrieval feed a CLI reasoning step. |
+| Research | Existing LangGraph, optional bounded research retrieval, and Company Brain context feed a CLI reasoning step as untrusted evidence. |
 | Other specialists | Each existing specialist LangGraph may use `capability.mode: harness`, with the role bound in private operator config. |
 | Switch | Existing independent bot identities, original-thread handoffs, retries, and delivery persist unchanged. |
-| SQLite / memory | Task truth, plan state, checkpoints, and optional Waggle memory remain on the existing paths. |
+| SQLite / memory | Task truth, plan state, human draft reviews, checkpoints, and optional Waggle memory remain on the existing paths. |
 | Privileged actions | Engineering, QA, Reviewer, Release, Voice, and Notes cannot be assigned a generic harness executor. Existing approval, consent, and execution gates apply. |
 
 ## 1. Authenticate the CLIs on the demo machine
@@ -46,8 +46,11 @@ containerized deployment is needed.
 Create the JSON file outside the Git checkout, e.g. at an absolute path under your
 user's private configuration directory, and set mode `0600` (`chmod 600 FILE`).
 The workspace must already exist and should be a separate, **non-sensitive demo
-folder**. Do not use a production repository with write credentials, secrets, or
-unreviewed hooks. Example file contents (replace every absolute path):
+folder**. It is validated as an operator-selected location, but the CLI itself
+runs inside a new temporary working directory for each invocation; it does not
+receive the configured workspace as its current working directory. Do not put
+production credentials, secrets, or unreviewed hooks in the CLI user's reachable
+files. Example file contents (replace every absolute path):
 
 ```json
 {
@@ -77,8 +80,11 @@ roles: `pm`, `research`, `community`, `documentation`, `knowledge`, `onboarding`
 Kiro adapter in v1. For optional local grounding, add `source_root` (existing source
 directory) and `sources` (1–20 explicitly allowed relative files) to a role.
 The original source scanner rejects private paths, limits bytes, and redacts likely
-secrets. This snapshot is supplied as untrusted context; it is not a source of new
-instructions or verified facts.
+secrets. Approved snapshots are supplied in the prompt; the CLI is not started
+from the source tree. This snapshot is untrusted context, not a source of new
+instructions or verified facts. **Snapshot allowlisting is not a filesystem
+security boundary**: the subprocess retains its signed-in OS identity, so use an
+account/container with least-privilege filesystem access.
 
 In the worker/API `.env` (also private), set:
 
@@ -136,6 +142,10 @@ An unprivileged specialist returns a validated JSON object with:
 The runtime adds `role`, `provider`, and
 `trust: "model_generated_requires_human_review"` before handing the result back
 to LangGraph. The result is stored and delivered through existing mechanisms.
+Successful model-generated specialist steps remain `awaiting_review` in SQLite;
+they do **not** complete their child task or release downstream dependencies until
+an authenticated human accepts the exact persisted result. A rejection blocks
+the parent plan. This also applies to nonprivileged outputs in model-driven plans.
 No generated claim can itself approve code, pass QA, publish a PR, or bypass the
 Switch sender/recipient checks. An unavailable CLI, timeout, invalid JSON,
 oversized result, or failed schema validation **blocks** the task; it never
@@ -145,15 +155,40 @@ The PM result is separately validated: exactly 1–12 sequential steps, explicit
 allowed roles, and bounded nonempty criteria. Only then is the plan committed to
 SQLite. A failed model plan leaves the task in `DRAFT` for a safe retry.
 
+### Human review of model-generated plan results
+
+Configure an independent human approval credential (for example,
+`SWITCHCREW_APPROVAL_CREDENTIALS='{"operator":"<long-private-token>"}'`).
+Inspect the pending plan with `GET /tasks/{parent_task_id}/plan` using the API
+service token, and inspect the full draft and its provenance before deciding.
+Retrieve the parent's latest `version` from `GET /tasks/{parent_task_id}`. Then
+send this request using the **human approval Bearer token**, not the API token:
+
+```http
+POST /tasks/{parent_task_id}/plan/reviews
+Authorization: Bearer <human-approval-token>
+Content-Type: application/json
+
+{"step_id":"step-1","approved":true,"expected_version":2}
+```
+
+The version `2` is only illustrative; use the current version. Rejected and stale
+decisions fail closed, and decisions are recorded in task events with the human
+identity and a hash of the reviewed result. There is no automatic approval.
+
 ## Security and demo limitations
 
 - **CLI processes can use the user's own login/session.** Workers pass a small
   allowlisted environment rather than Discord, approval, or service credentials.
-  Codex runs `exec --sandbox read-only` (prompt over stdin); Antigravity runs
-  headlessly with `--sandbox` terminal restrictions. Neither should be assumed
-  to be an all-purpose security boundary for arbitrary tools, plugins, remote
-  model services, or user configuration. Use a disposable workspace and OS account
-  with least privilege for the demo.
+  Codex runs `exec --sandbox read-only` with user config ignored and ephemeral
+  sessions (prompt over stdin); Antigravity runs with `--mode=plan`, disabled
+  slash commands, and `--sandbox` terminal restrictions. Both run from newly
+  created disposable work directories, never the configured source checkout.
+  Antigravity's terminal sandbox **is not a read-only file permission policy**,
+  and plan mode is not an OS security boundary. A process can still access files
+  its OS identity permits (including CLI credentials). Use a separate, tightly
+  restricted demo OS account/container; do not rely on source filtering or prompt
+  instructions for confidentiality or mutation safety.
 - **Prompts leave the machine for provider inference.** The graph, plan store, and
   handoffs remain local/Switch as before, but Codex and Antigravity are hosted
   inference paths. Do not send secrets, confidential customer data, or sensitive
@@ -161,9 +196,10 @@ SQLite. A failed model plan leaves the task in `DRAFT` for a safe retry.
 - **Antigravity receives its prompt on a command-line argument** for the currently
   documented `agy --print` mode; other local users with process-inspection rights
   may be able to observe it. Codex reads its prompt through stdin.
-- **No unrestricted shell or mutation authority is exposed by Flip's adapter.**
-  The generated artifact is a draft. A model might still hallucinate evidence,
-  and sandbox availability/implementation depends on the installed CLI and OS.
+- **Tool policy may differ by installed CLI and host.** The temporary directory
+  prevents edits to the configured checkout through relative workspace paths,
+  but only OS permissions can reliably restrict arbitrary file reads/writes.
+  The generated artifact is a draft and may hallucinate evidence.
 - **Not yet live-accepted against your accounts.** Unit tests use fake CLIs to
   verify the contract without spending quota. The end-to-end Switch demo still
   needs a signed-in host, running workers, configured identities, and live smoke
@@ -182,3 +218,4 @@ persisted plan has `planner: "harness_structured_v1"`; then check Research outpu
 includes the configured `provider` and `trust` fields and an honest limitation.
 Never interpret a fake-CLI test as proof that provider login or Switch delivery
 worked on the demo machine.
+

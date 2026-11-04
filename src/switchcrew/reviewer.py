@@ -10,6 +10,8 @@ import re
 import signal
 import subprocess
 import tempfile
+from contextlib import nullcontext
+from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 
 from .engineering import assignment_id, git, outcome
@@ -132,6 +134,7 @@ class ReviewerExecutor:
             "base": base,
             "commands": self.commands,
             "timeout": self.timeout,
+            **({"isolation": asdict(self.isolation)} if self.isolation is not None else {}),
         }
         try:
             data = self.ledger.reserve(identity, spec)
@@ -190,32 +193,37 @@ class ReviewerExecutor:
                 )
                 with tempfile.TemporaryFile() as output:
                     self._approved(state)
-                    execution = (
-                        self.isolation.command(command, checkout, writable=True)
+                    context = (
+                        self.isolation.launch(command, checkout, writable=True)
                         if self.isolation is not None
-                        else command
+                        else nullcontext(command)
                     )
-                    proc = await asyncio.create_subprocess_exec(
-                        *execution,
-                        cwd=checkout,
-                        env=env,
-                        stdout=output,
-                        stderr=asyncio.subprocess.STDOUT,
-                        start_new_session=True,
-                    )
-                    timed_out = False
-                    try:
-                        await asyncio.wait_for(proc.wait(), self.timeout)
-                    except (TimeoutError, asyncio.CancelledError) as exc:
-                        os.killpg(proc.pid, signal.SIGKILL)
-                        await proc.wait()
-                        if isinstance(exc, asyncio.CancelledError):
-                            self.ledger.put(
-                                identity,
-                                {"phase": "uncertain", "commands": records, "current_command": i},
-                            )
-                            raise
-                        timed_out = True
+                    with context as execution:
+                        proc = await asyncio.create_subprocess_exec(
+                            *execution,
+                            cwd=checkout,
+                            env=env,
+                            stdout=output,
+                            stderr=asyncio.subprocess.STDOUT,
+                            start_new_session=True,
+                        )
+                        timed_out = False
+                        try:
+                            await asyncio.wait_for(proc.wait(), self.timeout)
+                        except (TimeoutError, asyncio.CancelledError) as exc:
+                            os.killpg(proc.pid, signal.SIGKILL)
+                            await proc.wait()
+                            if isinstance(exc, asyncio.CancelledError):
+                                self.ledger.put(
+                                    identity,
+                                    {
+                                        "phase": "uncertain",
+                                        "commands": records,
+                                        "current_command": i,
+                                    },
+                                )
+                                raise
+                            timed_out = True
                     output.seek(0)
                     digest_builder = hashlib.sha256()
                     size = 0

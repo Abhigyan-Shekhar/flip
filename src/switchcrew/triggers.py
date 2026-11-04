@@ -11,6 +11,7 @@ import os
 import re
 import tempfile
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -388,10 +389,14 @@ class TriggeredQAExecutor:
                     command = _expand_args(
                         configured, checkout, revision, isolated=self.isolation is not None
                     )
-                    if self.isolation is not None:
-                        command = self.isolation.command(command, checkout, writable=True)
+                    context = (
+                        self.isolation.launch(command, checkout, writable=True)
+                        if self.isolation is not None
+                        else nullcontext(command)
+                    )
                     # Commands are operator-owned argv. Webhook payloads never reach this list.
-                    code, output = await _process(command, checkout, self.timeout, home)
+                    with context as execution:
+                        code, output = await _process(execution, checkout, self.timeout, home)
                     from .qa import generated_inputs
 
                     unchanged = (

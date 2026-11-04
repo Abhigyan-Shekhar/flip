@@ -10,6 +10,7 @@ import re
 import shutil
 import tarfile
 import tempfile
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
@@ -332,23 +333,26 @@ class SecurityRunner:
         home = Path(temp) / ("home-" + str(len(list(Path(temp).glob("home-*")))))
         home.mkdir()
         env = {"PATH": os.defpath, "HOME": str(home), "LANG": "C.UTF-8"}
-        execution = (
-            self.isolation.command(command, checkout) if self.isolation is not None else command
+        context = (
+            self.isolation.launch(command, checkout)
+            if self.isolation is not None
+            else nullcontext(command)
         )
-        process = await asyncio.create_subprocess_exec(
-            *execution,
-            cwd=checkout,
-            env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-        )
-        try:
-            stdout, stderr, exceeded = await _bounded_communicate(
-                process, timeout=timeout, limit=_MAX_OUTPUT
+        with context as execution:
+            process = await asyncio.create_subprocess_exec(
+                *execution,
+                cwd=checkout,
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
             )
-        except (TimeoutError, asyncio.CancelledError):
-            raise
+            try:
+                stdout, stderr, exceeded = await _bounded_communicate(
+                    process, timeout=timeout, limit=_MAX_OUTPUT
+                )
+            except (TimeoutError, asyncio.CancelledError):
+                raise
         if exceeded or process.returncode not in success_codes:
             return "failed", b"", "Scanner exited unsuccessfully or exceeded output limits."
         return "completed", stdout, ""

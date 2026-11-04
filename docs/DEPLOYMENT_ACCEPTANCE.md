@@ -17,7 +17,8 @@ uv run python -m switchcrew.deployment_preflight
 
 The static check validates configured PM/Research IDs, distinct independent
 Engineering/QA/Reviewer/Release identities, approval operators, private config
-permissions, API credentials and the target repository. A clean result says
+permissions (including the root `.env`), credential separation, Discord ingress
+bindings/allowlists and the target repository. A clean result says
 `ready_for_live_checks`, **not** that deployment succeeded. Service health,
 networking, CLI authentication, actual GitHub branch policies, least-privilege
 security runners, and externally observable Discord behavior need live proof.

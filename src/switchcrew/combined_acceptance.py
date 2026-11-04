@@ -28,6 +28,14 @@ def check_checkout(settings: Settings) -> dict:
         return {"status": "BLOCKED", "reason": "absolute_root_and_exact_sha_required"}
     try:
         checkout = Path(root).resolve(strict=True)
+        git_root = Path(
+            subprocess.check_output(
+                ["git", "-C", str(checkout), "rev-parse", "--show-toplevel"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=8,
+            ).strip()
+        ).resolve(strict=True)
         actual = subprocess.check_output(
             ["git", "-C", str(checkout), "rev-parse", "HEAD"],
             stderr=subprocess.DEVNULL,
@@ -40,8 +48,10 @@ def check_checkout(settings: Settings) -> dict:
             text=True,
             timeout=8,
         ).strip()
-    except (OSError, subprocess.CalledProcessError, TimeoutError):
+    except (OSError, subprocess.SubprocessError):
         return {"status": "BLOCKED", "reason": "git_checkout_unavailable"}
+    if git_root != checkout:
+        return {"status": "BLOCKED", "reason": "repository_root_mismatch"}
     if actual.lower() != revision.lower() or dirty:
         return {"status": "BLOCKED", "reason": "checkout_revision_or_cleanliness_mismatch"}
     return {"status": "PASS", "root": str(checkout), "revision": actual}
@@ -65,12 +75,33 @@ async def run_combined_acceptance(
             "reason": "isolated_waggle_acceptance_project_required",
             "live_learning": "not_verified",
         }
-    brain = await verify_company_brain(settings, transport=brain_transport, files=files)
-    factory = memory_factory or (lambda: memory_from_settings(settings))
-    memory = await verify_shared_memory(factory)
-    probe = learning_probe or run_two_task_learning
-    controlled_learning = await probe()
-    passed = all(result.get("status") == "PASS" for result in (brain, memory, controlled_learning))
+    if not files:
+        return {
+            "status": "BLOCKED",
+            "checkout": check,
+            "reason": "change_file_required",
+            "live_learning": "not_verified",
+        }
+    try:
+        brain = await verify_company_brain(settings, transport=brain_transport, files=files)
+    except Exception:
+        brain = {"status": "BLOCKED", "reason": "company_brain_probe_error"}
+    try:
+        factory = memory_factory or (lambda: memory_from_settings(settings))
+        memory = await verify_shared_memory(factory)
+    except Exception:
+        memory = {"status": "BLOCKED", "reason": "waggle_probe_error"}
+    try:
+        probe = learning_probe or run_two_task_learning
+        controlled_learning = await probe()
+    except Exception:
+        controlled_learning = {"status": "BLOCKED", "reason": "controlled_learning_probe_error"}
+    change_count = brain.get("change_source_count")
+    passed = (
+        all(result.get("status") == "PASS" for result in (brain, memory, controlled_learning))
+        and isinstance(change_count, int)
+        and change_count > 0
+    )
     return {
         "status": "integration_probes_passed" if passed else "BLOCKED",
         "observed_at": datetime.now(UTC).isoformat(),

@@ -1,7 +1,8 @@
 # Voice + Notes: recorded first, live later
 
 This slice adds a **read-only acceptance inspector** for consented recorded
-meetings. It consumes only existing SQLite artifacts; no recording, transcript,
+meetings. It checks existing SQLite artifacts and rehashes the local recording
+under the private recording root; no recording, transcript,
 participant identity, or consent evidence is printed to stdout. Existing
 MeetingService, Voice and Notes Switch agents remain responsible for all state
 transitions and handoffs.
@@ -24,15 +25,26 @@ authenticated PM, Voice and Notes identities:
 ```bash
 uv run python -m switchcrew.recorded_acceptance \
   --database /private/path/switchcrew.sqlite3 \
+  --recordings-root /private/path/recordings \
   --meeting-id YOUR_REGISTERED_MEETING_ID
 ```
 
 The inspector verifies current consent, absence of revocation, completed
-registered Voice job, exact audio/transcript/notes digests, Notes assignment and
-meeting audit events. It **never** claims the upstream provider, recording,
+registered Voice and Notes Switch handoffs and assignments, the on-disk audio
+SHA-256, transcript/notes digests, and meeting audit events. The recording must
+still exist within the supplied private root; a missing or changed file leaves
+acceptance `incomplete`. It **never** claims the upstream provider, recording,
 Discord capture, or human identity is externally authenticated just because
 SQLite contains a matching artifact. A direct transcription without a real
 Voice handoff intentionally remains `incomplete`.
+
+## Offline gate before post-merge testing
+
+Run `uv sync --frozen`, `uv run --no-sync pytest -q`, and the repository
+Ruff lint/format checks against the merged checkout. Passing these commands
+confirms only the acceptance inspector's code and synthetic fixtures. Do not
+mark transcription, Switch receipts, consent, presence or Discord capture as
+live-verified until the host-side workflow above has durable evidence.
 
 ## Independent next-stage gates
 
@@ -50,3 +62,4 @@ Voice handoff intentionally remains `incomplete`.
 
 Automated tests use synthesized silence and a controlled transcription provider;
 they validate consent and artifact rules, not real API connectivity.
+

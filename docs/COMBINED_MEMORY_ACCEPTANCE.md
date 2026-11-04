@@ -26,6 +26,9 @@ uv run python -m switchcrew.combined_acceptance \
   --report /private/path/acceptance-report.json
 ```
 
+The `--file` option is required and may be repeated for multiple repository-relative
+files. Omitting it blocks acceptance so `check_change` cannot be skipped.
+
 The report requires exact local git HEAD and a clean checkout, revision/root
 identity matching in returned Company Brain evidence, source anchors from
 `get_context` and `check_change`, cross-role persisted Waggle recall with a
