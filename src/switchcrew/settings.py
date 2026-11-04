@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_path: Path = Path("data/switchcrew.sqlite3")
     checkpoint_path: Path = Path("data/checkpoints.sqlite3")
     organization_config: Path | None = None
+    harness_config: Path | None = None
     memory_enabled: bool = False
     memory_project: str = "github.com/Abhigyan-Shekhar/flip"
     waggle_command: list[str] = Field(default_factory=list)
@@ -74,7 +75,7 @@ class Settings(BaseSettings):
             raise ValueError("Each human requires an independent credential")
         return value
 
-    @field_validator("waggle_url", "organization_config", mode="before")
+    @field_validator("waggle_url", "organization_config", "harness_config", mode="before")
     @classmethod
     def optional_waggle_url(cls, value):
         return None if value == "" else value

@@ -20,6 +20,12 @@ Optional Waggle MCP memory provides shared recall and curated outcome storage. S
 [agent workflows](docs/AGENT_WORKFLOWS.md), [memory](docs/MEMORY.md), and
 [Switch runtimes](docs/AGENT_SWITCH.md).
 
+**Demo inference without separate API keys:** [Flip Harness Runtime v1](docs/HARNESS_RUNTIME.md)
+adds opt-in model-driven PM planning and specialist outputs through locally authenticated
+Codex and Antigravity CLIs. Switch messages, LangGraph checkpoints, SQLite task state,
+and human-gated Engineering/QA/Review/Release are unchanged. Harness outputs are drafts
+for review, not trusted evidence or execution authorization.
+
 ## Run locally
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:

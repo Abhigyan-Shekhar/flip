@@ -149,6 +149,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.store = Store(settings.database_path)
         app.state.approvals = ApprovalWorkflow(app.state.store, human_tokens)
         app.state.company_brain = None
+        from switchcrew.harnesses import HarnessPlanner, load_harness_config
+
+        harness_roles = load_harness_config(settings.harness_config)
+        harness_planner = (
+            HarnessPlanner(harness_roles["pm"], available_roles=set(harness_roles))
+            if "pm" in harness_roles
+            else None
+        )
         if settings.company_brain_enabled:
             from switchcrew.company_brain import company_brain_from_settings
 
@@ -174,6 +182,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "base": settings.release_base,
             },
             company_brain=app.state.company_brain,
+            planner=harness_planner,
         )
         from .organization import knowledge_services, load_organization_config, meeting_service
 
@@ -325,7 +334,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             body.acceptance_criteria,
         )
         if body.kind == "orchestrate":
-            request.app.state.orchestrator.start(task["id"])
+            from switchcrew.harnesses import HarnessError
+
+            try:
+                await request.app.state.orchestrator.start_with_planner(task["id"])
+            except (HarnessError, ValueError):
+                raise HTTPException(503, "Configured PM harness unavailable or invalid") from None
             await request.app.state.orchestrator.reconcile_with_context(task["id"])
             task = request.app.state.store.get_task(task["id"])
         if body.kind == "engineering":

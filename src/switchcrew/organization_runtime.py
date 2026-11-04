@@ -128,6 +128,13 @@ class ChangeIntelligenceExecutor:
 
 def configured_executor(role, capability, store, connection, settings):
     mode = capability.get("mode")
+    if mode == "harness":
+        from .harnesses import HarnessExecutor, load_harness_config
+
+        roles = load_harness_config(settings.harness_config)
+        if role not in roles:
+            raise ValueError("No operator-configured harness for this specialist")
+        return HarnessExecutor(roles[role])
     if role == "voice" and mode == "meeting_transcription":
         from .meetings import MeetingVoiceExecutor
         from .organization import load_organization_config, meeting_service

@@ -69,11 +69,47 @@ def decompose(question, criteria):
     return {"planner": "bounded_criterion_rules_v1", "question": question, "steps": steps}
 
 
+def validate_harness_plan(question, criteria, response, allowed_roles):
+    """Normalize a model proposal; it never grants authority or changes routing identity."""
+    if not question.strip() or not 1 <= len(criteria) <= 12:
+        raise ValueError("A bounded objective and criteria are required")
+    raw_steps = response.get("steps") if isinstance(response, dict) else None
+    if not isinstance(raw_steps, list) or not 1 <= len(raw_steps) <= 12:
+        raise ValueError("Harness plan must contain one to twelve steps")
+    steps, previous = [], None
+    for index, proposed in enumerate(raw_steps, 1):
+        if not isinstance(proposed, dict) or set(proposed) != {"role", "criterion"}:
+            raise ValueError("Harness steps require only role and criterion")
+        role, criterion = proposed["role"], proposed["criterion"]
+        if (
+            not isinstance(role, str)
+            or role not in allowed_roles
+            or role not in READ_ONLY_ROLES | {"engineering"}
+            or not isinstance(criterion, str)
+            or not 1 <= len(criterion.strip()) <= 2000
+        ):
+            raise ValueError("Harness proposed an unconfigured role or invalid criterion")
+        identity = f"step-{index}"
+        steps.append(
+            {
+                "id": identity,
+                "role": role,
+                "criteria": [criterion.strip()],
+                "depends_on": [previous] if previous else [],
+            }
+        )
+        previous = identity
+    return {"planner": "harness_structured_v1", "question": question, "steps": steps}
+
+
 class Orchestrator:
-    def __init__(self, store, pm_id, targets, *, engineering_route=None, company_brain=None):
+    def __init__(
+        self, store, pm_id, targets, *, engineering_route=None, company_brain=None, planner=None
+    ):
         self.store, self.pm_id, self.targets = store, pm_id, dict(targets)
         self.engineering_route = engineering_route or {}
         self.company_brain = company_brain
+        self.planner = planner
         self._brain_locks = weakref.WeakValueDictionary()
         self.approvals = ApprovalWorkflow(store)
         with store._lock:
@@ -95,10 +131,11 @@ class Orchestrator:
             (task_id, encode(data)),
         )
 
-    def start(self, task_id):
+    def start(self, task_id, *, spec=None):
         with self.store._lock, self.store.transaction():
             task = self.store.get_task(task_id)
-            spec = decompose(task["objective"], task["acceptance_criteria"])
+            if spec is None:
+                spec = decompose(task["objective"], task["acceptance_criteria"])
             old = self.get(task_id)
             if old:
                 if old["spec"] != spec or old["pm"] != self.pm_id:
@@ -118,6 +155,38 @@ class Orchestrator:
             self.store.transition_task(task_id, "IN_PROGRESS", task["version"])
             self._save(task_id, data)
             return data
+
+    async def start_with_planner(self, task_id):
+        """Run model reasoning outside SQLite transactions, then commit an immutable plan."""
+        if self.planner is None:
+            return self.start(task_id)
+        existing = self.get(task_id)
+        if existing:
+            return existing
+        task = self.store.get_task(task_id)
+        if not task or task["status"] != "DRAFT":
+            raise ConflictError("Model planning requires a draft task")
+        allowed = sorted(
+            role
+            for role, identity in self.targets.items()
+            if identity
+            and role in READ_ONLY_ROLES | {"engineering"}
+            and (
+                role == "engineering"
+                or self.planner.available_roles is None
+                or role in self.planner.available_roles
+            )
+        )
+        if "engineering" in allowed and not all(
+            self.engineering_route.get(key)
+            for key in ("qa", "reviewer", "release", "job_key", "repository", "base")
+        ):
+            allowed.remove("engineering")
+        response = await self.planner.plan(task["objective"], task["acceptance_criteria"], allowed)
+        spec = validate_harness_plan(
+            task["objective"], task["acceptance_criteria"], response, set(allowed)
+        )
+        return self.start(task_id, spec=spec)
 
     def start_incident(self, task_id, incident):
         """Persist a deterministic incident response team and its assignments."""
