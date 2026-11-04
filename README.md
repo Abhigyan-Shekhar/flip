@@ -36,6 +36,8 @@ For Voice + Notes, use the [recorded-meeting acceptance inspector](docs/RECORDED
 before separately attempting live Discord capture or interactive clarifications.
 The PM harness also has [per-task invocation and planning budgets](docs/PLANNING_BUDGETS.md)
 with an explicitly configured, role-constrained deterministic fallback.
+The [combined Waggle + Company Brain probe](docs/COMBINED_MEMORY_ACCEPTANCE.md)
+requires a clean SHA-pinned checkout and keeps live cross-task learning pending.
 
 ## Run locally
 
