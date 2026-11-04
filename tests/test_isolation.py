@@ -130,9 +130,7 @@ def test_container_is_reaped_when_worker_times_out(tmp_path):
 def test_rootless_mode_requires_a_verified_rootless_daemon(tmp_path):
     fake_docker = tmp_path / "fake-docker"
     fake_docker.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys\n"
-        "if 'info' in sys.argv: print('[\"name=seccomp\"]')\n"
+        "#!/usr/bin/env python3\nimport sys\nif 'info' in sys.argv: print('[\"name=seccomp\"]')\n"
     )
     fake_docker.chmod(0o700)
     policy = DockerIsolation(
@@ -164,7 +162,12 @@ async def test_cached_unisolated_qa_result_cannot_satisfy_strict_policy(tmp_path
     )
     ledger.put(identity, {"phase": "finished", "result": {"status": "verified_success"}})
     executor = QAExecutor(
-        ledger, tmp_path, "implementation", revision, commands, isolation=DockerIsolation(PIN),
+        ledger,
+        tmp_path,
+        "implementation",
+        revision,
+        commands,
+        isolation=DockerIsolation(PIN),
     )
     monkeypatch.setattr(executor, "current", lambda: {"status": "implemented"})
     monkeypatch.setattr(executor, "stale", lambda: False)
