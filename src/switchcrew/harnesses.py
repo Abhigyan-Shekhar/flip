@@ -316,7 +316,8 @@ class HarnessPlanner:
         self.max_prompt_chars = max_prompt_chars
         self.fallback_on_failure = fallback_on_failure
 
-    async def plan(self, question: str, criteria: list[str], allowed_roles: list[str]) -> dict:
+    def build_prompt(self, question: str, criteria: list[str], allowed_roles: list[str]) -> str:
+        """Preflight the exact prompt without consuming a provider invocation."""
         prompt = (
             f"You are SwitchCrew's planning agent. Decompose the objective into 1-{self.max_steps} "
             "bounded, SEQUENTIAL specialist steps. Select each role only from allowed_roles. "
@@ -334,4 +335,9 @@ class HarnessPlanner:
         )
         if len(prompt) > self.max_prompt_chars:
             raise HarnessError("PM prompt exceeds configured planning budget")
-        return await self.runner.run_json(self.spec, prompt)
+        return prompt
+
+    async def plan(self, question: str, criteria: list[str], allowed_roles: list[str]) -> dict:
+        return await self.runner.run_json(
+            self.spec, self.build_prompt(question, criteria, allowed_roles)
+        )

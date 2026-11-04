@@ -3,8 +3,9 @@
 import asyncio
 import json
 import re
+import time
 import weakref
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from .approval import ApprovalWorkflow
 from .company_brain import capture_engineering_context
@@ -121,6 +122,11 @@ class Orchestrator:
                 "CREATE TABLE IF NOT EXISTS harness_plan_attempts "
                 "(task_id TEXT PRIMARY KEY REFERENCES tasks(id), attempts INTEGER NOT NULL)"
             )
+            store.connection.execute(
+                "CREATE TABLE IF NOT EXISTS harness_plan_claims "
+                "(task_id TEXT PRIMARY KEY REFERENCES tasks(id), "
+                "token TEXT NOT NULL, expires_at REAL NOT NULL)"
+            )
 
     def get(self, task_id):
         with self.store._lock:
@@ -160,8 +166,17 @@ class Orchestrator:
             self._save(task_id, data)
             return data
 
+    def _explicit_fallback(self, task, allowed):
+        spec = decompose(task["objective"], task["acceptance_criteria"])
+        if any(step["role"] not in allowed for step in spec["steps"]):
+            raise ValueError("Fallback would dispatch to an unconfigured role")
+        if len(spec["steps"]) > self.planner.max_steps:
+            raise ValueError("Fallback exceeds configured step budget")
+        spec["planner"] = "bounded_criterion_rules_explicit_fallback_v1"
+        return spec
+
     async def start_with_planner(self, task_id):
-        """Run model reasoning outside SQLite transactions, then commit an immutable plan."""
+        """Reserve one model call per task and coalesce concurrent planning requests."""
         if self.planner is None:
             return self.start(task_id)
         existing = self.get(task_id)
@@ -186,41 +201,109 @@ class Orchestrator:
             for key in ("qa", "reviewer", "release", "job_key", "repository", "base")
         ):
             allowed.remove("engineering")
-        # Reserve a limited number of model invocations durably across retries.
-        # A crash consumes a call; no concurrent retry can silently exceed the cap.
-        with self.store._lock, self.store.transaction():
-            row = self.store.connection.execute(
-                "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task_id,)
-            ).fetchone()
-            attempts = row[0] if row else 0
-            if attempts >= self.planner.max_calls:
-                raise ValueError("PM planning invocation budget exhausted")
-            self.store.connection.execute(
-                "INSERT INTO harness_plan_attempts(task_id,attempts) VALUES(?,?) "
-                "ON CONFLICT(task_id) DO UPDATE SET attempts=excluded.attempts",
-                (task_id, attempts + 1),
-            )
+
+        # Reject an oversized prompt before spending any model-call budget.
         try:
-            response = await self.planner.plan(
-                task["objective"], task["acceptance_criteria"], allowed
-            )
-            spec = validate_harness_plan(
-                task["objective"],
-                task["acceptance_criteria"],
-                response,
-                set(allowed),
-                max_steps=self.planner.max_steps,
-            )
+            self.planner.build_prompt(task["objective"], task["acceptance_criteria"], allowed)
+            preflight_failed = False
         except (ValueError, RuntimeError):
             if not self.planner.fallback_on_failure:
                 raise
-            spec = decompose(task["objective"], task["acceptance_criteria"])
-            if any(step["role"] not in allowed for step in spec["steps"]):
-                raise ValueError("Fallback would dispatch to an unconfigured role") from None
-            if len(spec["steps"]) > self.planner.max_steps:
-                raise ValueError("Fallback exceeds configured step budget") from None
-            spec["planner"] = "bounded_criterion_rules_explicit_fallback_v1"
-        return self.start(task_id, spec=spec)
+            preflight_failed = True
+
+        # A short, renewable SQLite lease protects the entire external model call.
+        # Another process waits for the saved plan or for a crashed holder's lease to expire.
+        token = uuid4().hex
+        lease_seconds = max(60, self.planner.spec.timeout_seconds + 30)
+        while True:
+            waiting = False
+            with self.store._lock, self.store.transaction():
+                existing = self.get(task_id)
+                if existing:
+                    return existing
+                current = self.store.get_task(task_id)
+                if not current or current["status"] != "DRAFT":
+                    raise ConflictError("Model planning requires a draft task")
+                claim = self.store.connection.execute(
+                    "SELECT expires_at FROM harness_plan_claims WHERE task_id=?", (task_id,)
+                ).fetchone()
+                if claim and claim[0] > time.time():
+                    waiting = True
+                else:
+                    row = self.store.connection.execute(
+                        "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task_id,)
+                    ).fetchone()
+                    attempts = row[0] if row else 0
+                    use_fallback = preflight_failed or attempts >= self.planner.max_calls
+                    if use_fallback:
+                        if not self.planner.fallback_on_failure:
+                            raise ValueError("PM planning invocation budget exhausted")
+                        spec = self._explicit_fallback(current, allowed)
+                    else:
+                        self.store.connection.execute(
+                            "INSERT INTO harness_plan_attempts(task_id,attempts) VALUES(?,?) "
+                            "ON CONFLICT(task_id) DO UPDATE SET attempts=excluded.attempts",
+                            (task_id, attempts + 1),
+                        )
+                    self.store.connection.execute(
+                        "INSERT INTO harness_plan_claims(task_id,token,expires_at) VALUES(?,?,?) "
+                        "ON CONFLICT(task_id) DO UPDATE SET "
+                        "token=excluded.token, expires_at=excluded.expires_at",
+                        (task_id, token, time.time() + lease_seconds),
+                    )
+            if not waiting:
+                break
+            await asyncio.sleep(0.1)
+
+        async def renew_claim():
+            while True:
+                await asyncio.sleep(5)
+                with self.store._lock, self.store.transaction():
+                    result = self.store.connection.execute(
+                        "UPDATE harness_plan_claims SET expires_at=? "
+                        "WHERE task_id=? AND token=?",
+                        (time.time() + lease_seconds, task_id, token),
+                    )
+                    if result.rowcount == 0:
+                        return
+
+        heartbeat = asyncio.create_task(renew_claim())
+        try:
+            if not use_fallback:
+                try:
+                    response = await self.planner.plan(
+                        task["objective"], task["acceptance_criteria"], allowed
+                    )
+                    spec = validate_harness_plan(
+                        task["objective"],
+                        task["acceptance_criteria"],
+                        response,
+                        set(allowed),
+                        max_steps=self.planner.max_steps,
+                    )
+                except (ValueError, RuntimeError):
+                    if not self.planner.fallback_on_failure:
+                        raise
+                    spec = self._explicit_fallback(task, allowed)
+
+            with self.store._lock, self.store.transaction():
+                claim = self.store.connection.execute(
+                    "SELECT token FROM harness_plan_claims WHERE task_id=?", (task_id,)
+                ).fetchone()
+                if not claim or claim[0] != token:
+                    existing = self.get(task_id)
+                    if existing:
+                        return existing
+                    raise ConflictError("PM planning claim expired before plan commit")
+                return self.start(task_id, spec=spec)
+        finally:
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
+            with self.store._lock, self.store.transaction():
+                self.store.connection.execute(
+                    "DELETE FROM harness_plan_claims WHERE task_id=? AND token=?",
+                    (task_id, token),
+                )
 
     def start_incident(self, task_id, incident):
         """Persist a deterministic incident response team and its assignments."""
