@@ -26,6 +26,10 @@ Codex and Antigravity CLIs. Switch messages, LangGraph checkpoints, SQLite task 
 and human-gated Engineering/QA/Review/Release are unchanged. Harness outputs are drafts
 for review, not trusted evidence or execution authorization.
 
+For an honest live-host handoff, run `uv run python -m switchcrew.deployment_preflight`
+and follow the [verification runbook](docs/DEPLOYMENT_ACCEPTANCE.md). Offline
+readiness never substitutes for the recorded Switch, Discord, Codex, QA and PR checks.
+
 ## Run locally
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
