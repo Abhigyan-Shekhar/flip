@@ -38,6 +38,14 @@ Discord capture, or human identity is externally authenticated just because
 SQLite contains a matching artifact. A direct transcription without a real
 Voice handoff intentionally remains `incomplete`.
 
+## Offline gate before post-merge testing
+
+Run `uv sync --frozen`, `uv run --no-sync pytest -q`, and the repository
+Ruff lint/format checks against the merged checkout. Passing these commands
+confirms only the acceptance inspector's code and synthetic fixtures. Do not
+mark transcription, Switch receipts, consent, presence or Discord capture as
+live-verified until the host-side workflow above has durable evidence.
+
 ## Independent next-stage gates
 
 - **Live Discord audio:** Capture is not accepted until a real consented DAVE
