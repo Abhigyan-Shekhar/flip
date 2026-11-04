@@ -134,6 +134,49 @@ def test_dynamic_validation_keys_cannot_echo_configured_credentials(client):
     assert TOKEN not in response.text
 
 
+def test_model_generated_plan_step_requires_human_review_api(tmp_path):
+    reviewer_token = "independent-human-review-credential-123456"
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "plan-review.sqlite3",
+        api_token=TOKEN,
+        approval_credentials={"human-reviewer": SecretStr(reviewer_token)},
+        pm_agent_id="pm-agent",
+        research_agent_id="research-agent",
+    )
+    with TestClient(create_app(settings)) as client:
+        created = client.post("/tasks", headers=HEADERS, json=task_body(kind="orchestrate"))
+        assert created.status_code == 201
+        parent = created.json()
+        plan_url = f"/tasks/{parent['id']}/plan"
+        step = client.get(plan_url, headers=HEADERS).json()["steps"]["step-1"]
+        store = client.app.state.store
+        store.accept_handoff(step["handoff_id"], "research-agent")
+        store.complete_handoff(
+            step["handoff_id"],
+            "research-agent",
+            {"status": "evidence_found", "trust": "model_generated_requires_human_review"},
+        )
+        plan = client.get(plan_url, headers=HEADERS).json()
+        assert plan["steps"]["step-1"]["status"] == "awaiting_review"
+        decision = {
+            "step_id": "step-1",
+            "approved": True,
+            "expected_version": client.get(f"/tasks/{parent['id']}", headers=HEADERS).json()[
+                "version"
+            ],
+        }
+        assert client.post(f"{plan_url}/reviews", headers=HEADERS, json=decision).status_code == 403
+        response = client.post(
+            f"{plan_url}/reviews",
+            headers={"Authorization": f"Bearer {reviewer_token}"},
+            json=decision,
+        )
+        assert response.status_code == 200
+        assert response.json()["phase"] == "completed"
+        assert client.get(f"/tasks/{parent['id']}", headers=HEADERS).json()["status"] == "COMPLETED"
+
+
 def test_waggle_credential_is_redacted_from_api_output(tmp_path):
     key = "local-memory-credential-for-redaction"
     cfg = Settings(

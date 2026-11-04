@@ -1,6 +1,7 @@
 """Bounded PM decomposition and durable dependency dispatch across independent workers."""
 
 import asyncio
+import hashlib
 import json
 import re
 import weakref
@@ -104,12 +105,21 @@ def validate_harness_plan(question, criteria, response, allowed_roles):
 
 class Orchestrator:
     def __init__(
-        self, store, pm_id, targets, *, engineering_route=None, company_brain=None, planner=None
+        self,
+        store,
+        pm_id,
+        targets,
+        *,
+        engineering_route=None,
+        company_brain=None,
+        planner=None,
+        reviewers=None,
     ):
         self.store, self.pm_id, self.targets = store, pm_id, dict(targets)
         self.engineering_route = engineering_route or {}
         self.company_brain = company_brain
         self.planner = planner
+        self.reviewers = frozenset(reviewers or ())
         self._brain_locks = weakref.WeakValueDictionary()
         self.approvals = ApprovalWorkflow(store)
         with store._lock:
@@ -187,6 +197,45 @@ class Orchestrator:
             task["objective"], task["acceptance_criteria"], response, set(allowed)
         )
         return self.start(task_id, spec=spec)
+
+    def review_step(self, task_id, step_id, approved, actor, expected_version):
+        """Only a verified human can accept a pinned model draft as dependency evidence."""
+        if actor not in self.reviewers:
+            raise PermissionError("Authorized human reviewer required")
+        if type(approved) is not bool or type(expected_version) is not int:
+            raise ValueError("A boolean decision and expected parent version are required")
+        with self.store._lock, self.store.transaction():
+            parent = self.store._check(task_id, expected_version)
+            data = self.get(task_id)
+            if not data or parent["status"] != "IN_PROGRESS":
+                raise ConflictError("No active orchestration awaiting review")
+            step = data["steps"].get(step_id)
+            if not step or step["status"] != "awaiting_review":
+                raise ConflictError("Plan step is not awaiting human review")
+            child = self.store.get_task(step["task_id"])
+            handoff = self.store.get_handoff(step["handoff_id"])
+            if (
+                not child
+                or child["status"] != "IN_PROGRESS"
+                or not handoff
+                or handoff["status"] != "completed"
+                or handoff["result"] != step["result"]
+            ):
+                raise ConflictError("Draft result changed since review was requested")
+            decision = {
+                "actor": actor,
+                "approved": approved,
+                "step_id": step_id,
+                "result_sha256": hashlib.sha256(encode(step["result"]).encode()).hexdigest(),
+            }
+            step["status"] = "completed" if approved else "failed"
+            step["review"] = decision
+            self.store.transition_task(
+                child["id"], "COMPLETED" if approved else "FAILED", child["version"]
+            )
+            self.store._event(task_id, "plan.step_reviewed", decision, parent["version"])
+            self._save(task_id, data)
+        return self.reconcile(task_id)
 
     def start_incident(self, task_id, incident):
         """Persist a deterministic incident response team and its assignments."""
@@ -344,8 +393,8 @@ class Orchestrator:
                     self._save(task_id, data)
                 return data
             # Refresh completed children from trusted worker records, not message claims.
-            for step in data["steps"].values():
-                if step["status"] in {"completed", "failed", "blocked"}:
+            for step_id, step in data["steps"].items():
+                if step["status"] in {"completed", "failed", "blocked", "awaiting_review"}:
                     continue
                 child = self.store.get_task(step["task_id"])
                 if child["status"] in {"FAILED", "CANCELLED", "BLOCKED"}:
@@ -364,8 +413,26 @@ class Orchestrator:
                     if handoff["status"] == "completed":
                         result = handoff["result"]
                         passed = result.get("status") in {"completed", "evidence_found"}
-                        step.update(status="completed" if passed else "failed", result=result)
-                        if child["status"] != "COMPLETED":
+                        review_required = passed and (
+                            data["spec"].get("planner") == "harness_structured_v1"
+                            or result.get("trust") == "model_generated_requires_human_review"
+                        )
+                        step.update(
+                            status=(
+                                "awaiting_review"
+                                if review_required
+                                else ("completed" if passed else "failed")
+                            ),
+                            result=result,
+                        )
+                        if review_required:
+                            self.store._event(
+                                task_id,
+                                "plan.review_requested",
+                                {"step_id": step_id, "role": step["role"]},
+                                parent["version"],
+                            )
+                        elif child["status"] != "COMPLETED":
                             self.store.transition_task(
                                 child["id"], "COMPLETED" if passed else "FAILED", child["version"]
                             )
