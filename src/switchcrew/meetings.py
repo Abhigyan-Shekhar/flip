@@ -578,11 +578,7 @@ class MeetingService:
             or entry["owner_id"] not in participants
             or actor not in {entry["owner_id"], *self.human_approvers}
             or set(entry["participants"]) != set(participants)
-            or (
-                input_digest is not None
-                and entry["sha256"]
-                and entry["sha256"] != input_digest
-            )
+            or (input_digest is not None and entry["sha256"] and entry["sha256"] != input_digest)
         ):
             raise MeetingAuthorizationError(
                 "Operator recording ownership and exact participant manifest are required"

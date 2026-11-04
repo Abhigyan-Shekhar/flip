@@ -124,9 +124,7 @@ def inspect_recorded_meeting(
         )
         checks["recording_file_digest_valid"] = bool(
             job is not None
-            and _recording_digest_matches(
-                recordings_root, job["filename"], record["input_sha256"]
-            )
+            and _recording_digest_matches(recordings_root, job["filename"], record["input_sha256"])
         )
         try:
             transcript = json.loads(record["transcript_json"] or "null")
@@ -205,4 +203,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

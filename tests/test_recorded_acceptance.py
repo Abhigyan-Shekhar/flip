@@ -132,9 +132,7 @@ async def test_recorded_acceptance_requires_completed_switch_results_and_intact_
             expires_at=(datetime.now(UTC) + timedelta(hours=1)).isoformat(),
             disclosure_acknowledged=True,
         )
-    job = meetings.request_transcription(
-        "m-2", "consented.wav", "alice", voice_agent_id="voice"
-    )
+    job = meetings.request_transcription("m-2", "consented.wav", "alice", voice_agent_id="voice")
     store.accept_handoff(job["handoff_id"], "voice")
     voice_result = await meetings.transcribe_for_handoff(
         {"task_id": job["task_id"], "handoff_id": job["handoff_id"]}, "voice"
@@ -167,4 +165,3 @@ async def test_recorded_acceptance_requires_completed_switch_results_and_intact_
     assert not tampered["checks"]["recording_file_digest_valid"]
     assert tampered["status"] == "incomplete"
     store.close()
-
