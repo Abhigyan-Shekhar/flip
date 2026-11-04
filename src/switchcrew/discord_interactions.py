@@ -83,7 +83,9 @@ def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None
     guild = document.get("guild_id")
     channel = document.get("channel_id")
     member = document.get("member") or {}
-    user = (member.get("user") or {}).get("id") if isinstance(member, dict) else None
+    if not isinstance(member, dict) or not isinstance(member.get("user"), dict):
+        raise ValueError("Discord member must contain a user object")
+    user = member["user"].get("id")
     if guild not in settings.discord_guild_ids or user not in settings.discord_user_ids:
         raise PermissionError("Discord user/guild not authorized")
     matches = [
@@ -96,8 +98,10 @@ def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None
     if len(matches) != 1:
         raise PermissionError("An exact unique verified Discord binding is required")
     data = document.get("data") or {}
+    if not isinstance(data, dict):
+        raise ValueError("Discord command data must be an object")
     options = data.get("options") or []
-    if data.get("name") != "crew" or len(options) != 1:
+    if not isinstance(options, list) or data.get("name") != "crew" or len(options) != 1:
         raise ValueError("Unknown slash command")
     selected = options[0]
     args = selected.get("options", []) if isinstance(selected, dict) else []

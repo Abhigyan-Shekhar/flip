@@ -83,3 +83,37 @@ def test_discord_signature_and_timestamp_are_verified(tmp_path):
     with pytest.raises(PermissionError, match="Expired"):
         respond_to_interaction(store, settings, payload, headers)
     store.close()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"member": {"user": ["alice"]}},
+        {"member": ["alice"]},
+        {"data": ["crew"]},
+        {"data": {"name": "crew", "options": 1}},
+        {"data": {"name": "crew", "options": {"status": {}}}},
+    ],
+)
+def test_malformed_signed_command_returns_client_error(tmp_path, changes):
+    from fastapi.testclient import TestClient
+    from pydantic import SecretStr
+
+    from switchcrew.api import create_app
+
+    private, settings, store, _ = setup(tmp_path)
+    settings.database_path = tmp_path / "http.sqlite3"
+    settings.api_token = SecretStr("test-api-token-" * 3)
+    document = {
+        "type": 2,
+        "guild_id": "guild",
+        "channel_id": "thread",
+        "member": {"user": {"id": "alice"}},
+        "data": {"name": "crew", "options": []},
+        **changes,
+    }
+    payload, headers = signed(private, document)
+    with TestClient(create_app(settings)) as client:
+        response = client.post("/discord/interactions", content=payload, headers=headers)
+        assert response.status_code == 400
+    store.close()
