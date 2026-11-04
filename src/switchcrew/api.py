@@ -56,6 +56,12 @@ class ApprovalDecision(RequestModel):
     expected_version: int = Field(ge=0)
 
 
+class PlanStepDecision(RequestModel):
+    step_id: str = Field(min_length=1, max_length=40, pattern=r"^[a-zA-Z0-9_-]+$")
+    approved: bool = Field(strict=True)
+    expected_version: int = Field(ge=0)
+
+
 class DayOneStatus(StrEnum):
     NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
     PLANNED = "PLANNED"
@@ -149,6 +155,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.store = Store(settings.database_path)
         app.state.approvals = ApprovalWorkflow(app.state.store, human_tokens)
         app.state.company_brain = None
+        from switchcrew.harnesses import HarnessPlanner, load_harness_config
+
+        harness_roles = load_harness_config(settings.harness_config)
+        harness_planner = (
+            HarnessPlanner(harness_roles["pm"], available_roles=set(harness_roles))
+            if "pm" in harness_roles
+            else None
+        )
         if settings.company_brain_enabled:
             from switchcrew.company_brain import company_brain_from_settings
 
@@ -174,6 +188,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "base": settings.release_base,
             },
             company_brain=app.state.company_brain,
+            planner=harness_planner,
+            reviewers=set(human_tokens),
         )
         from .organization import knowledge_services, load_organization_config, meeting_service
 
@@ -325,7 +341,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             body.acceptance_criteria,
         )
         if body.kind == "orchestrate":
-            request.app.state.orchestrator.start(task["id"])
+            from switchcrew.harnesses import HarnessError
+
+            try:
+                await request.app.state.orchestrator.start_with_planner(task["id"])
+            except (HarnessError, ValueError):
+                raise HTTPException(503, "Configured PM harness unavailable or invalid") from None
             await request.app.state.orchestrator.reconcile_with_context(task["id"])
             task = request.app.state.store.get_task(task["id"])
         if body.kind == "engineering":
@@ -459,6 +480,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if data is None:
             raise HTTPException(404, "Orchestration plan not found")
         return sanitize(data)
+
+    @app.post("/tasks/{task_id}/plan/reviews")
+    async def review_plan_step(
+        task_id: str,
+        body: PlanStepDecision,
+        request: Request,
+        actor: Annotated[str, Depends(authenticate_human)],
+    ):
+        request.app.state.orchestrator.reconcile(task_id)
+        request.app.state.orchestrator.review_step(
+            task_id, body.step_id, body.approved, actor, body.expected_version
+        )
+        return sanitize(await request.app.state.orchestrator.reconcile_with_context(task_id))
 
     @app.get("/tasks/{task_id}/workflow", dependencies=authenticated)
     def get_workflow(task_id: str, request: Request):

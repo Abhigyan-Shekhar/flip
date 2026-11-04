@@ -10,6 +10,7 @@ from uuid import NAMESPACE_URL, uuid5
 from .approval import ApprovalWorkflow
 from .discord import DiscordBinding, normalize_discord_event
 from .graphs import build_agent_graph, graph_result, invoke_agent_graph
+from .harnesses import HarnessError
 from .logging import configure_logging
 from .orchestration import Orchestrator
 from .research import ResearchProvider
@@ -85,6 +86,8 @@ class Worker:
         incident_max_events_per_minute=10,
         company_brain=None,
         project_id="github.com/Abhigyan-Shekhar/flip",
+        harness_roles=None,
+        harness_runner=None,
     ):
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
@@ -121,6 +124,18 @@ class Worker:
             ):
                 raise ValueError("Specialist participant identities must be distinct")
             self.specialist_senders[sender] = target["agent_id"]
+        from .harnesses import HarnessExecutor, HarnessPlanner
+
+        harness_roles = harness_roles or {}
+        planner = (
+            HarnessPlanner(
+                harness_roles["pm"],
+                runner=harness_runner,
+                available_roles=set(harness_roles),
+            )
+            if role == "pm" and "pm" in harness_roles
+            else None
+        )
         self.orchestrator = Orchestrator(
             store,
             pm_id,
@@ -135,6 +150,7 @@ class Worker:
                 "base": release_base,
             },
             company_brain=company_brain,
+            planner=planner,
         )
         self.identity = pm_id if role == "pm" else research_id
         self.bindings = list(bindings)
@@ -150,6 +166,16 @@ class Worker:
         self.graph = build_agent_graph(
             role,
             provider=provider or ResearchProvider([]),
+            executor=(
+                HarnessExecutor(
+                    harness_roles["research"],
+                    runner=harness_runner,
+                    source_provider=provider or ResearchProvider([]),
+                    company_brain=company_brain,
+                )
+                if role == "research" and "research" in harness_roles
+                else None
+            ),
             memory=memory,
             checkpointer=checkpointer,
             company_brain=company_brain,
@@ -625,6 +651,9 @@ class Worker:
             criteria,
             task_id=task_id,
         )
+        requested_kind = request.get("kind")
+        if requested_kind is None and self.orchestrator.planner is not None:
+            requested_kind = "orchestrate"
         state = await invoke_agent_graph(
             self.graph,
             {
@@ -636,7 +665,7 @@ class Worker:
                 "requested_role": {
                     "engineering": "engineering",
                     "orchestrate": "orchestration",
-                }.get(request.get("kind"), "research"),
+                }.get(requested_kind, "research"),
                 "acceptance_criteria": criteria,
             },
         )
@@ -653,13 +682,15 @@ class Worker:
                 ),
             )
             return
-        if request.get("kind") == "orchestrate":
+        if requested_kind == "orchestrate":
             try:
-                self.orchestrator.start(task_id)
+                await self.orchestrator.start_with_planner(task_id)
                 await self.orchestrator.reconcile_with_context(task_id)
-            except ValueError:
+            except (ValueError, HarnessError):
                 self._reply(
-                    task_id, "plan_invalid", "Orchestration requires 1–12 bounded criteria."
+                    task_id,
+                    "plan_invalid",
+                    "Orchestration needs valid criteria and an available configured planner.",
                 )
                 return
             self._reply(
@@ -1060,10 +1091,12 @@ class Worker:
 async def _main(role):
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+    from .harnesses import load_harness_config
     from .memory import memory_from_settings
     from .settings import Settings
 
     settings = Settings()
+    harness_roles = load_harness_config(settings.harness_config)
     company_brain = None
     if settings.company_brain_enabled:
         from .company_brain import company_brain_from_settings
@@ -1131,6 +1164,7 @@ async def _main(role):
                 orchestration_job_key=settings.orchestration_job_key,
                 incident_channels=settings.incident_channel_ids,
                 incident_max_events_per_minute=settings.incident_max_events_per_minute,
+                harness_roles=harness_roles,
             )
             from .organization import load_organization_config, meeting_service
 
