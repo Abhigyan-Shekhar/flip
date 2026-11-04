@@ -98,9 +98,9 @@ def test_evidence_contract_rejects_missing_receipts_and_unsafe_paths():
 def test_preflight_blocks_missing_or_mismatched_discord_ingress(tmp_path, overrides):
     report = inspect_settings(_ready_settings(tmp_path, **overrides))
     assert report["status"] == "blocked_configuration"
-    assert next(c for c in report["checks"] if c["name"] == "discord_ingress")[
-        "status"
-    ] == "blocked"
+    assert (
+        next(c for c in report["checks"] if c["name"] == "discord_ingress")["status"] == "blocked"
+    )
 
 
 def test_preflight_requires_private_env_file(tmp_path):
@@ -110,9 +110,10 @@ def test_preflight_requires_private_env_file(tmp_path):
     settings = _ready_settings(tmp_path)
     report = inspect_settings(settings, env_file=env_file)
     assert report["status"] == "blocked_configuration"
-    assert next(c for c in report["checks"] if c["name"] == "env_file_permissions")[
-        "status"
-    ] == "blocked"
+    assert (
+        next(c for c in report["checks"] if c["name"] == "env_file_permissions")["status"]
+        == "blocked"
+    )
     env_file.chmod(0o600)
     assert inspect_settings(settings, env_file=env_file)["status"] == "ready_for_live_checks"
 
