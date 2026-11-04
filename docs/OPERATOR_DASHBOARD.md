@@ -71,3 +71,13 @@ acceptance outcomes pending until tested on the verification host.
 - Provisioning remains operator-controlled. Separate worker registrations,
   Switch namespaces, Discord permissions and host-scoped credentials are
   required before the dashboard can display a true deployed crew.
+
+## Integration verification sequence
+
+After this final stack layer is merged, use the same verification host for the
+preflight report (`docs/DEPLOYMENT_ACCEPTANCE.md`), recorded-meeting gate
+(`docs/RECORDED_MEETING_ACCEPTANCE.md`), and memory/graph gate
+(`docs/COMBINED_MEMORY_ACCEPTANCE.md`). Review the operator snapshot and
+Discord scoped read-only responses against those independent receipts. A green
+CI run or a populated dashboard alone must not be labeled an end-to-end
+production deployment.
