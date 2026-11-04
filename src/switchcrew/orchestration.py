@@ -14,6 +14,7 @@ from .teams import TeamAssembler
 READ_ONLY_ROLES = frozenset(
     {
         "research",
+        "notes",
         "community",
         "documentation",
         "knowledge",
@@ -27,6 +28,7 @@ READ_ONLY_ROLES = frozenset(
 )
 # Explicit, inspectable rules: this is a deterministic planner, not an LLM claim.
 ROUTING = (
+    ("notes", r"\b(meeting notes|meeting minutes|speaker summary)\b"),
     ("engineering", r"\b(implement|fix|code|bug|refactor|build feature)\b"),
     ("security", r"\b(security|vulnerabilit\w*|secret scan)\b"),
     ("incident", r"\b(incident|outage|timeline|root cause)\b"),
@@ -432,7 +434,11 @@ class Orchestrator:
                 query = eligible.get(child_id)
                 if query is None:
                     continue
-                snapshots[child_id] = await capture_engineering_context(self.company_brain, query)
+                snapshots[child_id] = await capture_engineering_context(
+                    self.company_brain,
+                    query,
+                    expected_repo_root=parent["source"].get("authorized_repo_root"),
+                )
                 # Commit the child snapshot and approval request before
                 # releasing its async lock, so concurrent reconcilers reuse it.
                 self.reconcile(task_id, company_brain_contexts={child_id: snapshots[child_id]})

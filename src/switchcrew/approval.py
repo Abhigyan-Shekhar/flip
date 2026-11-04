@@ -535,6 +535,9 @@ class ApprovalWorkflow:
             raise PermissionError("QA evidence required")
         result = self._validate_qa(data, self.store.get_handoff(data["qa_handoff"]))
         self.review_evidence(task_id)
+        from .security_gate import require_security_gate
+
+        require_security_gate(self.store, task_id, data)
         return result
 
     def review_evidence(self, task_id):

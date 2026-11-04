@@ -70,3 +70,20 @@ Validation for this follow-up: 348 passed, 3 live tests skipped in 42.26 seconds
 37 final targeted tests passed after the API credential-redaction regression was
 added. Ruff lint, format check (64 Python files), and diff check passed. Controlled
 transport fixtures are not live service acceptance evidence.
+
+## Organization upgrade — November 3–4, 2026 IST
+
+The user supplied the complete organization upgrade task and requested Luna
+subagents with parent review, then requested continued work. Implementation
+started November 3 before the boundary. The resumed November 4 clock check was
+01:24:21 UTC (06:54:21 IST). This local uncommitted tree spans both intervals;
+no per-feature event eligibility is asserted. Source/history/timestamps were not
+backdated, and no commit, push, deployment or external publication occurred.
+
+Three Luna workers implemented and audited separate lanes, with parent runtime/
+API integration and review. Final verification: 480 passed, 3 live tests skipped
+in 42.56 seconds; Ruff, formatting (104 Python files), diff check and wheel/source
+build passed. Standalone controlled two-task learning acceptance returned PASS
+with live_waggle_called=false. The preflight remains blocked on this host; no
+current real external acceptance is fabricated. Recorded at 2026-11-04T01:58:07.572313+00:00. See
+ORGANIZATION_IMPLEMENTATION.md and ORGANIZATION_SETUP.md for full scope and gaps.

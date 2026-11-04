@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     database_path: Path = Path("data/switchcrew.sqlite3")
     checkpoint_path: Path = Path("data/checkpoints.sqlite3")
+    organization_config: Path | None = None
     memory_enabled: bool = False
     memory_project: str = "github.com/Abhigyan-Shekhar/flip"
     waggle_command: list[str] = Field(default_factory=list)
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
     waggle_token: SecretStr | None = None
     api_token: SecretStr | None = None
     approval_credentials: dict[str, SecretStr] = Field(default_factory=dict)
+    human_credentials: dict[str, SecretStr] = Field(default_factory=dict)
     approval_user_ids: list[str] = Field(default_factory=list)
     engineering_agent_id: str = ""
     engineering_name: str = ""
@@ -62,9 +64,9 @@ class Settings(BaseSettings):
     company_brain_max_results: int = Field(default=5, ge=1, le=20)
     poll_interval_seconds: float = Field(default=1.0, ge=0.1, le=60)
 
-    @field_validator("approval_credentials")
+    @field_validator("approval_credentials", "human_credentials")
     @classmethod
-    def human_credentials(cls, value):
+    def validate_human_credentials(cls, value):
         tokens = [token.get_secret_value() for token in value.values()]
         if any(not actor.strip() for actor in value) or any(len(t) < 32 for t in tokens):
             raise ValueError("Human approval identities and strong credentials are required")
@@ -72,7 +74,7 @@ class Settings(BaseSettings):
             raise ValueError("Each human requires an independent credential")
         return value
 
-    @field_validator("waggle_url", mode="before")
+    @field_validator("waggle_url", "organization_config", mode="before")
     @classmethod
     def optional_waggle_url(cls, value):
         return None if value == "" else value

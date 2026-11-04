@@ -128,6 +128,50 @@ async def test_transcribe_real_wav_and_durable_replay(voice_setup, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_meeting_transcription_requests_timestamps_and_keeps_speaker_ids_anonymous():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert b'diarize"\r\n\r\ntrue' in request.content
+        assert b'timestamps_granularity"\r\n\r\nword' in request.content
+        assert b"speaker_library" not in request.content
+        return httpx.Response(
+            200,
+            json={
+                "text": "We should ship Monday.",
+                "words": [
+                    {
+                        "text": "We",
+                        "start": 0.1,
+                        "end": 0.2,
+                        "type": "word",
+                        "speaker_id": "speaker_0",
+                        "logprob": -0.2,
+                    },
+                    {
+                        "text": " should ship Monday.",
+                        "start": 0.21,
+                        "end": 0.9,
+                        "type": "word",
+                        "speaker_id": None,
+                    },
+                ],
+            },
+        )
+
+    provider = ElevenLabsVoice("private-api-key", transport=httpx.MockTransport(handler))
+    result = await provider.transcribe_meeting(b"RIFF test audio")
+    assert result["text"] == "We should ship Monday."
+    assert result["words"][0]["speaker_id"] == "speaker_0"
+    assert result["words"][0]["speaker_attribution"] == "provider_anonymous_id"
+    assert result["words"][0]["logprob"] == -0.2
+    assert result["words"][1]["speaker_id"] is None
+    assert result["words"][1]["speaker_attribution"] == "unattributed"
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "changes",
     [

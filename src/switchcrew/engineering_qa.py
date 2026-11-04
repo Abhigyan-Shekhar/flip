@@ -13,6 +13,7 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 from .approval import ApprovalWorkflow
+from .employees import EmployeeDirectory
 from .engineering import (
     ConsoleCodex,
     EngineeringExecutor,
@@ -30,6 +31,72 @@ from .store import Store
 from .switch import SwitchClient
 
 log = logging.getLogger("switchcrew.runtime")
+
+
+class _EmployeeConsoleSession:
+    """Recheck task/assignment authorization around each Console network call."""
+
+    def __init__(self, session, authorize, record_session):
+        self.session = session
+        self.authorize = authorize
+        self.record_session = record_session
+        self.session_id = None
+
+    async def validate(self, checkout):
+        self.authorize()
+        result = await self.session.validate(checkout)
+        self.authorize()
+        return result
+
+    async def find(self, identity):
+        self.authorize()
+        session_id = await self.session.find(identity)
+        if session_id:
+            self.session_id = session_id
+            self.record_session(session_id, "recovering")
+        self.authorize()
+        return session_id
+
+    async def create(self, identity):
+        self.authorize()
+        session_id = await self.session.create(identity)
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError("Console did not return a task session identity")
+        self.session_id = session_id
+        self.record_session(session_id, "recovering")
+        self.authorize()
+        return session_id
+
+    async def deliver(self, identity, checkout, question, criteria):
+        self.authorize()
+        event_id = await self.session.deliver(identity, checkout, question, criteria)
+        if not isinstance(event_id, str) or not event_id:
+            raise ValueError("Console delivery did not return its Switch event identity")
+        if self.session_id:
+            self.record_session(self.session_id, "connected")
+        self.authorize()
+        return event_id
+
+
+def _employee_scoped_path(path, workspace_root, *, must_exist):
+    candidate = Path(path).expanduser().resolve(strict=must_exist)
+    root = Path(workspace_root).resolve(strict=True)
+    if not candidate.is_relative_to(root):
+        raise ValueError("Engineering source or checkout root is outside employee workspace")
+    return candidate
+
+
+def _employee_console_fields_match(job, profile, switch_id):
+    registered_switch = profile["switch_agent_id"]
+    provider_switch = profile["codex_switch_agent_id"]
+    return (
+        isinstance(job.get("codex_switch_agent_id"), str)
+        and job["codex_switch_agent_id"] == provider_switch
+        and registered_switch == switch_id
+        and provider_switch != switch_id
+        and job.get("console_agent_id", profile["console_agent_id"]) == profile["console_agent_id"]
+        and job.get("codex_name", profile["codex_name"]) == profile["codex_name"]
+    )
 
 
 class IntegrationRuntime(AgentRuntime):
@@ -85,6 +152,40 @@ class IntegrationRuntime(AgentRuntime):
 def configured_executor(config, connection, client, store, ledger, approvals):
     """Wire operator-owned capabilities; no privileged runtime has an approval bypass."""
     role = connection.role
+    employee_config = config.get("employee")
+    employee_directory = None
+    if employee_config is not None:
+        if role != "engineering" or not isinstance(employee_config, dict):
+            raise ValueError("Employee registrations can only configure an Engineering runtime")
+        allowed_assigners = employee_config.get("allowed_assigners")
+        employee_id, actor_id = (
+            employee_config.get("employee_id"),
+            employee_config.get("actor_id"),
+        )
+        if (
+            not isinstance(allowed_assigners, list)
+            or not allowed_assigners
+            or not isinstance(employee_id, str)
+            or not employee_id
+            or not isinstance(actor_id, str)
+            or not actor_id
+        ):
+            raise ValueError("Employee runtime identity and assignment authorities are required")
+        employee_directory = EmployeeDirectory.from_file(
+            store,
+            employee_config["registrations_file"],
+            allowed_assigners=set(allowed_assigners),
+        )
+    lesson_service = None
+    learning = config.get("learning")
+    if learning:
+        from .lessons import LessonService
+
+        lesson_service = LessonService(
+            store,
+            trusted_actors=learning["trusted_actors"],
+            memory=memory_from_settings(Settings(_env_file=None, **config.get("memory", {}))),
+        )
 
     async def execute(state):
         managed = approvals.get(state["task_id"])
@@ -147,29 +248,115 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                         "status": "blocked_configuration",
                         "reason": "correction_implementation_unavailable",
                     }
-            job_for_attempt = {
-                **job,
-                **config.get("console_agents", {}).get(assignment_id(state["handoff_id"]), {}),
-            }
-            session = ConsoleCodex(
-                config["control_file"],
-                job_for_attempt["console_agent_id"],
-                job_for_attempt["codex_name"],
-                client,
-                console_database=config["console_database"],
-                switch_agent_id=job_for_attempt["codex_switch_agent_id"],
-            )
+            employee_profile = None
+            employee_authorize = None
+            employee_record_session = None
+            checkout_root = config["checkout_root"]
+            job_for_attempt = job
+            source = (correction or {}).get("implementation", {}).get("checkout", job.get("source"))
+            if employee_directory is not None:
+                try:
+                    employee_profile = employee_directory.authorize_assignment(
+                        employee_config["employee_id"],
+                        state["task_id"],
+                        actor_id=employee_config["actor_id"],
+                        handoff_id=state["handoff_id"],
+                    )
+                    if employee_profile["switch_agent_id"] != connection.agent_id:
+                        raise PermissionError("Employee Switch identity does not match runtime")
+                    root = Path(employee_profile["workspace_root"]).resolve(strict=True)
+                    job_source = _employee_scoped_path(job.get("source"), root, must_exist=True)
+                    source = _employee_scoped_path(source or job_source, root, must_exist=True)
+                    checkout_root = _employee_scoped_path(
+                        config["checkout_root"], root, must_exist=False
+                    )
+                    if not _employee_console_fields_match(
+                        job, employee_profile, connection.agent_id
+                    ):
+                        raise ValueError(
+                            "Employee Console/ Switch identities do not match registration"
+                        )
+                    job_for_attempt = {
+                        **job,
+                        "console_agent_id": employee_profile["console_agent_id"],
+                        "codex_name": employee_profile["codex_name"],
+                        "codex_switch_agent_id": employee_profile["codex_switch_agent_id"],
+                    }
+
+                    def employee_authorize(value=None):
+                        value = value or state
+                        approvals.require_engineering(value, connection.agent_id)
+                        current = store.get_task(value["task_id"])
+                        if not current or current["status"] not in {
+                            "PLANNED",
+                            "IN_PROGRESS",
+                            "QA_REVIEW",
+                            "BLOCKED",
+                        }:
+                            raise PermissionError("Employee task is cancelled or inactive")
+                        profile = employee_directory.authorize_assignment(
+                            employee_config["employee_id"],
+                            value["task_id"],
+                            actor_id=employee_config["actor_id"],
+                            handoff_id=value["handoff_id"],
+                        )
+                        if profile["switch_agent_id"] != connection.agent_id:
+                            raise PermissionError("Employee Switch identity changed")
+                        _employee_scoped_path(job_source, root, must_exist=True)
+                        _employee_scoped_path(checkout_root, root, must_exist=False)
+                        _employee_scoped_path(source, root, must_exist=True)
+
+                    employee_authorize(state)
+
+                    def employee_record_session(session_id, status):
+                        return employee_directory.record_session(
+                            state["task_id"],
+                            employee_config["employee_id"],
+                            state["handoff_id"],
+                            session_id,
+                            status,
+                        )
+                except PermissionError:
+                    return {"status": "blocked", "reason": "employee_assignment_required"}
+                except (OSError, TypeError, ValueError, KeyError):
+                    return {
+                        "status": "blocked_configuration",
+                        "reason": "employee_registration_or_workspace_invalid",
+                    }
+                session = ConsoleCodex(
+                    employee_profile["control_file"],
+                    employee_profile["console_agent_id"],
+                    employee_profile["codex_name"],
+                    client,
+                    console_database=employee_profile["console_database"],
+                    switch_agent_id=employee_profile["codex_switch_agent_id"],
+                )
+                session = _EmployeeConsoleSession(
+                    session, employee_authorize, employee_record_session
+                )
+            else:
+                job_for_attempt = {
+                    **job,
+                    **config.get("console_agents", {}).get(assignment_id(state["handoff_id"]), {}),
+                }
+                session = ConsoleCodex(
+                    config["control_file"],
+                    job_for_attempt["console_agent_id"],
+                    job_for_attempt["codex_name"],
+                    client,
+                    console_database=config["console_database"],
+                    switch_agent_id=job_for_attempt["codex_switch_agent_id"],
+                )
             executor = EngineeringExecutor(
                 ledger,
-                config["checkout_root"],
-                (correction or {})
-                .get("implementation", {})
-                .get("checkout", job_for_attempt["source"]),
+                checkout_root,
+                source,
                 (correction or {})
                 .get("implementation", {})
                 .get("final_revision", job_for_attempt["base_revision"]),
                 session,
-                authorize=lambda value: approvals.require_engineering(value, connection.agent_id),
+                authorize=employee_authorize
+                or (lambda value: approvals.require_engineering(value, connection.agent_id)),
                 review_base_revision=(correction or {})
                 .get("implementation", {})
                 .get("base_revision"),
@@ -233,7 +420,47 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                 job.get("review_timeout", job.get("timeout", 120)),
                 authorize=review_authorized,
             )
-        return await executor(state)
+        if role == "engineering" and lesson_service is not None:
+            from .learning_runtime import lesson_prompt
+
+            state = await lesson_prompt(store, lesson_service, state, actor_id=learning["actor_id"])
+        result = await executor(state)
+        if role == "engineering" and employee_directory is not None:
+            execution = ledger.get(assignment_id(state["handoff_id"])) or {}
+            session_id = result.get("session_id") or execution.get("session_id")
+            try:
+                employee_authorize(state)
+            except PermissionError:
+                if isinstance(session_id, str) and session_id and employee_record_session:
+                    employee_record_session(session_id, "blocked")
+                return {
+                    "status": "pending_execution",
+                    "assignment_id": assignment_id(state["handoff_id"]),
+                    "reason": "employee_assignment_changed_during_execution",
+                }
+            if isinstance(session_id, str) and session_id and employee_record_session:
+                status = (
+                    "completed"
+                    if result.get("status") in {"implemented", "implementation_failed"}
+                    else "blocked"
+                    if result.get("status") in {"blocked", "blocked_configuration"}
+                    else "recovering"
+                )
+                try:
+                    saved_session = employee_record_session(session_id, status)
+                except (PermissionError, ValueError):
+                    return {
+                        "status": "pending_execution",
+                        "assignment_id": assignment_id(state["handoff_id"]),
+                        "reason": "employee_session_reconciliation_required",
+                    }
+                if saved_session["status"] == "blocked":
+                    return {
+                        "status": "pending_execution",
+                        "assignment_id": assignment_id(state["handoff_id"]),
+                        "reason": "employee_assignment_changed_during_execution",
+                    }
+        return result
 
     return execute
 
@@ -282,6 +509,13 @@ async def run(config_file):
     def after_pending():
         for row in store.connection.execute("SELECT task_id FROM approval_workflows").fetchall():
             approvals.reconcile(row[0])
+        if config.get("learning"):
+            from .learning_runtime import reconcile_lesson_usage
+            from .lessons import LessonService
+
+            learning = config["learning"]
+            lessons = LessonService(store, trusted_actors=learning["trusted_actors"], memory=memory)
+            reconcile_lesson_usage(store, lessons, actor_id=learning["actor_id"])
 
     runtime = IntegrationRuntime(connection, store, client, graph, after_pending=after_pending)
     try:

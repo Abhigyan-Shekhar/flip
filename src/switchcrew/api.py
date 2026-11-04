@@ -115,10 +115,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor: credential.get_secret_value()
         for actor, credential in settings.approval_credentials.items()
     }
+    actor_tokens = {
+        actor: credential.get_secret_value()
+        for actor, credential in settings.human_credentials.items()
+    }
+    if set(actor_tokens) & set(human_tokens):
+        raise RuntimeError("Configure each human identity in only one credential map")
+    if set(actor_tokens.values()) & (set(human_tokens.values()) | set(credentials)):
+        raise RuntimeError("Human identity credentials must be independent")
+    actor_tokens.update(human_tokens)
     worker_tokens = set(credentials)
     if any(value in worker_tokens for value in human_tokens.values()):
         raise RuntimeError("Human approval credentials must be distinct from service credentials")
     credentials.extend(human_tokens.values())
+    credentials.extend(actor_tokens.values())
 
     def sanitize(value: Any) -> Any:
         if isinstance(value, str):
@@ -165,6 +175,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             company_brain=app.state.company_brain,
         )
+        from .organization import knowledge_services, load_organization_config, meeting_service
+
+        app.state.organization = load_organization_config(settings.organization_config)
+        from .organization import configure_security
+
+        configure_security(app.state.store, settings, app.state.organization)
+
+        app.state.meetings = meeting_service(
+            app.state.store, settings, app.state.organization, enable_voice_provider=False
+        )
+        app.state.knowledge, app.state.lessons = knowledge_services(
+            app.state.store, settings, app.state.organization
+        )
+        from .organization import employee_directory, oss_service
+
+        app.state.employees = employee_directory(app.state.store, app.state.organization)
+        app.state.oss = oss_service(
+            app.state.store, settings, app.state.organization, app.state.company_brain
+        )
+
         yield
         close = getattr(app.state.store, "close", None)
         if close:
@@ -195,6 +225,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if secrets.compare_digest(supplied.encode(), credential.encode()):
                     return actor
         raise HTTPException(403, "Authorized human approval credential required")
+
+    def authenticate_actor(authorization: Annotated[str | None, Header()] = None) -> str:
+        supplied = authorization.removeprefix("Bearer ") if authorization else ""
+        if authorization and authorization.startswith("Bearer "):
+            for actor, credential in actor_tokens.items():
+                if secrets.compare_digest(supplied.encode(), credential.encode()):
+                    return actor
+        raise HTTPException(403, "Authenticated human identity required")
 
     authenticated = [Depends(authenticate)]
 
@@ -247,6 +285,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def missing_record(request: Request, exc: Exception):
         return JSONResponse(status_code=404, content={"detail": "Task not found"})
 
+    @app.exception_handler(ValueError)
+    async def invalid_workflow_input(request: Request, exc: Exception):
+        return JSONResponse(status_code=422, content={"detail": "Invalid workflow input"})
+
     @app.get("/health", response_model=HealthResponse)
     def health(request: Request):
         # Exercise the database as well as the HTTP process.
@@ -279,7 +321,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(409, "Engineering route is not configured")
         task = request.app.state.store.create_task(
             body.objective,
-            body.source.model_dump(exclude_none=True),
+            {**body.source.model_dump(exclude_none=True), "project_id": settings.memory_project},
             body.acceptance_criteria,
         )
         if body.kind == "orchestrate":
@@ -325,6 +367,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         raise
             task = request.app.state.store.get_task(task["id"])
         return sanitize(task)
+
+    @app.get("/tasks", dependencies=authenticated)
+    def list_tasks(
+        request: Request,
+        status: str | None = None,
+        employee: str | None = None,
+        channel_id: str | None = None,
+        limit: int = 30,
+    ):
+        if not 1 <= limit <= 100:
+            raise HTTPException(422, "Limit must be between 1 and 100")
+        query, values = (
+            "SELECT * FROM tasks WHERE json_extract(source,'$.command_receipt') IS NULL",
+            [],
+        )
+        if status is not None:
+            if status not in {item.value for item in TaskStatus}:
+                raise HTTPException(422, "Unknown task status")
+            query += " AND status=?"
+            values.append(status)
+        if employee is not None:
+            has_directory = request.app.state.store.connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='employee_assignments'"
+            ).fetchone()
+            query += (
+                " AND EXISTS (SELECT 1 FROM employee_assignments ea WHERE "
+                "ea.task_id=tasks.id AND ea.employee_id=? AND ea.status='active')"
+                if has_directory
+                else " AND json_extract(source,'$.assigned_employee')=?"
+            )
+            values.append(employee)
+        if channel_id is not None:
+            query += " AND json_extract(source,'$.channel_id')=?"
+            values.append(channel_id)
+        query += " ORDER BY created_at DESC,rowid DESC LIMIT ?"
+        values.append(limit)
+        with request.app.state.store._lock:
+            return sanitize(
+                [
+                    request.app.state.store._row(row)
+                    for row in request.app.state.store.connection.execute(query, values)
+                ]
+            )
+
+    @app.get("/tasks/{task_id}/trace", dependencies=authenticated)
+    def get_trace(task_id: str, request: Request):
+        from .trace import execution_trace
+
+        try:
+            return sanitize(execution_trace(request.app.state.store, task_id))
+        except KeyError:
+            raise HTTPException(404, "Task not found") from None
 
     @app.get("/tasks/{task_id}", dependencies=authenticated, response_model=TaskResponse)
     def get_task(task_id: str, request: Request):
@@ -397,4 +491,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return sanitize(result)
 
+    from .organization_api import install_organization_routes
+
+    install_organization_routes(app, settings, authenticate_actor, sanitize)
     return app

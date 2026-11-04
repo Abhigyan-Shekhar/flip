@@ -15,6 +15,7 @@ from .orchestration import Orchestrator
 from .research import ResearchProvider
 from .store import ConflictError, Store
 from .switch import SwitchClient, SwitchOwnershipLost
+from .wire import transport_payload
 
 log = logging.getLogger("switchcrew.workers")
 
@@ -83,10 +84,15 @@ class Worker:
         incident_channels=(),
         incident_max_events_per_minute=10,
         company_brain=None,
+        project_id="github.com/Abhigyan-Shekhar/flip",
     ):
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
         self.role, self.store, self.switch = role, store, switch
+        self.project_id = project_id
+        self.meetings = None
+        self.security_gate = None
+        self.documentation_id = (specialist_targets or {}).get("documentation", {}).get("agent_id")
         self.engineering_id, self.qa_id, self.release_id = engineering_id, qa_id, release_id
         self.reviewer_id, self.max_corrections = reviewer_id, max_corrections
         self.release_repository, self.release_base = release_repository, release_base
@@ -100,6 +106,7 @@ class Worker:
         if release_id:
             self.names[release_id] = release_name or release_id
         targets = {"research": research_id}
+        self.specialist_senders = {}
         if engineering_id:
             targets["engineering"] = engineering_id
         for specialist, target in (specialist_targets or {}).items():
@@ -107,6 +114,13 @@ class Worker:
                 raise ValueError("Specialist targets need agent_id and exact name")
             targets[specialist] = target["agent_id"]
             self.names[target["agent_id"]] = target["name"]
+            sender = target.get("participant_id") or target["agent_id"]
+            if (
+                sender in {self.pm_sender, self.research_sender}
+                or sender in self.specialist_senders
+            ):
+                raise ValueError("Specialist participant identities must be distinct")
+            self.specialist_senders[sender] = target["agent_id"]
         self.orchestrator = Orchestrator(
             store,
             pm_id,
@@ -128,7 +142,10 @@ class Worker:
         from .incidents import IncidentIntake
 
         self.incidents = IncidentIntake(
-            store, incident_channels, max_events_per_minute=incident_max_events_per_minute
+            store,
+            incident_channels,
+            max_events_per_minute=incident_max_events_per_minute,
+            project_id=self.project_id,
         )
         self.graph = build_agent_graph(
             role,
@@ -150,7 +167,11 @@ class Worker:
         message_id = payload.get("message_id")
         if not isinstance(message_id, str) or not message_id:
             return
-        if self.role == "pm" and payload.get("sender") != self.research_sender:
+        if (
+            self.role == "pm"
+            and payload.get("sender") != self.research_sender
+            and payload.get("sender") not in self.specialist_senders
+        ):
             try:
                 normalize_discord_event(
                     event,
@@ -160,13 +181,15 @@ class Worker:
                 )
             except ValueError:
                 return
-        elif payload.get("sender") != (
+        elif payload.get("sender") not in self.specialist_senders and payload.get("sender") != (
             self.pm_sender if self.role == "research" else self.research_sender
         ):
             return
         if payload.get("sender_kind") == "platform" or payload.get("on_behalf_of"):
             return
-        if payload.get("sender") in {self.pm_sender, self.research_sender}:
+        if payload.get("sender") in {self.pm_sender, self.research_sender} | set(
+            self.specialist_senders
+        ):
             try:
                 body = payload["body"]
                 marker = re.search(r"```switchcrew\n(.*?)\n```\s*$", body, re.DOTALL)
@@ -201,6 +224,9 @@ class Worker:
     async def process_pending(self):
         if not getattr(self.switch, "connected", True):
             return
+        from .watchdog import record_worker_heartbeat
+
+        record_worker_heartbeat(self.store, self.identity)
         if self.role == "pm":
             for row in self.store.connection.execute("SELECT task_id FROM plans").fetchall():
                 data = await self.orchestrator.reconcile_with_context(row[0])
@@ -226,18 +252,46 @@ class Worker:
                 "SELECT task_id FROM approval_workflows"
             ).fetchall():
                 task_id = row[0]
+                managed = self.approvals.get(task_id)
+                if not managed or managed.get("spec", {}).get("pm") != self.pm_id:
+                    continue
                 data = self.approvals.reconcile(task_id)
+                if (
+                    data
+                    and self.security_gate
+                    and data["spec"]["pm"] == self.pm_id
+                    and data.get("phase") in {"qa", "review", "human_review", "release"}
+                    and data.get("revision")
+                ):
+                    from .security_gate import schedule_security_gate
+
+                    try:
+                        schedule_security_gate(
+                            self.store,
+                            task_id,
+                            self.pm_id,
+                            self.security_gate["security_id"],
+                            self.security_gate["policy"],
+                        )
+                    except (ValueError, PermissionError, OSError):
+                        current = self.store.get_task(task_id)
+                        if not self.store.connection.execute(
+                            "SELECT 1 FROM events WHERE task_id=? AND type=? AND version=?",
+                            (task_id, "security.gate_unavailable", current["version"]),
+                        ).fetchone():
+                            self.store._event(
+                                task_id,
+                                "security.gate_unavailable",
+                                {"reason": "configured_security_policy_or_checkout_unavailable"},
+                                current["version"],
+                            )
+
                 if (
                     data
                     and data["phase"] == "awaiting_engineering_approval"
                     and data["spec"]["pm"] == self.pm_id
                 ):
-                    self._reply(
-                        task_id,
-                        "engineering_approval",
-                        f"Engineering request {task_id} awaits human approval. "
-                        "Task version: 1. No Engineering action has started.",
-                    )
+                    self._engineering_prompt(task_id)
                 if data and data["phase"] in {"human_review", "failed"}:
                     task = self.store.get_task(task_id)
                     if data["spec"]["pm"] != self.pm_id or task["status"] not in {
@@ -253,13 +307,197 @@ class Worker:
                         f"task version {task['version']}. "
                         "Review QA evidence before release approval.",
                     )
+                if data and self.documentation_id and data["spec"]["pm"] == self.pm_id:
+                    from .organization_runtime import schedule_documentation
+
+                    schedule_documentation(self.store, task_id, self.pm_id, self.documentation_id)
+            self._reconcile_auxiliary()
+            if self.meetings is not None:
+                for row in self.store.connection.execute(
+                    "SELECT id FROM meetings WHERE status='actions_confirmed' "
+                    "AND json_extract(source,'$.room_id')=? LIMIT 100",
+                    (self.room_id,),
+                ).fetchall():
+                    self.meetings.reconcile_actions(row[0])
         for item in self.store.pending_inbox(self.identity):
             event = item["payload"]
-            if self.role == "pm" and event["payload"]["sender"] != self.research_sender:
+            if (
+                self.role == "pm"
+                and event["payload"]["sender"] != self.research_sender
+                and event["payload"]["sender"] not in self.specialist_senders
+            ):
                 await self._request(event)
             else:
                 await self._handoff(event)
             self.store.complete_inbox(item["message_id"], self.identity)
+
+    async def _meeting_request(self, source, request):
+        """Verified Discord control of the meeting workflow; no identity from message JSON."""
+        receipt_id = str(
+            uuid5(NAMESPACE_URL, f"meeting-command:{source.room_id}:{source.message_id}")
+        )
+        self.store.create_task(
+            "Meeting command receipt",
+            {
+                "room_id": source.room_id,
+                "thread_id": source.thread_id,
+                "message_id": source.message_id,
+                "user_id": source.user_id,
+                "channel_id": source.channel_id,
+                "guild_id": source.guild_id,
+                "command_receipt": True,
+            },
+            [],
+            task_id=receipt_id,
+        )
+        text = "Meeting workflow is not configured."
+        if self.meetings is not None:
+            try:
+                meeting_id, operation = request.get("meeting_id"), request.get("operation")
+                if operation == "create":
+                    self.meetings.create_meeting(
+                        meeting_id,
+                        source.channel_id,
+                        source.thread_id or source.message_id,
+                        source.user_id,
+                        request.get("participants"),
+                        source={
+                            "room_id": source.room_id,
+                            "guild_id": source.guild_id,
+                            "channel_id": source.channel_id,
+                            "message_id": source.message_id,
+                            "user_id": source.user_id,
+                            "project_id": self.project_id,
+                        },
+                    )
+                    result = {
+                        "meeting_id": meeting_id,
+                        "disclosure": "Recording and transcription require every participant's "
+                        "explicit revocable consent.",
+                    }
+                else:
+                    meeting = self.meetings._meeting(meeting_id)
+                    if (
+                        meeting["source"].get("room_id") != source.room_id
+                        or meeting["channel_id"] != source.channel_id
+                        or meeting["thread_id"] != (source.thread_id or source.message_id)
+                    ):
+                        raise PermissionError("Original meeting thread required")
+                    if operation == "consent":
+                        result = self.meetings.grant_consent(
+                            meeting_id,
+                            source.user_id,
+                            source.user_id,
+                            evidence_id=source.message_id,
+                            expires_at=request.get("expires_at"),
+                            disclosure_acknowledged=request.get("disclosure_acknowledged"),
+                        )
+                    elif operation == "revoke":
+                        result = self.meetings.revoke_consent(
+                            meeting_id, source.user_id, source.user_id
+                        )
+                    elif operation == "cancel":
+                        result = self.meetings.cancel_meeting(meeting_id, source.user_id)
+                    elif operation == "notes":
+                        result = self.meetings.request_notes(meeting_id, source.user_id)
+                    elif operation == "confirm":
+                        result = self.meetings.confirm_actions(
+                            meeting_id,
+                            request.get("notes_handoff_id"),
+                            request.get("actions"),
+                            source.user_id,
+                        )
+                    else:
+                        raise ValueError("Unknown meeting operation")
+                # Raw transcript and personal summaries stay in the consent-gated view.
+                from .crew import _clip
+
+                if isinstance(result, dict):
+                    public = {
+                        key: value
+                        for key, value in result.items()
+                        if key in {"meeting_id", "task_id", "handoff_id", "status", "disclosure"}
+                    }
+                else:
+                    public = {"status": "recorded"}
+                text = "Meeting command recorded: " + _clip(json.dumps(public), 1400)
+            except (PermissionError, ValueError, KeyError, TypeError):
+                text = (
+                    "Meeting command denied or invalid; "
+                    "use the original thread and current explicit consent."
+                )
+        self._reply(receipt_id, "meeting_command", text, freeze=True)
+
+    def _reconcile_auxiliary(self):
+        """Report independently executed Notes/docs/trigger work in its original thread."""
+        rows = self.store.connection.execute(
+            "SELECT * FROM tasks WHERE status='IN_PROGRESS' AND "
+            "(json_extract(source,'$.kind') IN ('meeting_notes','meeting_transcription',"
+            "'confirmed_meeting_action','change_intelligence') "
+            "OR json_extract(source,'$.trigger_type')='github_webhook' "
+            "OR json_extract(source,'$.security_gate')=1) LIMIT 100"
+        ).fetchall()
+        for row in rows:
+            task = self.store._row(row)
+            if task["source"].get("room_id") not in {None, self.room_id}:
+                continue
+            if self.approvals.get(task["id"]) is not None:
+                continue
+            handoffs = [
+                self.store._row(h)
+                for h in self.store.connection.execute(
+                    "SELECT * FROM handoffs WHERE task_id=?", (task["id"],)
+                )
+            ]
+            if not handoffs or any(
+                h["status"] != "completed" or h["sender"] != self.pm_id for h in handoffs
+            ):
+                continue
+            statuses = [h["result"].get("status", "blocked") for h in handoffs]
+            if task["source"].get("kind") in {"meeting_notes", "meeting_transcription"}:
+                if self.meetings is None:
+                    statuses = ["blocked_configuration"]
+                else:
+                    try:
+                        self.meetings._consents(task["source"]["meeting_id"])
+                    except PermissionError:
+                        statuses = ["blocked_consent"]
+            passed = all(
+                status in {"completed", "evidence_found", "verified_success"} for status in statuses
+            )
+            self.store.transition_task(
+                task["id"], "COMPLETED" if passed else "BLOCKED", task["version"]
+            )
+            self._reply(
+                task["id"],
+                "specialist_receipt",
+                "Specialist results for task "
+                + task["id"]
+                + ": "
+                + ", ".join(statuses)
+                + ". Inspect the authenticated evidence/meeting view; "
+                "proposals require human confirmation.",
+            )
+            if passed and task["source"].get("kind") == "meeting_notes":
+                from .crew import _clip
+
+                notes_result = handoffs[0]["result"]
+                proposals = notes_result.get("notes", {}).get("action_items", [])
+                preview = [
+                    f"Meeting {task['source']['meeting_id']}: "
+                    "proposed actions need human confirmation.",
+                    f"Notes handoff: {handoffs[0]['id']}",
+                ]
+                for proposal in proposals[:15]:
+                    preview.append(
+                        f"- {_clip(proposal.get('proposal_id'), 100)}: "
+                        + _clip(proposal.get("title"), 180)
+                    )
+                preview.append(
+                    "Confirm or edit titles, owners, deadlines and criteria in the original thread "
+                    "using a meeting confirm request."
+                )
+                self._reply(task["id"], "meeting_proposals", "\n".join(preview), freeze=True)
 
     async def _request(self, event):
         source = normalize_discord_event(
@@ -273,7 +511,7 @@ class Worker:
         command = handle_crew_command(
             self.store, source, can_cancel=source.user_id in self.approvals.approvers
         )
-        if command is not None:
+        if command is not None and "request" not in command:
             if command.get("task_id"):
                 self._reply(
                     command["task_id"],
@@ -281,17 +519,39 @@ class Worker:
                     command["text"],
                     freeze=True,
                 )
+            elif command.get("durable_reply"):
+                receipt_id = str(
+                    uuid5(NAMESPACE_URL, f"crew-command:{source.room_id}:{source.message_id}")
+                )
+                self.store.create_task(
+                    "Discord command receipt",
+                    {
+                        "room_id": source.room_id,
+                        "thread_id": source.thread_id,
+                        "message_id": source.message_id,
+                        "user_id": source.user_id,
+                        "channel_id": source.channel_id,
+                        "guild_id": source.guild_id,
+                        "command_receipt": True,
+                    },
+                    [],
+                    task_id=receipt_id,
+                )
+                self._reply(receipt_id, "command_reply", command["text"], freeze=True)
             else:
                 await self.switch.post_message(
                     command["text"], thread_id=source.thread_id or source.message_id
                 )
             return
         try:
-            request = json.loads(source.body)
+            request = command["request"] if command is not None else json.loads(source.body)
             if not isinstance(request, dict):
                 request = {}
         except ValueError:
             request = {}
+        if request.get("type") == "meeting":
+            await self._meeting_request(source, request)
+            return
         if not request and source.channel_id in self.incidents.allowed_channels:
             incident = self.incidents.ingest(source)
             if incident is not None:
@@ -358,6 +618,9 @@ class Worker:
                 "thread_id": source.thread_id,
                 "message_id": source.message_id,
                 "user_id": source.user_id,
+                "channel_id": source.channel_id,
+                "guild_id": source.guild_id,
+                "project_id": self.project_id,
             },
             criteria,
             task_id=task_id,
@@ -447,7 +710,9 @@ class Worker:
                 self.approvals.request(
                     task_id,
                     self.pm_id,
-                    self.engineering_id,
+                    (existing_approval or {})
+                    .get("spec", {})
+                    .get("engineering", self.engineering_id),
                     self.qa_id,
                     self.release_id,
                     job_key,
@@ -467,12 +732,7 @@ class Worker:
                 }:
                     return
                 raise
-            self._reply(
-                task_id,
-                "engineering_approval",
-                f"Engineering request {task_id} awaits human approval. "
-                "Task version: 1. No Engineering action has started.",
-            )
+            self._engineering_prompt(task_id)
             return
         handoff_id = str(uuid5(NAMESPACE_URL, f"{task_id}:research"))
         for current, next_status in [
@@ -498,6 +758,18 @@ class Worker:
             "delegated",
             "PM delegated the question and criteria to Research; awaiting acknowledgment.",
         )
+
+    def _engineering_prompt(self, task_id):
+        task = self.store.get_task(task_id)
+        if task and task["status"] == "AWAITING_APPROVAL":
+            version = task["version"]
+            kind = "engineering_approval" if version == 1 else f"engineering_approval_v{version}"
+            self._reply(
+                task_id,
+                kind,
+                f"Engineering request {task_id} awaits human approval. "
+                f"Task version: {version}. No Engineering action has started.",
+            )
 
     def _reply(self, task_id, kind, text, *, freeze=False):
         chunks = [text[i : i + 1600] for i in range(0, len(text), 1600)]
@@ -539,6 +811,10 @@ class Worker:
         except (ValueError, KeyError, TypeError):
             return
         if not handoff:
+            return
+        from .wire import result_matches
+
+        if not result_matches(message, handoff):
             return
         if message.get("task_id") != handoff["task_id"]:
             return
@@ -582,6 +858,21 @@ class Worker:
             self.store.complete_handoff(
                 handoff["id"], self.identity, graph_result(result), execution_role=self.role
             )
+        elif handoff["sender"] == self.identity and handoff[
+            "recipient"
+        ] == self.specialist_senders.get(event["payload"]["sender"]):
+            if message.get("type") in {"handoff.accepted", "handoff.completed"}:
+                self.store._event(
+                    handoff["task_id"],
+                    "switch.specialist_report",
+                    {
+                        "handoff_id": handoff["id"],
+                        "recipient": handoff["recipient"],
+                        "status": handoff["status"],
+                        "result_sha256": message.get("result_sha256"),
+                    },
+                    self.store.get_task(handoff["task_id"])["version"],
+                )
         elif handoff["recipient"] == self.research_id and handoff["sender"] == self.identity:
             if message.get("type") == "handoff.accepted" and handoff["status"] in {
                 "accepted",
@@ -624,6 +915,28 @@ class Worker:
             if owner != self.identity:
                 continue
             task = self.store.get_task(item["task_id"])
+            if task["source"].get("room_id") not in {None, self.room_id}:
+                continue
+            if payload.get("type", "").startswith("engineering_approval"):
+                suffix = payload["type"].removeprefix("engineering_approval")
+                version = 1 if suffix == "" else int(suffix.removeprefix("_v"))
+                if task["status"] != "AWAITING_APPROVAL" or task["version"] != version:
+                    self.store.connection.execute(
+                        "UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'",
+                        (item["id"],),
+                    )
+                    continue
+            if payload.get("type") == "meeting_proposals":
+                try:
+                    if self.meetings is None:
+                        raise PermissionError("Consent service unavailable")
+                    self.meetings._consents(task["source"]["meeting_id"])
+                except PermissionError:
+                    self.store.connection.execute(
+                        "UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'",
+                        (item["id"],),
+                    )
+                    continue
             parent_id = task["source"].get("parent_task_id")
             parent = self.store.get_task(parent_id) if parent_id else None
             if payload.get("type") == "handoff" and (
@@ -636,7 +949,13 @@ class Worker:
             # ambiguous transport outcomes; Switch itself has no POST idempotency API.
             body = (
                 "```switchcrew\n"
-                + json.dumps({**payload, "task_id": item["task_id"], "delivery_id": item["id"]})
+                + json.dumps(
+                    {
+                        **transport_payload(payload),
+                        "task_id": item["task_id"],
+                        "delivery_id": item["id"],
+                    }
+                )
                 + "\n```"
             )
             if item["recipient"] == "discord":
@@ -796,6 +1115,7 @@ async def _main(role):
                 research_name=settings.research_name,
                 memory=memory_from_settings(settings),
                 company_brain=company_brain,
+                project_id=settings.memory_project,
                 checkpointer=saver,
                 engineering_id=settings.engineering_agent_id,
                 engineering_name=settings.engineering_name,
@@ -811,6 +1131,16 @@ async def _main(role):
                 orchestration_job_key=settings.orchestration_job_key,
                 incident_channels=settings.incident_channel_ids,
                 incident_max_events_per_minute=settings.incident_max_events_per_minute,
+            )
+            from .organization import load_organization_config, meeting_service
+
+            organization = load_organization_config(settings.organization_config)
+            from .organization import configure_security
+
+            worker.security_gate = configure_security(store, settings, organization)
+
+            worker.meetings = meeting_service(
+                store, settings, organization, enable_voice_provider=False
             )
             await worker.run()
     finally:

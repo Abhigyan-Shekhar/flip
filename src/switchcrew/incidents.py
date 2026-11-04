@@ -87,8 +87,10 @@ class IncidentIntake:
         clock=time.time,
         max_events_per_minute=10,
         dedupe_window_seconds=3600,
+        project_id="github.com/Abhigyan-Shekhar/flip",
     ):
         self.store = store
+        self.project_id = project_id
         self.allowed_channels = frozenset(str(x) for x in allowed_channels)
         self.clock = clock
         self.max_events_per_minute = int(max_events_per_minute)
@@ -332,6 +334,7 @@ class IncidentIntake:
             source_record = {
                 "kind": "discord",
                 "incident_id": incident_id,
+                "project_id": self.project_id,
                 **{
                     k: d.get(k)
                     for k in (

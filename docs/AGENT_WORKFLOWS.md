@@ -1,3 +1,9 @@
+Current organization extensions add an independent Notes role and provider-free
+PM/API recording coordination; Voice and Notes work runs through separate Switch
+handoffs. See [organization setup](ORGANIZATION_SETUP.md) and the current
+[feature/acceptance matrix](ORGANIZATION_IMPLEMENTATION.md). The historical roster
+and verification counts below describe earlier checkpoints.
+
 # Specialist LangGraph workflows
 
 A separate Reviewer role now gates approved Engineering releases. See

@@ -377,6 +377,20 @@ class EngineeringExecutor:
                 session_id=sid,
                 diff=git(checkout, "diff", "--binary", review_base, final),
             )
+            used_lessons = record.get("used_lesson_ids", [])
+            if used_lessons:
+                import re
+
+                if (
+                    not isinstance(used_lessons, list)
+                    or len(used_lessons) > 20
+                    or any(
+                        not isinstance(item, str) or not re.fullmatch(r"lesson-[a-f0-9]{24}", item)
+                        for item in used_lessons
+                    )
+                ):
+                    raise ValueError("Invalid lesson-use receipt")
+                result["used_lesson_ids"] = used_lessons
         except (KeyError, ValueError, OSError, subprocess.CalledProcessError):
             return outcome("implementation_failed", identity, reason="invalid_revision_receipt")
         data = self.ledger.get(identity)

@@ -47,6 +47,8 @@ RESULT_STATUSES = {
     "implementation_failed",
     "qa_failed",
     "verified_success",
+    "findings",
+    "scanner_failed",
     "stale_qa",
     "review_accepted",
     "review_rejected",

@@ -9,7 +9,7 @@ November 1. See the [evidence and remaining gates](deploy/switch/VERIFICATION.md
 and [recovery acceptance runbook](deploy/switch/RECOVERY_ACCEPTANCE.md). Deployment
 credentials and running services are local to that Mac, not supplied by Git.
 
-All 15 specified agents have independent LangGraphs. PM and Research use durable
+All 17 current roles, including independent Reviewer and Notes, have their own LangGraphs. PM and Research use durable
 SQLite checkpoints; configured specialists now produce cited documentation,
 support/knowledge/onboarding drafts, moderation/security reviews, schedule
 conflicts, analytics and incident timelines. A consent-gated Voice adapter handles
@@ -112,3 +112,18 @@ November 4–7; this earlier implementation must not be represented as event-bui
 The verbatim supplied [specification](docs/SPECIFICATION.md) is preserved.
 
 Optional repository graph context: see [Company Brain setup](docs/COMPANY_BRAIN.md).
+
+
+## Organization workflows
+
+The organization upgrade adds independent recorded-meeting Voice and Notes
+handoffs, human-confirmed action proposals, channel-aware task commands, Git
+change reports, signed QA/Security and OSS intake, verified lessons, employee
+Console bindings, and an independent watchdog. All privileged execution retains
+the existing human, QA and Reviewer boundaries.
+
+Read [configuration](docs/ORGANIZATION_SETUP.md) and the
+[feature/acceptance matrix](docs/ORGANIZATION_IMPLEMENTATION.md) for implemented,
+partial and live-blocked capabilities. Registered Discord slash commands, live
+DAVE receive, host-level employee isolation and complete external acceptance are
+not claimed by this local implementation.

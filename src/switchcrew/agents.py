@@ -6,6 +6,7 @@ from enum import StrEnum
 
 class AgentRole(StrEnum):
     VOICE = "voice"
+    NOTES = "notes"
     COMMUNITY = "community"
     PM = "pm"
     RESEARCH = "research"
@@ -34,6 +35,7 @@ class AgentSpec:
 
 _SPECS = (
     AgentSpec(AgentRole.VOICE, "Voice Agent", "consented_voice_io", "prepare_voice"),
+    AgentSpec(AgentRole.NOTES, "Notes Agent", "evidence_linked_meeting_notes", "prepare_notes"),
     AgentSpec(AgentRole.COMMUNITY, "Community Agent", "support_triage", "triage_support"),
     AgentSpec(AgentRole.PM, "PM Agent", "research_planning", "plan_handoff"),
     AgentSpec(AgentRole.RESEARCH, "Research Agent", "source_retrieval", "retrieve_evidence"),

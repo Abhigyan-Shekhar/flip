@@ -12,6 +12,7 @@ import hashlib
 import inspect
 import io
 import json
+import math
 import os
 import re
 import wave
@@ -165,6 +166,84 @@ class ElevenLabsVoice:
             raise ValueError("Credential-like provider output rejected")
         return text.strip()
 
+    async def transcribe_meeting(self, audio):
+        """Return real provider word timings and anonymous diarization labels.
+
+        Provider ``speaker_id`` values are acoustic labels only. This method
+        never maps them to meeting participants or employee identities.
+        """
+        content = await self._call(
+            "/v1/speech-to-text",
+            limit=2 * 1024 * 1024,
+            data={
+                "model_id": self.stt_model,
+                "tag_audio_events": "false",
+                "diarize": "true",
+                "timestamps_granularity": "word",
+            },
+            files={"file": ("consented-meeting.wav", audio, "audio/wav")},
+        )
+        result = json.loads(content)
+        text = result.get("text") if isinstance(result, dict) else None
+        records = result.get("words") if isinstance(result, dict) else None
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or len(text) > 250_000
+            or self._api_key in text
+            or not isinstance(records, list)
+            or len(records) > 100_000
+        ):
+            raise ValueError("Meeting transcript is missing or exceeds provider bounds")
+        words = []
+        for record in records:
+            if not isinstance(record, dict):
+                raise ValueError("Meeting word record is invalid")
+            token = record.get("text")
+            start, end = record.get("start"), record.get("end")
+            kind = record.get("type", "word")
+            if (
+                not isinstance(token, str)
+                or len(token) > 1000
+                or type(start) not in (float, int)
+                or type(end) not in (float, int)
+                or not math.isfinite(start)
+                or not math.isfinite(end)
+                or start < 0
+                or end < start
+                or kind not in {"word", "spacing", "audio_event"}
+            ):
+                raise ValueError("Meeting word timing or content is invalid")
+            speaker = record.get("speaker_id")
+            if speaker is not None and (
+                not isinstance(speaker, str)
+                or not re.fullmatch(r"speaker_[A-Za-z0-9_-]{1,80}", speaker)
+            ):
+                # Do not turn unexpected provider labels into identity claims.
+                speaker = None
+            logprob = record.get("logprob")
+            if type(logprob) not in (float, int) or not math.isfinite(logprob):
+                logprob = None
+            words.append(
+                {
+                    "text": token,
+                    "start": float(start),
+                    "end": float(end),
+                    "type": kind,
+                    "speaker_id": speaker,
+                    "speaker_attribution": (
+                        "provider_anonymous_id" if speaker is not None else "unattributed"
+                    ),
+                    # Log probability is preserved as provider evidence, never
+                    # mislabeled as a calibrated confidence percentage.
+                    "logprob": float(logprob) if logprob is not None else None,
+                }
+            )
+        if not words:
+            raise ValueError("Meeting provider response has no timestamped words")
+        words.sort(key=lambda word: (word["start"], word["end"]))
+        return {"text": text.strip(), "words": words}
+
     async def speak(self, text):
         if not self.voice_id:
             raise ValueError("A configured licensed voice ID is required")
@@ -304,13 +383,16 @@ class VoiceExecutor:
             )
 
 
-def voice_executor_from_config(config, ledger, *, authorize=None, transport=None):
-    """Construct from private operator config; never pass this config into graph state."""
+def voice_provider_from_config(config, *, transport=None):
+    """Construct the STT/TTS provider from private Voice process config."""
     provider_config = dict(config.get("provider", {}))
     key_variable = provider_config.pop("api_key_env", "ELEVENLABS_API_KEY")
-    provider = ElevenLabsVoice(
-        os.environ.get(key_variable, ""), transport=transport, **provider_config
-    )
+    return ElevenLabsVoice(os.environ.get(key_variable, ""), transport=transport, **provider_config)
+
+
+def voice_executor_from_config(config, ledger, *, authorize=None, transport=None):
+    """Construct from private operator config; never pass this config into graph state."""
+    provider = voice_provider_from_config(config, transport=transport)
     return VoiceExecutor(
         ledger,
         provider,

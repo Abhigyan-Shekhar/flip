@@ -455,13 +455,23 @@ class _UnavailableCompanyBrain(NullCompanyBrain):
         return BrainResult(warning=self.warning)
 
 
-async def capture_engineering_context(brain: Brain, query: str) -> dict[str, Any]:
+async def capture_engineering_context(
+    brain: Brain, query: str, *, expected_repo_root=None
+) -> dict[str, Any]:
     """Capture bounded graph context for an Engineering prompt, failing soft.
 
     Only explicit file-like references trigger change analysis. Other requests
     use general graph context. Exceptions are reduced to type-only warnings so
     backend details and credentials cannot enter durable task records.
     """
+    if expected_repo_root and os.path.realpath(
+        str(getattr(brain, "repo_root", ""))
+    ) != os.path.realpath(str(expected_repo_root)):
+        return {
+            "context": None,
+            "warning": "Company Brain is not configured for this task's authorized repository; "
+            "coverage is unknown.",
+        }
     files = sorted(set(re.findall(r"\b(?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]{1,12}\b", query)))[:50]
     try:
         if files:

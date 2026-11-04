@@ -140,3 +140,27 @@ The connected Company Brain registry still lists only other repositories. Live
 graph retrieval, Discord/Console execution and release acceptance remain
 unverified; no registry/index/deployment was changed. See COMPANY_BRAIN.md for
 configuration and the operator probe.
+
+## Organization upgrade — November 3–4, 2026 IST
+
+Three Luna workers and parent integration extended the existing repository through
+the recorded meeting/Notes, task workspace, change intelligence, triggered QA/
+Security, scoped knowledge/verified lesson, employee/OSS and watchdog workstreams.
+Current source includes the independent Switch Voice→Notes→confirmed-task
+vertical slice, strict recording allocation/origin ACLs, fresh optional Security
+release gates, real Git reports, human credential separation, durable learning
+use receipts and safe dependency/cancellation/replay behavior.
+
+Final validation: **480 passed, 3 live tests skipped** in 42.56 seconds; Ruff,
+format check (104 Python files), diff check and wheel/sdist build passed. The
+standalone controlled learning experiment passed and explicitly did not call live
+Waggle. Current-host preflight is blocked by absent Docker/Compose, unreachable
+services and missing private identities/bindings. This work is local/uncommitted;
+no push, deployment or external publication occurred.
+
+See ORGANIZATION_IMPLEMENTATION.md for the architecture, completion matrix,
+actual evidence boundaries, changed-file inventory, partial capabilities and
+remaining risks. ORGANIZATION_SETUP.md documents private configuration, human
+roles, Discord permissions and reproduction. Work began before the event and
+continued after the November 4 resume; it must not be described as wholly
+event-built. Verification record timestamp: 2026-11-04T01:58:07.572313+00:00.

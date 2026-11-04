@@ -7,7 +7,10 @@ from uuid import UUID
 
 from .store import ConflictError, InvalidTransitionError
 
-_COMMAND = re.compile(r"^/crew\s+(status|team|why|replay|cancel)\s+([0-9a-fA-F-]{36})\s*$", re.I)
+_COMMAND = re.compile(
+    r"^/crew\s+(status|task|team|why|replay|trace|dependencies|evidence|cancel)\s+([0-9a-fA-F-]{36})\s*$",
+    re.I,
+)
 _MAX_TEXT = 12_000
 _SAFE_EVENTS = {
     "task.created",
@@ -74,6 +77,27 @@ def _task_scope(task, source):
     return origin.get("room_id") == source.room_id and (
         origin.get("thread_id") or origin.get("message_id")
     ) == (source.thread_id or source.message_id)
+
+
+def _employee(store, task_id):
+    try:
+        row = store.connection.execute(
+            "SELECT employee_id FROM employee_assignments WHERE task_id=? AND status='active'",
+            (task_id,),
+        ).fetchone()
+        return row[0] if row else None
+    except sqlite3.OperationalError:
+        return None
+
+
+def _employee_for_actor(store, actor_id):
+    try:
+        row = store.connection.execute(
+            "SELECT employee_id FROM employee_registry WHERE actor_id=? AND enabled=1", (actor_id,)
+        ).fetchone()
+        return row[0] if row else None
+    except sqlite3.OperationalError:
+        return None
 
 
 def _render(store, task, kind):
@@ -199,6 +223,89 @@ def _render(store, task, kind):
 
 def handle_crew_command(store, source, *, can_cancel: bool = False) -> dict | None:
     """Handle a text command from an already authenticated DiscordSource."""
+    text = source.body.strip()
+    if re.match(r"^/crew\s+create(?:\s|$)", text, re.I):
+        parts = [
+            part.strip() for part in re.sub(r"^/crew\s+create\s*", "", text, flags=re.I).split("|")
+        ]
+        if (
+            len(parts) < 2
+            or not all(parts)
+            or len(parts) > 13
+            or len(parts[0]) > 10000
+            or any(len(p) > 2000 for p in parts[1:])
+        ):
+            return {
+                "handled": True,
+                "task_id": None,
+                "kind": "crew_invalid",
+                "text": "Use /crew create objective | acceptance criterion | another criterion.",
+            }
+        return {
+            "handled": True,
+            "task_id": None,
+            "kind": "crew_create",
+            "request": {"question": parts[0], "acceptance_criteria": parts[1:]},
+        }
+    listing = re.fullmatch(
+        r"/crew\s+(tasks|mine|completed)(?:\s+(active|blocked|completed|all|employee\s+[\w.-]{1,100}))?",
+        text,
+        re.I,
+    )
+    if listing:
+        action, selected = listing.group(1).lower(), (listing.group(2) or "active").lower()
+        rows = []
+        with store._lock:
+            for row in store.connection.execute(
+                "SELECT * FROM tasks ORDER BY created_at DESC,rowid DESC LIMIT 1000"
+            ):
+                task = store._row(row)
+                origin = task["source"]
+                assigned = _employee(store, task["id"]) or origin.get("assigned_employee")
+                same_channel = (
+                    origin.get("room_id") == source.room_id
+                    and origin.get("guild_id") == source.guild_id
+                    and origin.get("channel_id") == source.channel_id
+                )
+                if origin.get("command_receipt") or not (same_channel or _task_scope(task, source)):
+                    continue
+                if action == "mine" and source.user_id != origin.get("user_id"):
+                    if not assigned or assigned not in {
+                        source.user_id,
+                        _employee_for_actor(store, source.user_id),
+                    }:
+                        continue
+                if selected.startswith("employee ") and assigned != selected.split(" ", 1)[1]:
+                    continue
+                state = task["status"]
+                if (action == "completed" or selected == "completed") and state != "COMPLETED":
+                    continue
+                if selected == "blocked" and state not in {
+                    "BLOCKED",
+                    "FAILED",
+                    "NEEDS_CLARIFICATION",
+                }:
+                    continue
+                if (
+                    action != "completed"
+                    and selected == "active"
+                    and state in {"COMPLETED", "CANCELLED", "BLOCKED", "FAILED"}
+                ):
+                    continue
+                rows.append(
+                    f"- {task['id']}: {state}; thread "
+                    + _clip(origin.get("thread_id") or origin.get("message_id"), 100)
+                )
+                if len(rows) >= 30:
+                    break
+        return {
+            "handled": True,
+            "task_id": None,
+            "kind": "crew_list",
+            "durable_reply": True,
+            "text": "Tasks in this channel (up to 30):\n"
+            + ("\n".join(rows) or "No matching tasks."),
+        }
     match = _COMMAND.fullmatch(source.body)
     if not match:
         if _CREW_PREFIX.match(source.body):
@@ -219,6 +326,7 @@ def handle_crew_command(store, source, *, can_cancel: bool = False) -> dict | No
             "kind": "crew_invalid",
             "text": "Use /crew status, team, why, replay, or cancel followed by a task UUID.",
         }
+    action = "status" if action == "task" else action
     kind = f"crew_{action}"
     denied = {
         "handled": True,
@@ -229,6 +337,17 @@ def handle_crew_command(store, source, *, can_cancel: bool = False) -> dict | No
     task = store.get_task(task_id)
     if not task or not _task_scope(task, source):
         return denied
+    if action in {"trace", "evidence", "dependencies"}:
+        from .trace import execution_trace
+
+        trace = execution_trace(store, task_id)
+        value = trace.get("plan") if action == "dependencies" else trace
+        return {
+            "handled": True,
+            "task_id": task_id,
+            "kind": kind,
+            "text": json.dumps(value, ensure_ascii=False)[:_MAX_TEXT],
+        }
     if action == "cancel":
         owner = (task.get("source") or {}).get("user_id") == source.user_id
         if not owner and not can_cancel:

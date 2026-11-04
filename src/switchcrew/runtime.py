@@ -16,6 +16,7 @@ from .agents import AGENT_ROLES
 from .graphs import graph_result, invoke_agent_graph
 from .store import Store
 from .switch import SwitchClient, SwitchOwnershipLost
+from .wire import transport_payload
 
 log = logging.getLogger("switchcrew.runtime")
 
@@ -102,6 +103,10 @@ class AgentRuntime:
                     if key in message and message[key] != handoff[key]:
                         return False
             elif kind in {"handoff.accepted", "handoff.completed"}:
+                from .wire import result_matches
+
+                if not result_matches(message, handoff):
+                    return False
                 if handoff["recipient"] != sender or handoff["sender"] != c.agent_id:
                     return False
                 if kind == "handoff.completed" and handoff["status"] != "completed":
@@ -118,6 +123,10 @@ class AgentRuntime:
 
     async def process_pending(self):
         c = self.connection
+        if self.is_ready():
+            from .watchdog import record_worker_heartbeat
+
+            record_worker_heartbeat(self.store, c.agent_id)
         for item in self.store.pending_inbox(c.agent_id):
             if not self.is_ready():
                 return
@@ -190,7 +199,8 @@ class AgentRuntime:
             body = (
                 "```switchcrew\n"
                 + json.dumps(
-                    {**p, "task_id": item["task_id"], "delivery_id": item["id"]}, sort_keys=True
+                    {**transport_payload(p), "task_id": item["task_id"], "delivery_id": item["id"]},
+                    sort_keys=True,
                 )
                 + "\n```"
             )
@@ -272,13 +282,22 @@ async def _main(role, registry, database, url, capability_config=None):
         if private_config.get("role") != role:
             raise ValueError("Capability configuration role differs from registry")
     settings = Settings(
-        **({"_env_file": None, **private_config.get("memory", {})} if capability_config else {}),
+        **(
+            {
+                "_env_file": None,
+                **private_config.get("settings", {}),
+                **private_config.get("memory", {}),
+            }
+            if capability_config
+            else {}
+        ),
         **({"switch_base_url": url} if url else {}),
     )
     database = database or settings.database_path
     if (
         capability_config
         and role == "voice"
+        and private_config.get("capability", {}).get("mode") != "meeting_transcription"
         and (Path(private_config["ledger"]).resolve() == Path(database).resolve())
     ):
         raise ValueError("Application state and Voice execution ledger require separate files")
@@ -294,9 +313,13 @@ async def _main(role, registry, database, url, capability_config=None):
     executor, execution_ledger = None, None
     try:
         if capability_config:
+            from .organization_runtime import configured_executor
             from .specialists import SPECIALIST_ROLES, specialist_executor
 
-            if role in SPECIALIST_ROLES:
+            executor = configured_executor(role, private_config["capability"], store, c, settings)
+            if executor is not None:
+                pass
+            elif role in SPECIALIST_ROLES:
                 executor = specialist_executor(role, private_config["capability"])
             elif role == "voice":
                 from .engineering import Ledger
@@ -329,7 +352,7 @@ async def _main(role, registry, database, url, capability_config=None):
                 ),
                 memory=memory_from_settings(settings),
                 executor=executor,
-                checkpointer=None if role == "voice" else saver,
+                checkpointer=None if role in {"voice", "notes", "qa", "security"} else saver,
             )
             await AgentRuntime(c, store, client, graph).run()
     finally:

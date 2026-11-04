@@ -386,3 +386,22 @@ async def test_unknown_status_never_echoes_server_text(tmp_path):
     result = await CompanyBrain(repo_root=str(root), transport=transport).get_context("topic")
     assert not result.context
     assert "private-value" not in result.warning
+
+
+async def test_task_repository_binding_omits_a_different_valid_graph(tmp_path):
+    from switchcrew.company_brain import capture_engineering_context
+
+    class DifferentRepository:
+        repo_root = str(tmp_path / "other")
+
+        async def get_context(self, *args, **kwargs):
+            pytest.fail("Do not query a different repository graph")
+
+        async def check_change(self, *args, **kwargs):
+            pytest.fail("Do not analyze a different repository graph")
+
+    result = await capture_engineering_context(
+        DifferentRepository(), "Fix src/app.py", expected_repo_root=tmp_path / "authorized"
+    )
+    assert result["context"] is None
+    assert "coverage is unknown" in result["warning"]
