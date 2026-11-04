@@ -1,7 +1,13 @@
 # Restricted execution for Engineering-related workflows
 
-**Code shipped; host enforcement and end-to-end acceptance pending.** The new
-`DockerIsolation` runner is a strict optional policy for operator-owned QA,
+**Container runner and QA/Reviewer components verified; full managed-host and
+end-to-end acceptance pending.** The [November 4 component run](VERIFICATION_2026-11-04.md)
+checked read-only mounts, network denial, secret isolation, timeout cleanup and
+exact-SHA QA/review using operator-prepared Git artifacts. It does not establish
+Console host isolation or meaningful Security scanner acceptance. See the
+[Mac-specific Docker configuration](LOCAL_MAC_RUNTIME.md).
+
+The `DockerIsolation` runner is a strict optional policy for operator-owned QA,
 Reviewer and Security commands. It is deliberately separate from Switch
 Console's managed Codex sessions, which require an **independently isolated
 host/VM**; this repository cannot prove Console's OS containment from its API.

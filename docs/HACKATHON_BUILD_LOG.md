@@ -87,3 +87,35 @@ build passed. Standalone controlled two-task learning acceptance returned PASS
 with live_waggle_called=false. The preflight remains blocked on this host; no
 current real external acceptance is fabricated. Recorded at 2026-11-04T01:58:07.572313+00:00. See
 ORGANIZATION_IMPLEMENTATION.md and ORGANIZATION_SETUP.md for full scope and gaps.
+
+
+## Mac deployment, review fixes and live acceptance — November 4, 2026 IST
+
+Provisioned a dedicated Colima/Docker runtime, pinned official Switch server,
+gateway and PostgreSQL, with host API/PM/Research processes and authenticated
+Codex harnesses. Connected the temporary Discord bot through Switch with verified
+human/transport bindings. A real Discord request produced a PM plan, addressed
+Research handoff, acknowledgment, cited draft, Waggle outcome and original-thread
+reply. Restart preserved state without duplicate replies; a bot-origin identity
+claim was rejected. The draft remains awaiting human review.
+
+Reviewed and merged PRs #8–#10: pending dashboard filtering and malformed signed
+payload handling; explicit Research schema guidance; verified Discord-to-Switch
+thread mapping and Compose settings. The first real slash status attempt failed;
+after the mapping fix the user confirmed the correct status. Restored the bot's
+original interactions routing, removed the temporary command and stopped its
+restricted proxy/tunnel after verification.
+
+Latest implementation checks: **556 passed, 3 live tests skipped** in 31.04s;
+**3 real Switch recovery tests passed separately** in 40.46s. Ruff, formatting,
+Compose validation, diff check and package build passed. Real isolated QA/Reviewer
+components rejected broken/stale artifacts and accepted the corrected exact SHA;
+the artifacts and ledger were operator-prepared, not Console-generated code.
+
+Added the [current verification report](VERIFICATION_2026-11-04.md),
+[sanitized evidence index](evidence/verification-2026-11-04.json) and
+[Mac lifecycle runbook](LOCAL_MAC_RUNTIME.md), and refreshed README/status links.
+Managed Engineering/human Release/draft PR, meaningful Security scans, consented
+real audio/live voice, exact-revision graph retrieval and real second-task
+learning remain acceptance gates. Event-day setup and fixes do not relabel the
+broader pre-event implementation as event-built.

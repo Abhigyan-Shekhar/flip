@@ -1,0 +1,93 @@
+{
+  "date": "2026-11-04",
+  "timezone": "Asia/Kolkata",
+  "runtime_commit": "7caa1a415025968d8bbf2d694ea47a0a4b1608d3",
+  "scope": "Sanitized verification index; not a credential bundle or independent attestation",
+  "automated_checks": {
+    "passed": 556,
+    "skipped_live_tests": 3,
+    "seconds": 31.04,
+    "lint": "pass",
+    "format": "pass",
+    "compose_config": "pass",
+    "package_build": "pass"
+  },
+  "separate_real_switch_recovery": {
+    "passed": 3,
+    "seconds": 40.46
+  },
+  "live_discord": {
+    "task_id": "2417f12d-ba19-53b0-862e-53f37875c78d",
+    "handoff_id": "0dbb0630-dca4-501b-8416-71c1e81cd39e",
+    "thread_id": "1567445445662220371",
+    "result_message_id": "1567445671907430461",
+    "draft_status": "awaiting_review",
+    "parent_status": "IN_PROGRESS",
+    "restart_no_duplicate_replies": true,
+    "bot_body_identity_claim_rejected": true
+  },
+  "live_slash": {
+    "initial_status": 401,
+    "fixed_status": 200,
+    "successful_interaction_id": "1567449930648395876",
+    "signed_ping": 200,
+    "invalid_signature_probe": 401,
+    "original_routing_restored": true,
+    "temporary_command_removed": true,
+    "proxy_and_tunnel_stopped": true,
+    "persistent_deployment": false
+  },
+  "container_isolation": {
+    "image": "python@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30",
+    "checks": {
+      "workspace_readable": true,
+      "root_read_only": true,
+      "workspace_read_only": true,
+      "network_disabled": true,
+      "no_service_secrets": true,
+      "timeout_test_executed": true,
+      "no_orphaned_test_container": true
+    }
+  },
+  "qa_reviewer_components": {
+    "artifact_origin": "operator-prepared synthetic Git commits and ledger",
+    "results": {
+      "qa_broken": "qa_failed",
+      "review_broken": "review_rejected",
+      "qa_corrected": "verified_success",
+      "review_corrected": "review_accepted",
+      "qa_after_changed_head": "stale_qa",
+      "review_after_changed_head": "stale_review"
+    },
+    "checks": {
+      "broken_qa_rejected": true,
+      "broken_review_rejected": true,
+      "corrected_qa_passed": true,
+      "corrected_review_accepted": true,
+      "stale_qa_rejected": true,
+      "stale_review_rejected": true,
+      "exact_sha_qa": true,
+      "exact_sha_review": true
+    },
+    "revisions": {
+      "base": "394245b581d90d3e010b4051c9ed03fe7597bb80",
+      "broken": "f645256fa6f28d7c714bd7655e88ef2ed68e78a1",
+      "corrected": "5b11d242a24e8d5f74be602342a66596acf1414e",
+      "late_change": "50977c4325c5691446f04b15e66c25ac69079362"
+    },
+    "limitations": [
+      "Operator-authored synthetic Git artifacts and a prepared execution ledger; no Console-managed model implementation.",
+      "Real independent QAExecutor and ReviewerExecutor subprocess commands ran in pinned restricted Docker containers.",
+      "The review check validates this explicit regression only; no claim of general code review or security certification.",
+      "This does not bypass or verify application human approval/Release gates."
+    ]
+  },
+  "remaining": [
+    "Console-managed Engineering and full human-approved draft-PR workflow",
+    "Independent Security scanner acceptance",
+    "Real recorded-audio/provider consent workflow and live voice transport",
+    "Company Brain exact-revision index and real second-task lesson effect",
+    "Persistent custom slash deployment",
+    "Fresh-host reproduction and final demo"
+  ]
+}

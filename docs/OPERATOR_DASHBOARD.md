@@ -40,8 +40,11 @@ independent human approval workflow.
    does not push command definitions to Discord automatically.
 5. Validate signed PING, authorized read-only task lookup in its original
    thread, replay/invalid signature rejection, and denial across guilds or
-   threads. The HTTP endpoint and parsing have offline tests; registration
-   and actual Discord acceptance are **not yet verified**.
+   threads. The HTTP endpoint and parsing have offline tests. Temporary registration and
+   a real signed status request passed on November 4 after the thread-mapping
+   fix; routing was restored and the temporary command removed. See the
+   [verification record](VERIFICATION_2026-11-04.md). Persistent hosting and
+   comprehensive live authorization/replay coverage remain pending.
 
 ### Verified thread identifiers
 

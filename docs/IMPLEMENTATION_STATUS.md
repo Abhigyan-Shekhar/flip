@@ -1,5 +1,18 @@
 # Implementation status — November 3, 2026 IST
 
+## Current checkpoint — November 4, 2026
+
+The local Switch/Discord PM→Research workflow is now running and verified;
+PRs #8–#10 are merged. Latest suite: **556 passed, 3 skipped**, with **3 real
+Switch recovery tests passed separately**. Restricted-container QA/Reviewer
+components passed on operator-prepared commits. Managed Engineering/Release,
+real audio/live voice and full graph/learning acceptance remain pending.
+
+See [current results, fixes and remaining gates](VERIFICATION_2026-11-04.md) and
+[the Mac runtime runbook](LOCAL_MAC_RUNTIME.md). The reports below are dated
+snapshots: their unavailable-Docker and uncommitted-tree statements describe
+those earlier checkpoints, not the current host or Git state.
+
 This report applies to the uncommitted working tree based on master `364d2da`.
 Six Luna workers contributed, with parent integration and review. No commits,
 pushes, deployment or external publication were made. This is pre-event work;

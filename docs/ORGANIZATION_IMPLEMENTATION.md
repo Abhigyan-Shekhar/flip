@@ -1,5 +1,12 @@
 # Organization upgrade — implementation and verification
 
+**Historical implementation snapshot.** This matrix separates code coverage from
+acceptance at the time it was written. Later Mac setup, merged PRs #8–#10, real
+Discord PM→Research and temporary slash verification, and isolated QA/Reviewer
+component results are recorded in [the November 4 report](VERIFICATION_2026-11-04.md).
+Earlier absent-Docker/uncommitted statements below are historical. Full managed
+coding/release, audio/voice and graph/learning acceptance remain pending.
+
 Work extends the existing `Abhigyan-Shekhar/flip` checkout at `d53c4bc`. The checkout
 was clean before this task. Three Luna agents implemented separate areas; the
 parent integrated the existing API, PM, specialist and Engineering paths and

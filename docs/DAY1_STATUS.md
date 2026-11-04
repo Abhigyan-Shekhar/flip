@@ -1,5 +1,9 @@
 # Day 1 implementation and review — October 29, 2026
 
+**Historical report.** For the November 4 deployed Mac results, merged fixes and
+remaining gates, read [the current verification report](VERIFICATION_2026-11-04.md).
+Unavailable-service and pending rows below describe their dated checkpoints.
+
 ## Integration update — November 3, 2026
 
 Merged the checkout/onboarding branch through `6b93d2b` into local `master` and

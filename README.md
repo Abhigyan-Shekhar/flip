@@ -1,13 +1,35 @@
 # SwitchCrew
 
-SwitchCrew is a Python 3.12/FastAPI service with SQLite task history and separate
-PM and Research workers communicating through Switch's Discord text bridge.
-This slice implements the nine Day 1 workstreams from the supplied checklist.
-A real Discord → PM → Research → original-thread exchange and several restart,
-disconnect and injected-gap checks were recorded on the verification Mac on
-November 1. See the [evidence and remaining gates](deploy/switch/VERIFICATION.md)
-and [recovery acceptance runbook](deploy/switch/RECOVERY_ACCEPTANCE.md). Deployment
-credentials and running services are local to that Mac, not supplied by Git.
+SwitchCrew is an AI team inside Discord. A PM plans requests and delegates to
+independent specialists through Switch; LangGraph runs each role's workflow,
+and Python 3.12/FastAPI with SQLite preserves tasks, handoffs and approvals.
+Engineering changes require independent QA/Reviewer checks and human approval
+before Release can publish a draft PR.
+
+## Current checkpoint — November 4, 2026
+
+- **Running and verified on the Mac:** local Switch, gateway, API/dashboard,
+  PM and Research; a real Discord request produced a cited Research reply in
+  its original thread, with durable state after restart.
+- **Checks passed:** 556 automated tests (3 opt-in live tests skipped), plus a
+  separate 3-test real Switch recovery run. Real restricted-container QA and
+  Reviewer components rejected broken/stale revisions and accepted the corrected
+  sample SHA. These used operator-prepared artifacts.
+- **Fixed and merged:** dashboard pending-work filtering, malformed Discord
+  payload handling, Research output guidance, and verified thread mapping for
+  signed slash commands (PRs #8–#10). A real `/crew status` retry passed; its
+  temporary HTTP deployment was removed after testing.
+- **Still to verify:** Console-managed Engineering through human-approved draft
+  PR, meaningful Security scans, real consented recorded audio/live voice,
+  exact-revision Company Brain retrieval and second-task learning, and persistent
+  custom slash hosting. Only PM and Research are deployed; 17 role implementations
+  do not mean 17 live agents. The Research draft still awaits human review.
+
+Read the [verification report and remaining gates](docs/VERIFICATION_2026-11-04.md),
+[sanitized result index](docs/evidence/verification-2026-11-04.json), and
+[Mac runtime runbook](docs/LOCAL_MAC_RUNTIME.md). Credentials, runtime state and
+the generated Mac process helper are private local files, not supplied by Git.
+Earlier [verification records](deploy/switch/VERIFICATION.md) remain dated history.
 
 All 17 current roles, including independent Reviewer and Notes, have their own LangGraphs. PM and Research use durable
 SQLite checkpoints; configured specialists now produce cited documentation,
@@ -70,7 +92,7 @@ uv build
 
 See [local setup and API documentation](docs/OPERATIONS.md),
 [Switch/Discord provisioning](deploy/switch/README.md), and
-[implementation and review status](docs/DAY1_STATUS.md).
+[current implementation and review status](docs/IMPLEMENTATION_STATUS.md).
 
 ## Run in Docker
 
@@ -111,16 +133,17 @@ See [incident configuration and limitations](docs/INCIDENTS.md) and
 
 ## Scope
 
-Research retrieves bounded excerpts from operator-configured public HTTPS sources.
-It does not implement autonomous web search or claim acceptance criteria are
-verified. Missing criteria trigger a clarification response; send a new complete
-JSON request. [Approved Engineering and Release](docs/APPROVAL_RELEASE.md) now
+Default Research retrieves bounded excerpts from operator-configured public HTTPS
+sources. The optional CLI harness can produce model-driven cited drafts; neither
+path establishes that acceptance criteria are verified. Missing criteria trigger a
+clarification response; send a new complete JSON request. [Approved Engineering and Release](docs/APPROVAL_RELEASE.md) now
 connect PM to the Engineering worker, independent revision-pinned QA, human
 release approval/rejection, and GitHub draft PR publication with an audit receipt.
 The route requires explicit identities, operator job templates and human approvers;
 unconfigured requests cannot execute Engineering or publish. Controlled local
 validation covers this pipeline; real Console-managed Codex and GitHub acceptance
-still need the verification host and private configuration. Live Discord voice capture/DAVE remains unverified; the implemented
+remain pending on the configured verification host. Live Discord voice
+capture/DAVE remains unverified; the implemented
 [Voice workflow](docs/VOICE.md) processes consented files and generated replies.
 [Specialist outputs](docs/SPECIALISTS.md) are useful analyses/drafts rather than
 external account mutations. Memory requires explicit configuration; a real
@@ -145,6 +168,7 @@ the existing human, QA and Reviewer boundaries.
 
 Read [configuration](docs/ORGANIZATION_SETUP.md) and the
 [feature/acceptance matrix](docs/ORGANIZATION_IMPLEMENTATION.md) for implemented,
-partial and live-blocked capabilities. Registered Discord slash commands, live
-DAVE receive, host-level employee isolation and complete external acceptance are
-not claimed by this local implementation.
+partial and live-blocked capabilities. Temporary live Discord slash acceptance
+passed on November 4; persistent custom command hosting, live DAVE receive,
+host-level employee isolation and complete external acceptance remain pending.
+See the [current verification checkpoint](docs/VERIFICATION_2026-11-04.md).

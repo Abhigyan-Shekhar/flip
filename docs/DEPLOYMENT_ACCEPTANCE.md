@@ -1,8 +1,13 @@
-# Verification-host deployment (code-only readiness)
+# Verification-host deployment and acceptance
 
-**State: live deployment and acceptance pending.** The checks below are operator
-actions to run on the already identified verification Mac or a fresh isolated
-host. The repository alone cannot provision Discord, switch agents, human
+**State: core local deployment verified; full privileged acceptance pending.**
+The November 4 Mac run verified real Discord PM→Research, restart persistence,
+temporary signed status lookup and isolated QA/Reviewer components. Read the
+[results and remaining gates](VERIFICATION_2026-11-04.md) before interpreting
+preflight output; component success does not complete coding-to-release.
+
+The checks below are operator actions to run on the already identified
+verification Mac or a fresh isolated host. The repository alone cannot provision Discord, switch agents, human
 approvers, authenticated Codex sessions, or a protected GitHub target branch.
 
 ## Static preflight

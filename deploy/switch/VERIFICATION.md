@@ -1,5 +1,18 @@
 # Integrated candidate and local evidence — November 3, 2026
 
+## Latest checkpoint — November 4, 2026
+
+[Current verification report](../../docs/VERIFICATION_2026-11-04.md): Colima/Docker,
+Switch, gateway, API and PM/Research now run on this Mac. Real Discord Research,
+restart persistence and temporary signed `/crew status` acceptance passed.
+PRs #8–#10 are merged; latest suite **556 passed, 3 skipped**, with **3 live
+Switch recovery tests passed separately**. QA/Reviewer container components were
+checked against operator-prepared revisions. Full managed coding/release and
+voice acceptance remain pending. See [Mac lifecycle](../../docs/LOCAL_MAC_RUNTIME.md).
+
+The records below are historical checkpoints; retain their failures and limits
+as evidence rather than reading earlier host outages as the present state.
+
 The onboarding fix `6b93d2b` and historical recovery-evidence branch are merged
 into the integration candidate on `master`. New recovery, configured specialist,
 Voice and PM orchestration changes are described in
