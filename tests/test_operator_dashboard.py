@@ -42,3 +42,26 @@ def test_dashboard_requires_token_for_data_and_exposes_no_raw_secrets(tmp_path):
             ).status_code
             == 422
         )
+
+
+def test_terminal_workflows_cannot_hide_pending_approvals(tmp_path):
+    from switchcrew.approval import ApprovalWorkflow
+
+    store = Store(tmp_path / "dashboard.sqlite3")
+    workflows = ApprovalWorkflow(store)
+    # Old completed records used to consume the entire pre-filter LIMIT.
+    for index in range(105):
+        task = store.create_task(f"Old task {index}", {}, ["Evidence"])
+        workflows._save(task["id"], {"phase": "completed"})
+    for phase in ("rejected", "failed", "pr_open", "cancelled"):
+        task = store.create_task(phase, {}, ["Evidence"])
+        workflows._save(task["id"], {"phase": phase})
+    cancelled = store.create_task("Cancelled task", {}, ["Evidence"])
+    store.transition_task(cancelled["id"], "CANCELLED", cancelled["version"])
+    workflows._save(cancelled["id"], {"phase": "awaiting_engineering_approval"})
+    pending = store.create_task("Pending task", {}, ["Evidence"])
+    workflows._save(pending["id"], {"phase": "awaiting_engineering_approval"})
+    report = snapshot(store, Settings(_env_file=None))
+    assert report["summary"]["pending_workflows"] == 1
+    assert [item["task_id"] for item in report["approvals"]] == [pending["id"]]
+    store.close()

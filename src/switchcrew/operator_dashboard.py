@@ -71,11 +71,14 @@ def snapshot(store, settings, *, limit: int = 40) -> dict:
         ).fetchone()
         if has_approval_table:
             for row in store.connection.execute(
-                "SELECT task_id,data FROM approval_workflows LIMIT 100"
+                "SELECT w.task_id,w.data FROM approval_workflows w "
+                "JOIN tasks t ON t.id=w.task_id "
+                "WHERE json_extract(w.data,'$.phase') NOT IN "
+                "('completed','cancelled','rejected','failed','pr_open') "
+                "AND t.status NOT IN ('COMPLETED','CANCELLED','FAILED') "
+                "ORDER BY t.created_at DESC,t.rowid DESC LIMIT 100"
             ):
                 workflow = json.loads(row["data"])
-                if workflow.get("phase") in {"completed", "cancelled"}:
-                    continue
                 approvals.append(
                     {
                         "task_id": row["task_id"],
