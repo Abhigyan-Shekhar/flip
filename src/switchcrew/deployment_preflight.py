@@ -46,9 +46,7 @@ def _private_file(value: str | Path | None) -> bool:
 
 def _valid_discord_bindings(settings: Settings) -> bool:
     """Require usable, unambiguous operator-verified Discord ingress configuration."""
-    if not (
-        settings.discord_guild_ids and settings.discord_user_ids and settings.discord_bindings
-    ):
+    if not (settings.discord_guild_ids and settings.discord_user_ids and settings.discord_bindings):
         return False
     guilds, users = set(settings.discord_guild_ids), set(settings.discord_user_ids)
     if any(not isinstance(value, str) or not value.strip() for value in (*guilds, *users)):
