@@ -3,11 +3,10 @@ import json
 import pytest
 
 from switchcrew.engineering import Ledger, assignment_id
-from switchcrew.qa import QAExecutor
-from switchcrew.reviewer import ReviewerExecutor
-
 from switchcrew.isolation import DockerIsolation
 from switchcrew.organization_runtime import configured_executor
+from switchcrew.qa import QAExecutor
+from switchcrew.reviewer import ReviewerExecutor
 from switchcrew.security import ScannerConfig, SecurityRunner
 
 PIN = "flip-demo-scanner@sha256:" + "a" * 64
