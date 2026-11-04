@@ -56,6 +56,12 @@ class ApprovalDecision(RequestModel):
     expected_version: int = Field(ge=0)
 
 
+class PlanStepDecision(RequestModel):
+    step_id: str = Field(min_length=1, max_length=40, pattern=r"^[a-zA-Z0-9_-]+$")
+    approved: bool = Field(strict=True)
+    expected_version: int = Field(ge=0)
+
+
 class DayOneStatus(StrEnum):
     NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
     PLANNED = "PLANNED"
@@ -190,6 +196,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             company_brain=app.state.company_brain,
             planner=harness_planner,
+            reviewers=set(human_tokens),
         )
         from .organization import knowledge_services, load_organization_config, meeting_service
 
@@ -480,6 +487,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if data is None:
             raise HTTPException(404, "Orchestration plan not found")
         return sanitize(data)
+
+    @app.post("/tasks/{task_id}/plan/reviews")
+    async def review_plan_step(
+        task_id: str,
+        body: PlanStepDecision,
+        request: Request,
+        actor: Annotated[str, Depends(authenticate_human)],
+    ):
+        request.app.state.orchestrator.reconcile(task_id)
+        request.app.state.orchestrator.review_step(
+            task_id, body.step_id, body.approved, actor, body.expected_version
+        )
+        return sanitize(await request.app.state.orchestrator.reconcile_with_context(task_id))
 
     @app.get("/tasks/{task_id}/workflow", dependencies=authenticated)
     def get_workflow(task_id: str, request: Request):

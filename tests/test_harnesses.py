@@ -95,6 +95,27 @@ async def test_research_graph_uses_harness_and_untrusted_memory(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_research_harness_keeps_company_brain_context(tmp_path):
+    class Brain:
+        async def get_context(self, question, max_results=5):
+            assert question == "Explain the changed revision"
+            return type("Result", (), {"context": "revision-abc graph evidence", "warning": None})()
+
+    runner = ControlledRunner(
+        {"status": "evidence_found", "summary": "Draft", "evidence": ["rev-abc"]}
+    )
+    executor = HarnessExecutor(
+        HarnessRole("research", "codex", tmp_path), runner=runner, company_brain=Brain()
+    )
+    result = await executor(
+        {"question": "Explain the changed revision", "acceptance_criteria": ["Cite graph"]}
+    )
+    assert result["status"] == "evidence_found"
+    assert "revision-abc graph evidence" in runner.prompts[0][1]
+    assert "untrusted_sources" in runner.prompts[0][1]
+
+
+@pytest.mark.asyncio
 async def test_harness_failure_blocks_instead_of_using_deterministic_fallback(tmp_path):
     spec = HarnessRole("documentation", "antigravity", tmp_path)
     executor = HarnessExecutor(spec, runner=ControlledRunner(HarnessError("Unavailable")))
@@ -103,6 +124,25 @@ async def test_harness_failure_blocks_instead_of_using_deterministic_fallback(tm
     assert "Unavailable" not in json.dumps(result)
     invalid = HarnessExecutor(spec, runner=ControlledRunner({"status": "completed"}))
     assert (await invalid({"question": "A", "acceptance_criteria": ["B"]}))["status"] == "blocked"
+    io_failure = HarnessExecutor(spec, runner=ControlledRunner(OSError("lost source")))
+    assert (await io_failure({"question": "A", "acceptance_criteria": ["B"]}))[
+        "status"
+    ] == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_missing_configured_source_blocks_without_crashing_graph(tmp_path):
+    root = tmp_path / "sources"
+    root.mkdir()
+    document = root / "notes.md"
+    document.write_text("A documented fact")
+    spec = HarnessRole("documentation", "codex", tmp_path, sources=("notes.md",), source_root=root)
+    document.unlink()
+    result = await HarnessExecutor(spec, runner=ControlledRunner({}))(
+        {"question": "Write", "acceptance_criteria": ["Use notes"]}
+    )
+    assert result["status"] == "blocked"
+    assert result["reason"] == "harness_unavailable_or_invalid_response"
 
 
 @pytest.mark.asyncio
@@ -161,6 +201,88 @@ async def test_model_planner_limits_roles_to_installed_harnesses(tmp_path):
     store.close()
 
 
+@pytest.mark.asyncio
+async def test_model_result_waits_for_authenticated_review_before_dependencies(tmp_path):
+    store = Store(tmp_path / "reviews.sqlite3")
+    task = store.create_task("Prepare a release guide", {}, ["Research", "Document"])
+    runner = ControlledRunner(
+        {
+            "steps": [
+                {"role": "research", "criterion": "Find source"},
+                {"role": "documentation", "criterion": "Write guide"},
+            ]
+        }
+    )
+    orchestration = Orchestrator(
+        store,
+        "pm",
+        {"research": "research-agent", "documentation": "docs-agent"},
+        planner=HarnessPlanner(HarnessRole("pm", "codex", tmp_path), runner),
+        reviewers={"reviewer1"},
+    )
+    await orchestration.start_with_planner(task["id"])
+    plan = orchestration.reconcile(task["id"])
+    first = plan["steps"]["step-1"]
+    store.accept_handoff(first["handoff_id"], "research-agent")
+    store.complete_handoff(
+        first["handoff_id"],
+        "research-agent",
+        {
+            "status": "evidence_found",
+            "summary": "Unverified output",
+            "trust": "model_generated_requires_human_review",
+        },
+    )
+    plan = orchestration.reconcile(task["id"])
+    assert plan["steps"]["step-1"]["status"] == "awaiting_review"
+    assert "step-2" not in plan["steps"]
+    assert store.get_task(first["task_id"])["status"] == "IN_PROGRESS"
+    version = store.get_task(task["id"])["version"]
+    with pytest.raises(PermissionError):
+        orchestration.review_step(task["id"], "step-1", True, "intruder", version)
+    with pytest.raises(ValueError, match="version"):
+        orchestration.review_step(task["id"], "step-1", True, "reviewer1", version + 1)
+    plan = orchestration.review_step(task["id"], "step-1", True, "reviewer1", version)
+    assert plan["steps"]["step-1"]["review"]["actor"] == "reviewer1"
+    assert plan["steps"]["step-2"]["status"] == "pending"
+    assert store.get_task(first["task_id"])["status"] == "COMPLETED"
+    assert "plan.step_reviewed" in {e["type"] for e in store.list_events(task["id"])}
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_rejected_model_draft_blocks_parent(tmp_path):
+    store = Store(tmp_path / "rejected.sqlite3")
+    task = store.create_task("Analyze", {}, ["Check source"])
+    runner = ControlledRunner({"steps": [{"role": "research", "criterion": "Analyze"}]})
+    orchestration = Orchestrator(
+        store,
+        "pm",
+        {"research": "research-agent"},
+        planner=HarnessPlanner(HarnessRole("pm", "codex", tmp_path), runner),
+        reviewers={"reviewer1"},
+    )
+    await orchestration.start_with_planner(task["id"])
+    first = orchestration.reconcile(task["id"])["steps"]["step-1"]
+    store.accept_handoff(first["handoff_id"], "research-agent")
+    store.complete_handoff(
+        first["handoff_id"],
+        "research-agent",
+        {
+            "status": "completed",
+            "summary": "Draft",
+            "trust": "model_generated_requires_human_review",
+        },
+    )
+    assert orchestration.reconcile(task["id"])["steps"]["step-1"]["status"] == "awaiting_review"
+    plan = orchestration.review_step(
+        task["id"], "step-1", False, "reviewer1", store.get_task(task["id"])["version"]
+    )
+    assert plan["phase"] == "blocked"
+    assert store.get_task(task["id"])["status"] == "BLOCKED"
+    store.close()
+
+
 def _fake_cli(tmp_path, name, source):
     path = tmp_path / name
     path.write_text("#!/usr/bin/env python3\n" + source)
@@ -178,14 +300,19 @@ async def test_local_codex_adapter_reads_final_message_and_strips_service_creden
         "import json, os, pathlib, sys\n"
         "assert 'SWITCHCREW_API_TOKEN' not in os.environ\n"
         "assert '--sandbox' in sys.argv and 'read-only' in sys.argv\n"
+        "assert '--ignore-user-config' in sys.argv and '--ephemeral' in sys.argv\n"
+        "assert pathlib.Path.cwd() != pathlib.Path(__file__).parent\n"
         "assert 'hello' in sys.stdin.read()\n"
+        "pathlib.Path('keep.txt').write_text('cli wrote only to disposable directory')\n"
         "dest = pathlib.Path(sys.argv[sys.argv.index('--output-last-message')+1])\n"
         "dest.write_text(json.dumps({'ok': True}))\n",
     )
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
     monkeypatch.setenv("SWITCHCREW_API_TOKEN", "a-sensitive-demo-token")
+    (tmp_path / "keep.txt").write_text("original")
     result = await HarnessRunner().run_json(HarnessRole("research", "codex", tmp_path), "hello")
     assert result == {"ok": True}
+    assert (tmp_path / "keep.txt").read_text() == "original"
 
 
 @pytest.mark.asyncio
@@ -193,16 +320,20 @@ async def test_local_antigravity_adapter_restricts_terminal(tmp_path, monkeypatc
     _fake_cli(
         tmp_path,
         "agy",
-        "import json, sys\n"
+        "import json, pathlib, sys\n"
         "assert '--sandbox' in sys.argv and '--print' in sys.argv\n"
+        "assert '--mode=plan' in sys.argv and '--disable-slash-commands' in sys.argv\n"
+        "pathlib.Path('keep.txt').write_text('temporary only')\n"
         "assert 'hello' in sys.argv\n"
         "print(json.dumps({'ok': True}))\n",
     )
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    (tmp_path / "keep.txt").write_text("original")
     result = await HarnessRunner().run_json(
         HarnessRole("documentation", "antigravity", Path(tmp_path)), "hello"
     )
     assert result == {"ok": True}
+    assert (tmp_path / "keep.txt").read_text() == "original"
 
 
 @pytest.mark.asyncio

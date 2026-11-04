@@ -1,10 +1,12 @@
 """Bounded PM decomposition and durable dependency dispatch across independent workers."""
 
 import asyncio
+import hashlib
 import json
 import re
+import time
 import weakref
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from .approval import ApprovalWorkflow
 from .company_brain import capture_engineering_context
@@ -104,12 +106,21 @@ def validate_harness_plan(question, criteria, response, allowed_roles, *, max_st
 
 class Orchestrator:
     def __init__(
-        self, store, pm_id, targets, *, engineering_route=None, company_brain=None, planner=None
+        self,
+        store,
+        pm_id,
+        targets,
+        *,
+        engineering_route=None,
+        company_brain=None,
+        planner=None,
+        reviewers=None,
     ):
         self.store, self.pm_id, self.targets = store, pm_id, dict(targets)
         self.engineering_route = engineering_route or {}
         self.company_brain = company_brain
         self.planner = planner
+        self.reviewers = frozenset(reviewers or ())
         self._brain_locks = weakref.WeakValueDictionary()
         self.approvals = ApprovalWorkflow(store)
         with store._lock:
@@ -120,6 +131,11 @@ class Orchestrator:
             store.connection.execute(
                 "CREATE TABLE IF NOT EXISTS harness_plan_attempts "
                 "(task_id TEXT PRIMARY KEY REFERENCES tasks(id), attempts INTEGER NOT NULL)"
+            )
+            store.connection.execute(
+                "CREATE TABLE IF NOT EXISTS harness_plan_claims "
+                "(task_id TEXT PRIMARY KEY REFERENCES tasks(id), "
+                "token TEXT NOT NULL, expires_at REAL NOT NULL)"
             )
 
     def get(self, task_id):
@@ -160,8 +176,17 @@ class Orchestrator:
             self._save(task_id, data)
             return data
 
+    def _explicit_fallback(self, task, allowed):
+        spec = decompose(task["objective"], task["acceptance_criteria"])
+        if any(step["role"] not in allowed for step in spec["steps"]):
+            raise ValueError("Fallback would dispatch to an unconfigured role")
+        if len(spec["steps"]) > self.planner.max_steps:
+            raise ValueError("Fallback exceeds configured step budget")
+        spec["planner"] = "bounded_criterion_rules_explicit_fallback_v1"
+        return spec
+
     async def start_with_planner(self, task_id):
-        """Run model reasoning outside SQLite transactions, then commit an immutable plan."""
+        """Reserve one model call per task and coalesce concurrent planning requests."""
         if self.planner is None:
             return self.start(task_id)
         existing = self.get(task_id)
@@ -186,41 +211,147 @@ class Orchestrator:
             for key in ("qa", "reviewer", "release", "job_key", "repository", "base")
         ):
             allowed.remove("engineering")
-        # Reserve a limited number of model invocations durably across retries.
-        # A crash consumes a call; no concurrent retry can silently exceed the cap.
-        with self.store._lock, self.store.transaction():
-            row = self.store.connection.execute(
-                "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task_id,)
-            ).fetchone()
-            attempts = row[0] if row else 0
-            if attempts >= self.planner.max_calls:
-                raise ValueError("PM planning invocation budget exhausted")
-            self.store.connection.execute(
-                "INSERT INTO harness_plan_attempts(task_id,attempts) VALUES(?,?) "
-                "ON CONFLICT(task_id) DO UPDATE SET attempts=excluded.attempts",
-                (task_id, attempts + 1),
-            )
+
+        # Reject an oversized prompt before spending any model-call budget.
         try:
-            response = await self.planner.plan(
-                task["objective"], task["acceptance_criteria"], allowed
-            )
-            spec = validate_harness_plan(
-                task["objective"],
-                task["acceptance_criteria"],
-                response,
-                set(allowed),
-                max_steps=self.planner.max_steps,
-            )
+            self.planner.build_prompt(task["objective"], task["acceptance_criteria"], allowed)
+            preflight_failed = False
         except (ValueError, RuntimeError):
             if not self.planner.fallback_on_failure:
                 raise
-            spec = decompose(task["objective"], task["acceptance_criteria"])
-            if any(step["role"] not in allowed for step in spec["steps"]):
-                raise ValueError("Fallback would dispatch to an unconfigured role") from None
-            if len(spec["steps"]) > self.planner.max_steps:
-                raise ValueError("Fallback exceeds configured step budget") from None
-            spec["planner"] = "bounded_criterion_rules_explicit_fallback_v1"
-        return self.start(task_id, spec=spec)
+            preflight_failed = True
+
+        # A short, renewable SQLite lease protects the entire external model call.
+        # Another process waits for the saved plan or for a crashed holder's lease to expire.
+        token = uuid4().hex
+        lease_seconds = max(60, self.planner.spec.timeout_seconds + 30)
+        while True:
+            waiting = False
+            with self.store._lock, self.store.transaction():
+                existing = self.get(task_id)
+                if existing:
+                    return existing
+                current = self.store.get_task(task_id)
+                if not current or current["status"] != "DRAFT":
+                    raise ConflictError("Model planning requires a draft task")
+                claim = self.store.connection.execute(
+                    "SELECT expires_at FROM harness_plan_claims WHERE task_id=?", (task_id,)
+                ).fetchone()
+                if claim and claim[0] > time.time():
+                    waiting = True
+                else:
+                    row = self.store.connection.execute(
+                        "SELECT attempts FROM harness_plan_attempts WHERE task_id=?", (task_id,)
+                    ).fetchone()
+                    attempts = row[0] if row else 0
+                    use_fallback = preflight_failed or attempts >= self.planner.max_calls
+                    if use_fallback:
+                        if not self.planner.fallback_on_failure:
+                            raise ValueError("PM planning invocation budget exhausted")
+                        spec = self._explicit_fallback(current, allowed)
+                    else:
+                        self.store.connection.execute(
+                            "INSERT INTO harness_plan_attempts(task_id,attempts) VALUES(?,?) "
+                            "ON CONFLICT(task_id) DO UPDATE SET attempts=excluded.attempts",
+                            (task_id, attempts + 1),
+                        )
+                    self.store.connection.execute(
+                        "INSERT INTO harness_plan_claims(task_id,token,expires_at) VALUES(?,?,?) "
+                        "ON CONFLICT(task_id) DO UPDATE SET "
+                        "token=excluded.token, expires_at=excluded.expires_at",
+                        (task_id, token, time.time() + lease_seconds),
+                    )
+            if not waiting:
+                break
+            await asyncio.sleep(0.1)
+
+        async def renew_claim():
+            while True:
+                await asyncio.sleep(5)
+                with self.store._lock, self.store.transaction():
+                    result = self.store.connection.execute(
+                        "UPDATE harness_plan_claims SET expires_at=? WHERE task_id=? AND token=?",
+                        (time.time() + lease_seconds, task_id, token),
+                    )
+                    if result.rowcount == 0:
+                        return
+
+        heartbeat = asyncio.create_task(renew_claim())
+        try:
+            if not use_fallback:
+                try:
+                    response = await self.planner.plan(
+                        task["objective"], task["acceptance_criteria"], allowed
+                    )
+                    spec = validate_harness_plan(
+                        task["objective"],
+                        task["acceptance_criteria"],
+                        response,
+                        set(allowed),
+                        max_steps=self.planner.max_steps,
+                    )
+                except (ValueError, RuntimeError):
+                    if not self.planner.fallback_on_failure:
+                        raise
+                    spec = self._explicit_fallback(task, allowed)
+
+            with self.store._lock, self.store.transaction():
+                claim = self.store.connection.execute(
+                    "SELECT token FROM harness_plan_claims WHERE task_id=?", (task_id,)
+                ).fetchone()
+                if not claim or claim[0] != token:
+                    existing = self.get(task_id)
+                    if existing:
+                        return existing
+                    raise ConflictError("PM planning claim expired before plan commit")
+                return self.start(task_id, spec=spec)
+        finally:
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
+            with self.store._lock, self.store.transaction():
+                self.store.connection.execute(
+                    "DELETE FROM harness_plan_claims WHERE task_id=? AND token=?",
+                    (task_id, token),
+                )
+
+    def review_step(self, task_id, step_id, approved, actor, expected_version):
+        """Only a verified human can accept a pinned model draft as dependency evidence."""
+        if actor not in self.reviewers:
+            raise PermissionError("Authorized human reviewer required")
+        if type(approved) is not bool or type(expected_version) is not int:
+            raise ValueError("A boolean decision and expected parent version are required")
+        with self.store._lock, self.store.transaction():
+            parent = self.store._check(task_id, expected_version)
+            data = self.get(task_id)
+            if not data or parent["status"] != "IN_PROGRESS":
+                raise ConflictError("No active orchestration awaiting review")
+            step = data["steps"].get(step_id)
+            if not step or step["status"] != "awaiting_review":
+                raise ConflictError("Plan step is not awaiting human review")
+            child = self.store.get_task(step["task_id"])
+            handoff = self.store.get_handoff(step["handoff_id"])
+            if (
+                not child
+                or child["status"] != "IN_PROGRESS"
+                or not handoff
+                or handoff["status"] != "completed"
+                or handoff["result"] != step["result"]
+            ):
+                raise ConflictError("Draft result changed since review was requested")
+            decision = {
+                "actor": actor,
+                "approved": approved,
+                "step_id": step_id,
+                "result_sha256": hashlib.sha256(encode(step["result"]).encode()).hexdigest(),
+            }
+            step["status"] = "completed" if approved else "failed"
+            step["review"] = decision
+            self.store.transition_task(
+                child["id"], "COMPLETED" if approved else "FAILED", child["version"]
+            )
+            self.store._event(task_id, "plan.step_reviewed", decision, parent["version"])
+            self._save(task_id, data)
+        return self.reconcile(task_id)
 
     def start_incident(self, task_id, incident):
         """Persist a deterministic incident response team and its assignments."""
@@ -378,8 +509,8 @@ class Orchestrator:
                     self._save(task_id, data)
                 return data
             # Refresh completed children from trusted worker records, not message claims.
-            for step in data["steps"].values():
-                if step["status"] in {"completed", "failed", "blocked"}:
+            for step_id, step in data["steps"].items():
+                if step["status"] in {"completed", "failed", "blocked", "awaiting_review"}:
                     continue
                 child = self.store.get_task(step["task_id"])
                 if child["status"] in {"FAILED", "CANCELLED", "BLOCKED"}:
@@ -398,8 +529,26 @@ class Orchestrator:
                     if handoff["status"] == "completed":
                         result = handoff["result"]
                         passed = result.get("status") in {"completed", "evidence_found"}
-                        step.update(status="completed" if passed else "failed", result=result)
-                        if child["status"] != "COMPLETED":
+                        review_required = passed and (
+                            data["spec"].get("planner") == "harness_structured_v1"
+                            or result.get("trust") == "model_generated_requires_human_review"
+                        )
+                        step.update(
+                            status=(
+                                "awaiting_review"
+                                if review_required
+                                else ("completed" if passed else "failed")
+                            ),
+                            result=result,
+                        )
+                        if review_required:
+                            self.store._event(
+                                task_id,
+                                "plan.review_requested",
+                                {"step_id": step_id, "role": step["role"]},
+                                parent["version"],
+                            )
+                        elif child["status"] != "COMPLETED":
                             self.store.transition_task(
                                 child["id"], "COMPLETED" if passed else "FAILED", child["version"]
                             )

@@ -35,6 +35,19 @@ configuration. Retain the existing private registration, checkout, control
 token, approval policy, identity and ledger fields. The image must be pulled
 and verified by the operator in advance; the runner uses `--pull=never`.
 
+For a **rootless Docker worker**, additionally set `"rootless": true` and
+`"daemon_socket": "/run/user/<worker-uid>/docker.sock"` on each `container`
+object (replace the placeholder with the actual worker UID). The runner
+connects to that exact Unix socket and confirms the daemon reports rootless
+mode. The container runs as UID 0 *inside its user namespace*, which maps to
+the unprivileged worker UID on the host; rootful Docker continues to use an
+unprivileged container UID. Do not set `rootless=true` for a rootful daemon.
+
+Changing a pinned image or isolation setting invalidates cached QA and review
+evidence for that handoff; create a fresh handoff before retrying. Every
+container receives a unique temporary name and is forcibly reaped on command
+failure, timeout or cancellation. Cleanup failures make the job fail closed.
+
 For independent Security scanner capabilities (`triggered_security` and
 `engineering_security_gate`), put the same `container` object and
 `"require_isolation": true` inside the private `capability` section. Scanner

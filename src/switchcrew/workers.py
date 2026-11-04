@@ -174,6 +174,7 @@ class Worker:
                     harness_roles["research"],
                     runner=harness_runner,
                     source_provider=provider or ResearchProvider([]),
+                    company_brain=company_brain,
                 )
                 if role == "research" and "research" in harness_roles
                 else None
