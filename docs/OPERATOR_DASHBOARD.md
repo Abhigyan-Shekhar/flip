@@ -43,6 +43,24 @@ independent human approval workflow.
    threads. The HTTP endpoint and parsing have offline tests; registration
    and actual Discord acceptance are **not yet verified**.
 
+## Code-only verification
+
+Before live Discord provisioning, run the reproducible offline gates on the
+final merged checkout:
+
+```bash
+uv sync --frozen
+uv run --no-sync ruff check .
+uv run --no-sync ruff format --check src tests scripts
+uv run --no-sync pytest -q
+uv build
+```
+
+These checks validate signature handling, scope isolation, bounded responses,
+and dashboard API behavior; they do **not** establish that a Discord command
+is registered, a service is deployed, or an agent is online. Keep those
+acceptance outcomes pending until tested on the verification host.
+
 ## Known operational limits
 
 - The snapshot lists at most 100 tasks, 100 activity events and 100 workflows;
