@@ -148,6 +148,9 @@ def _extract_findings(data: Any) -> list[Any] | None:
         return data
     if not isinstance(data, dict):
         return None
+    native_keys = {"Results", "Trivy", "SchemaVersion"}.intersection(data)
+    if native_keys and {"findings", "issues", "results", "dependencies"}.intersection(data):
+        return None  # Ambiguous native/normalized envelopes cannot certify coverage.
     if isinstance(data.get("findings"), list):
         return data["findings"]
     if isinstance(data.get("issues"), list):
@@ -212,18 +215,23 @@ def _extract_findings(data: Any) -> list[Any] | None:
                     }
                 )
         return items
-    # Trivy omits Results entirely when a successful scan has no findings.
-    # Require its native report envelope so arbitrary empty JSON stays blocked.
-    if (
-        "Results" not in data
-        and data.get("SchemaVersion") == 2
-        and data.get("ArtifactType") in {"filesystem", "repository", "container_image"}
+    # Validate the native envelope whether Results is present or omitted.
+    # Otherwise {"Results": []} can falsely certify truncated output as clean.
+    native = (
+        type(data.get("SchemaVersion")) is int
+        and data["SchemaVersion"] == 2
+        and isinstance(data.get("ArtifactType"), str)
+        and data["ArtifactType"] in {"filesystem", "repository", "container_image"}
         and isinstance(data.get("ArtifactName"), str)
-        and bool(data["ArtifactName"])
+        and bool(data["ArtifactName"].strip())
         and isinstance(data.get("Trivy"), dict)
         and isinstance(data["Trivy"].get("Version"), str)
-        and bool(data["Trivy"]["Version"])
-    ):
+        and bool(data["Trivy"]["Version"].strip())
+    )
+    if not native:
+        return None
+    # Trivy omits Results for a successful empty scan.
+    if "Results" not in data:
         return []
     results = data.get("Results")
     if isinstance(results, list):

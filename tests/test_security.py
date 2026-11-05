@@ -99,6 +99,10 @@ async def test_operator_can_configure_scanner_finding_exit_code(tmp_path):
 async def test_trivy_native_finding_preserves_severity_file_and_redaction(tmp_path):
     root, revision = committed_repo(tmp_path / "repo")
     payload = {
+        "SchemaVersion": 2,
+        "ArtifactName": "/workspace",
+        "ArtifactType": "filesystem",
+        "Trivy": {"Version": "0.76.1"},
         "Results": [
             {
                 "Target": "app.py",
@@ -131,7 +135,21 @@ async def test_trivy_native_finding_preserves_severity_file_and_redaction(tmp_pa
 @pytest.mark.parametrize("result", [None, {"Secrets": {}}, {"Secrets": [None]}])
 async def test_malformed_trivy_results_fail_closed(tmp_path, result):
     root, revision = committed_repo(tmp_path / "repo")
-    code = "print(" + repr(json.dumps({"Results": [result]})) + ")"
+    code = (
+        "print("
+        + repr(
+            json.dumps(
+                {
+                    "SchemaVersion": 2,
+                    "ArtifactName": "/workspace",
+                    "ArtifactType": "filesystem",
+                    "Trivy": {"Version": "0.76.1"},
+                    "Results": [result],
+                }
+            )
+        )
+        + ")"
+    )
     report = await SecurityRunner(
         [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
     ).run(root, revision)

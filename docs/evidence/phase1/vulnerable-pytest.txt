@@ -1,0 +1,76 @@
+FFF......                                                                [100%]
+=================================== FAILURES ===================================
+________ test_incomplete_trivy_cannot_report_verified_success[payload0] ________
+
+tmp_path = PosixPath('/private/var/folders/k5/6k_0nvvx0bq31hqdrfp1p04m0000gn/T/pytest-of-abhigyanshekhar/pytest-34/test_incomplete_trivy_cannot_r0')
+payload = {'Results': []}
+
+    @pytest.mark.parametrize('payload', [
+        {'Results': []},
+        {'Results': [{'Target': 'app.py'}]},
+        {'SchemaVersion': 2, 'Results': []},
+    ])
+    async def test_incomplete_trivy_cannot_report_verified_success(tmp_path, payload):
+        root, revision = committed_repo(tmp_path / 'repo')
+        report = await SecurityRunner([
+            ScannerConfig('trivy-contract', (sys.executable, '-c', 'print(' + repr(json.dumps(payload)) + ')'))
+        ]).run(root, revision)
+>       assert report.status == 'scanner_failed', report.to_dict()
+E       AssertionError: {'status': 'verified_success', 'revision': '066692d2813373afdcc6b7baa0c03d767927d8ad', 'findings': (), 'scanners': ({'name': 'trivy-contract', 'status': 'completed', 'version': 'unknown', 'category': 'unspecified', ...},), ...}
+E       assert 'verified_success' == 'scanner_failed'
+E         
+E         - scanner_failed
+E         + verified_success
+
+tests/test_phase1_trivy.py:22: AssertionError
+________ test_incomplete_trivy_cannot_report_verified_success[payload1] ________
+
+tmp_path = PosixPath('/private/var/folders/k5/6k_0nvvx0bq31hqdrfp1p04m0000gn/T/pytest-of-abhigyanshekhar/pytest-34/test_incomplete_trivy_cannot_r1')
+payload = {'Results': [{'Target': 'app.py'}]}
+
+    @pytest.mark.parametrize('payload', [
+        {'Results': []},
+        {'Results': [{'Target': 'app.py'}]},
+        {'SchemaVersion': 2, 'Results': []},
+    ])
+    async def test_incomplete_trivy_cannot_report_verified_success(tmp_path, payload):
+        root, revision = committed_repo(tmp_path / 'repo')
+        report = await SecurityRunner([
+            ScannerConfig('trivy-contract', (sys.executable, '-c', 'print(' + repr(json.dumps(payload)) + ')'))
+        ]).run(root, revision)
+>       assert report.status == 'scanner_failed', report.to_dict()
+E       AssertionError: {'status': 'verified_success', 'revision': '066692d2813373afdcc6b7baa0c03d767927d8ad', 'findings': (), 'scanners': ({'name': 'trivy-contract', 'status': 'completed', 'version': 'unknown', 'category': 'unspecified', ...},), ...}
+E       assert 'verified_success' == 'scanner_failed'
+E         
+E         - scanner_failed
+E         + verified_success
+
+tests/test_phase1_trivy.py:22: AssertionError
+________ test_incomplete_trivy_cannot_report_verified_success[payload2] ________
+
+tmp_path = PosixPath('/private/var/folders/k5/6k_0nvvx0bq31hqdrfp1p04m0000gn/T/pytest-of-abhigyanshekhar/pytest-34/test_incomplete_trivy_cannot_r2')
+payload = {'SchemaVersion': 2, 'Results': []}
+
+    @pytest.mark.parametrize('payload', [
+        {'Results': []},
+        {'Results': [{'Target': 'app.py'}]},
+        {'SchemaVersion': 2, 'Results': []},
+    ])
+    async def test_incomplete_trivy_cannot_report_verified_success(tmp_path, payload):
+        root, revision = committed_repo(tmp_path / 'repo')
+        report = await SecurityRunner([
+            ScannerConfig('trivy-contract', (sys.executable, '-c', 'print(' + repr(json.dumps(payload)) + ')'))
+        ]).run(root, revision)
+>       assert report.status == 'scanner_failed', report.to_dict()
+E       AssertionError: {'status': 'verified_success', 'revision': '066692d2813373afdcc6b7baa0c03d767927d8ad', 'findings': (), 'scanners': ({'name': 'trivy-contract', 'status': 'completed', 'version': 'unknown', 'category': 'unspecified', ...},), ...}
+E       assert 'verified_success' == 'scanner_failed'
+E         
+E         - scanner_failed
+E         + verified_success
+
+tests/test_phase1_trivy.py:22: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_phase1_trivy.py::test_incomplete_trivy_cannot_report_verified_success[payload0]
+FAILED tests/test_phase1_trivy.py::test_incomplete_trivy_cannot_report_verified_success[payload1]
+FAILED tests/test_phase1_trivy.py::test_incomplete_trivy_cannot_report_verified_success[payload2]
+3 failed, 6 passed in 2.79s
