@@ -1,5 +1,6 @@
 """Independent revision-pinned validation; commands come only from the operator."""
 
+import errno
 import os
 import subprocess
 import tempfile
@@ -33,6 +34,26 @@ def generated_inputs(checkout):
         if path not in pytest_cache
         and not ("__pycache__" in Path(path).parts and path.endswith(".pyc"))
     ]
+
+
+def failure_detail(stage, error, command_index):
+    """Only fixed labels and bounded numeric codes may leave the worker.
+
+    Exception messages, argv, paths, stderr and chained exceptions are private.
+    Even an operator command or a custom exception can contain credentials.
+    """
+    detail = {"stage": stage, "category": "validation_error"}
+    if command_index is not None:
+        detail["command_index"] = command_index
+    if isinstance(error, subprocess.CalledProcessError):
+        detail["category"] = "subprocess_error"
+        if type(error.returncode) is int and -255 <= error.returncode <= 255:
+            detail["exit_code"] = error.returncode
+    elif isinstance(error, OSError):
+        detail["category"] = "os_error"
+        if type(error.errno) is int and error.errno in errno.errorcode:
+            detail["code"] = errno.errorcode[error.errno]
+    return detail
 
 
 class QAExecutor:
@@ -111,14 +132,17 @@ class QAExecutor:
                 reason="qa_interrupted_use_new_handoff_after_operator_reconciliation",
                 commands=data.get("commands", []),
             )
-        self.root.mkdir(parents=True, exist_ok=True)
-        run_dir = Path(tempfile.mkdtemp(prefix=identity + "-", dir=self.root))
-        checkout = run_dir
+        checkout = self.root
         records = []
+        stage, index = "prepare_run_directory", None
         try:
+            self.root.mkdir(parents=True, exist_ok=True)
+            run_dir = Path(tempfile.mkdtemp(prefix=identity + "-", dir=self.root))
             revision_unchanged = True
             for index, command in enumerate(self.commands):
+                stage = "authorization"
                 self.check_approval(state)
+                stage = "clone"
                 checkout = run_dir / f"command-{index}"
                 subprocess.run(
                     [
@@ -132,13 +156,16 @@ class QAExecutor:
                     check=True,
                     capture_output=True,
                 )
+                stage = "checkout"
                 git(checkout, "checkout", "--detach", self.revision)
                 if git(checkout, "rev-parse", "HEAD") != self.revision:
                     raise ValueError("QA checkout revision mismatch")
                 # HOME is outside the checkout and is fresh for each command.
+                stage = "prepare_environment"
                 home = run_dir / f"home-{index}"
                 home.mkdir()
                 env = {"PATH": os.defpath, "HOME": str(home), "LANG": "C.UTF-8"}
+                stage = "record_command_intent"
                 self.ledger.put(
                     identity,
                     {
@@ -148,13 +175,16 @@ class QAExecutor:
                         "tested_revision": self.revision,
                     },
                 )
+                stage = "authorization"
                 self.check_approval(state)
+                stage = "isolation_setup"
                 context = (
                     self.isolation.launch(command, checkout, writable=True)
                     if self.isolation is not None
                     else nullcontext(command)
                 )
                 with context as execution:
+                    stage = "command_execution"
                     receipt = await capture_command(
                         execution,
                         cwd=checkout,
@@ -162,21 +192,24 @@ class QAExecutor:
                         timeout=self.timeout,
                         artifact=run_dir / f"command-{index}.log",
                     )
-                records.append(
-                    {
-                        **receipt,
-                        "command": command,
-                        "revision": self.revision,
-                        "task_id": state["task_id"],
-                        "sandbox_id": checkout.name,
-                        "working_directory": "/workspace" if self.isolation else str(checkout),
-                        "isolation": "docker" if self.isolation else "host_process",
-                    }
-                )
-                self.ledger.put(
-                    identity,
-                    {"phase": "running", "commands": records, "tested_revision": self.revision},
-                )
+                    records.append(
+                        {
+                            **receipt,
+                            "command": command,
+                            "revision": self.revision,
+                            "task_id": state["task_id"],
+                            "sandbox_id": checkout.name,
+                            "working_directory": "/workspace" if self.isolation else str(checkout),
+                            "isolation": "docker" if self.isolation else "host_process",
+                        }
+                    )
+                    stage = "record_command_result"
+                    self.ledger.put(
+                        identity,
+                        {"phase": "running", "commands": records, "tested_revision": self.revision},
+                    )
+                    stage = "isolation_cleanup"
+                stage = "verify_worktree"
                 if (
                     git(checkout, "rev-parse", "HEAD") != self.revision
                     or git(checkout, "diff", "HEAD")
@@ -193,7 +226,9 @@ class QAExecutor:
                 )
                 else "qa_failed"
             )
+            stage = "authorization"
             self.check_approval(state)
+            stage = "implementation_currency"
             if self.stale():
                 status = "stale_qa"
             result = outcome(
@@ -204,21 +239,23 @@ class QAExecutor:
                 commands=records,
                 checkout=str(checkout),
             )
-        except PermissionError:
+        except PermissionError as error:
             result = outcome(
                 "blocked",
                 identity,
                 tested_revision=self.revision,
                 commands=records,
                 reason="qa_task_no_longer_active",
+                failure_detail=failure_detail(stage, error, index),
             )
-        except (OSError, ValueError, subprocess.CalledProcessError):
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
             result = outcome(
                 "qa_failed",
                 identity,
                 tested_revision=self.revision,
                 commands=records,
                 reason="validation_launch_or_checkout_failed",
+                failure_detail=failure_detail(stage, error, index),
             )
         self.ledger.put(identity, {"phase": "finished", "result": result})
         return result

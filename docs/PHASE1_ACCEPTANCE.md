@@ -3,8 +3,11 @@
 **Partial live acceptance. Phase 1's complete definition of done is not satisfied.**
 The real Discord investigation, Switch handoffs, isolated reproduction, Company
 Brain retrieval and approval-gated proposal ran. This scanner story has not run
-through managed Engineering, independent post-Engineering gates, a workflow PR
-or a human-approved merge. No PR URL or merge SHA is claimed for it.
+through all independent post-Engineering gates, a workflow PR or a human-approved
+merge. The continuation checkpoint below records actual managed Engineering,
+failed QA and a passing secret-only Security scan. No PR URL or merge SHA is
+claimed for it. The later [recovery report](PHASE1_RECOVERY_2026-11-05.md) records
+this Mac's new operator checks; those do not replace workflow receipts.
 
 ## Source revisions and scope
 
@@ -95,7 +98,7 @@ A later real Trivy 0.76.1 secret-only scan of the patched repository returned
 whose database freshness was unverified. This was an operator diagnostic, not
 an independent workflow Security gate, and is not reported as passing Security.
 
-## Remaining live blockers
+## Earlier live blockers (before the continuation checkpoint)
 
 1. **Signed command deployment:** the current Discord application's command
    picker has no `/flip` command. Dedicated interaction hosting/registration and
@@ -121,9 +124,9 @@ unconfigured live dependencies above.
 
 ## Not implemented / limits
 
-- Draft-to-ready through Discord; currently an explicit GitHub human action is
-  needed. Therefore the final publication-to-merge experience is not entirely
-  Discord-only yet.
+- Signed draft-to-ready is implemented and automatically tested. It has not
+  completed this story live; deployment, real GitHub conversion and the separate
+  human merge decision still need acceptance.
 - Continuous command streaming or interactive terminal; displays are bounded
   recorded receipts. Running reproduction exposes task/handoff state, then its
   completed command receipt.
@@ -219,3 +222,13 @@ The implementation is checkpointed on `codex/phase1-green-check`; the managed
 agent's separate commit is backed up on `codex/phase1-managed-fix-checkpoint`.
 These source backups were explicitly requested by the user and are not workflow
 publication receipts or evidence of a passed QA/release gate.
+
+
+## Recovery on the second Mac — November 5, 2026
+
+See [the recovery report](PHASE1_RECOVERY_2026-11-05.md) and its sanitized evidence.
+The original failed task, signed decision and Security receipt above remain
+unchanged. New operator validation is explicitly separate from independent live
+QA. The full historical managed suite still has container compatibility failures;
+the scanner/gate subset passes. No fresh human decision, managed assignment,
+workflow PR, merge or final video is claimed on this host.

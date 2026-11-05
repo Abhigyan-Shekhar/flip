@@ -205,3 +205,59 @@ async def test_cached_unisolated_review_cannot_satisfy_strict_policy(tmp_path, m
     assert result["status"] == "blocked_configuration"
     assert result["reason"] == "review_assignment_inputs_changed"
     ledger.close()
+
+
+@pytest.mark.parametrize("size", [True, 0, 15, 1025, 100000, "512"])
+def test_tmpfs_rejects_unbounded_or_invalid_storage(size):
+    with pytest.raises(ValueError, match="temporary storage"):
+        DockerIsolation(PIN, tmpfs_mb=size)
+
+
+def test_tmpfs_capacity_is_bounded_and_part_of_validation_identity(tmp_path):
+    from dataclasses import asdict
+
+    default = DockerIsolation(PIN)
+    large = DockerIsolation.from_config({"image": PIN, "tmpfs_mb": 512, "memory_mb": 1024})
+    assert "--tmpfs=/tmp:rw,nosuid,nodev,size=64m" in default.command(["python"], tmp_path)
+    assert "--tmpfs=/tmp:rw,nosuid,nodev,size=512m" in large.command(["python"], tmp_path)
+    assert asdict(default) != asdict(large)
+    with pytest.raises(ValueError, match="temporary storage"):
+        DockerIsolation(PIN, memory_mb=128, tmpfs_mb=512)
+
+
+async def test_changed_tmpfs_cannot_reuse_finished_qa_receipt(tmp_path, monkeypatch):
+    from dataclasses import asdict
+
+    ledger = Ledger(tmp_path / "capacity.sqlite3")
+    handoff = "qa-capacity"
+    identity = "qa-" + assignment_id(handoff)
+    revision = "a" * 40
+    commands = [["python", "-m", "pytest"]]
+    original = DockerIsolation(PIN)
+    ledger.reserve(
+        identity,
+        {
+            "implementation": "implementation",
+            "revision": revision,
+            "commands": commands,
+            "timeout": 120,
+            "isolation": asdict(original),
+        },
+    )
+    ledger.put(identity, {"phase": "finished", "result": {"status": "verified_success"}})
+    executor = QAExecutor(
+        ledger,
+        tmp_path,
+        "implementation",
+        revision,
+        commands,
+        isolation=DockerIsolation(PIN, tmpfs_mb=512),
+    )
+    monkeypatch.setattr(executor, "current", lambda: {"status": "implemented"})
+    monkeypatch.setattr(executor, "stale", lambda: False)
+    try:
+        result = await executor({"handoff_id": handoff})
+        assert result["reason"] == "qa_assignment_inputs_changed"
+        assert ledger.get(identity)["result"]["status"] == "verified_success"
+    finally:
+        ledger.close()

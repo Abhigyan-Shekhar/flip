@@ -1,0 +1,411 @@
+{
+  "kind": "operator_recovery_diagnostics_not_live_workflow_qa",
+  "date": "2026-11-05",
+  "integration_base": "2b2ee8081ef0ddbb1e6414ec2f890f3287a2b534",
+  "historical_task_id": "e9f51d66-3f50-5203-9cd8-c27befe4214c",
+  "historical_task_status": "FAILED",
+  "historical_managed_session": "eecbff67-cd08-4056-9bbf-0f40756603b1",
+  "managed_revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+  "baseline_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+  "new_disposable_target": "codex/demo-green-check-20261105-parth-recovery",
+  "backup": {
+    "database_count": 3,
+    "sqlite_quick_check": "ok",
+    "original_phase1_database_present": false
+  },
+  "historical_failure_cause": "unknown_original_exception_not_preserved",
+  "new_runtime_prerequisites": {
+    "docker": true,
+    "switch_health": true,
+    "gateway_health": true,
+    "crew_health": true,
+    "pm_authenticated": true,
+    "research_authenticated": true,
+    "seven_role_runtime_verified": false,
+    "signed_app_deployed": false,
+    "original_editable_video_project_present": false
+  },
+  "prepared_coding_image": {
+    "digest": "flip-green-check-python-controller@sha256:91e3f5c44772cab0ee3b334e156a99143dc63fcf886fd3901694a8b74dea3113",
+    "python": "3.12.16",
+    "pytest": "9.2.0",
+    "node": "22.23.4",
+    "codex": "0.166.0",
+    "official_bundles_match_tracked_provenance": true,
+    "managed_assignment_started": false
+  },
+  "new_workflow_task": null,
+  "new_human_decisions": [],
+  "workflow_pr_url": null,
+  "merge_sha": null,
+  "final_video": null,
+  "attempts": [
+    {
+      "kind": "operator_diagnostic_not_workflow_qa",
+      "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+      "image": "flip-green-check-recovery-runner@sha256:5787bc3051dc8ffbee0bdc7eb06b4155a82d908bed3dc6e4f1a4c3d47164c09d",
+      "commands": [
+        {
+          "exit_code": 1,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "fatal: detected dubious ownership in repository at '/workspace'\nTo add an exception for this directory, call:\n\n\tgit config --global --add safe.directory /workspace\nTraceback (most recent call last):\n  File \"<string>\", line 12, in <module>\n  File \"/usr/local/lib/python3.12/asyncio/runners.py\", line 195, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/asyncio/base_events.py\", line 691, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"<string>\", line 6, in main\n  File \"/usr/local/lib/python3.12/subprocess.py\", line 466, in check_output\n    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['git', 'rev-parse', 'HEAD']' returned non-zero exit status 128.\n",
+          "output_bytes": 1151,
+          "output_sha256": "42005e3167b386aad4ae12c58e98714f389c3a06bd9e32bfd8a0217094e4310a",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105/command-0.log",
+          "started_at": "2026-11-05T13:54:53.593980+00:00",
+          "finished_at": "2026-11-05T13:54:53.859600+00:00",
+          "duration_seconds": 0.2655,
+          "command": [
+            "python",
+            "-c",
+            "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list),flush=True)\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        },
+        {
+          "exit_code": 1,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "........................................................................ [  9%]\n........................................................................ [ 19%]\n......................................................................F. [ 29%]\n..F.....F.F...F...........F...FF..EEEEEEEEEEEF.EEEEE..........FFF....... [ 39%]\n..F............F..FF.................................................... [ 49%]\n.....................F.......FF.F.......F...FFFFF.FF.................... [ 59%]\n...............FFFFFFFFF..............FFFFFFFFFFFFFFFF.................. [ 69%]\n..........................................................FFFFFFFFFFFFFF [ 79%]\nFFFEEEEEEEEEEEEEEEEEEEEFFFFFFFFFFFFFFFFF.....FF.FFFFFFF................. [ 89%]\nsss.F.F...FFFFFFFFFFFFFFFFFFFE.EEEEEEEEEEEEEE.FEEEEFFFFFFFF............. [ 99%]\n......                                                                   [100%]\n==================================== ERRORS ====================================\n_ ERROR at setup of test_merge_requires_separate_human_approval_and_exact_checks _\n\nflow = (<switchcrew.store.Store object at 0xffff99011a00>, <switchcrew.engineering.Ledger object at 0xffff990106b0>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0/source'), '97ffdf24885289b9d8646f586a9761f8784b7a0a')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0')\n\n    @pytest.fixture\n    async def ready(flow, tmp_path):\n>       revision, *_ = await implement_and_review(flow, tmp_path)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_guarded_merge.py:69: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nflow = (<switchcrew.store.Store object at 0xffff99011a00>, <switchcrew.engineering.Ledger object at 0xffff990106b0>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0/source'), '97ffdf24885289b9d8646f586a9761f8784b7a0a')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0')\ncorrect = True\n\n    async def implement_and_review(flow, tmp_path, correct=True):\n        store, ledger, workflow, task_id, source, base = flow\n        data = decide(flow)\n        identity = data[\"engineering_handoff\"]\n        state = handoff_state(store, identity, \"engineering\")\n        session = ControlledSession()\n        executor = EngineeringExecutor(\n            ledger,\n            tmp_path / \"engineering\",\n            source,\n            base,\n            session,\n            authorize=lambda state: workflow.require_engineering(state, \"engineering\"),\n        )\n        store.accept_handoff(identity, \"engineering\")\n>       assert (await executor(state))[\"status\"] == \"pending_execution\"\nE       AssertionError: assert 'blocked_configuration' == 'pending_execution'\nE         \nE         - pending_execution\nE         + blocked_configuration\n\ntests/test_approval_release.py:92: AssertionError\n____ ERROR at setup of test_remote_changes_block_merge_after_approval[head] ____\n\nflow = (<switchcrew.store.Store object at 0xffff9901d490>, <switchcrew.engineering.Ledger object at 0xffff9901cb60>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0/source'), '97ffdf24885289b9d8646f586a9761f8784b7a0a')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0')\n\n    @pytest.fixture\n    async def ready(flow, tmp_path):\n>       revision, *_ = await implement_and_review(flow, tmp_path)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_guarded_merge.py:69: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nflow = (<switchcrew.store.Store object at 0xffff9901d490>, <switchcrew.engineering.Ledger object at 0xffff9901cb60>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0/source'), '97ffdf24885289b9d8646f586a9761f8784b7a0a')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0')\ncorrect = True\n\n    async def implement_and_review(flow, tmp_path, correct=True):\n        store, ledger, work",
+          "output_bytes": 729229,
+          "output_sha256": "b96940e15d8929b4e97a22b4392a939f321d999fc1504f50b251970492b0cffe",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105/command-1.log",
+          "started_at": "2026-11-05T13:54:53.957041+00:00",
+          "finished_at": "2026-11-05T13:55:07.749634+00:00",
+          "duration_seconds": 13.7927,
+          "command": [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        }
+      ],
+      "name": "managed-validation-20261105",
+      "suite_summary": "126 failed, 542 passed, 3 skipped, 36 warnings, 55 errors in 12.84s",
+      "containment": {
+        "network": "none",
+        "root_filesystem": "read_only",
+        "capabilities": "dropped",
+        "no_new_privileges": true,
+        "credential_mounts": false,
+        "docker_socket_mount": false,
+        "memory_mb": 768,
+        "tmpfs_mb": 64,
+        "pids_limit": 128
+      }
+    },
+    {
+      "kind": "operator_diagnostic_not_workflow_qa",
+      "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+      "image": "flip-green-check-recovery-runner@sha256:312f7e27b9917ce2f9a1ce467e2c6e88ce57138dab9b04f27e6c29ef556a80f9",
+      "commands": [
+        {
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "{\"status\": \"scanner_failed\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"findings\": [], \"scanners\": [{\"name\": \"incomplete-native-contract\", \"status\": \"completed\", \"version\": \"unknown\", \"category\": \"unspecified\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"repository\": \"/workspace\", \"argv\": [\"/usr/local/bin/python\", \"-c\", \"import json;print(json.dumps(dict(Results=[])))\"], \"started_at\": \"2026-11-05T13:56:16.241749+00:00\", \"database_updated_at\": null, \"isolation\": \"host\", \"exit_code\": 0, \"output_exceeded\": false, \"display_logs\": \"\", \"output_sha256\": \"91d4bcb3486f4ab270d3998dd1819e51c86015180fa1eb7480fecf6d6120c560\", \"finished_at\": \"2026-11-05T13:56:16.249794+00:00\", \"duration_seconds\": 0.008}], \"warnings\": [\"Scanner output did not match the supported findings schema.\"]}\n",
+          "output_bytes": 805,
+          "output_sha256": "e0d6af78b0219a701777699a367f8e8483f96969a1ffac891a716a1bc587237f",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-workspace/command-0.log",
+          "started_at": "2026-11-05T13:56:15.896257+00:00",
+          "finished_at": "2026-11-05T13:56:16.283576+00:00",
+          "duration_seconds": 0.3872,
+          "command": [
+            "python",
+            "-c",
+            "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list),flush=True)\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        },
+        {
+          "exit_code": 1,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "........................................................................ [  9%]\n........................................................................ [ 19%]\n......................................................................F. [ 29%]\n..F.....F.F.F....F....F......F.F..EEEEEEEEEEEF.EEEEE..........FFF....... [ 39%]\n..F............F..FF.................................................... [ 49%]\n.....................F.......FF.F.......F...FFFFF.FF.................... [ 59%]\n...............FFFFFFFFF..............FFFFFFFFFFFFFFFF.................. [ 69%]\n.............................................................FFFFFFFFFFF [ 79%]\nFFFEEEEEEEEEEEEEEEEEEEEFFFFFFFFFFFFFFFFF.....FF.FFFFFFF................. [ 89%]\nsss.F.F...FFFFFFFFFFFFFFFFFFFE.EEEEEEEEEEEEEE.FEEEEFFFFFFFF............. [ 99%]\n......                                                                   [100%]\n==================================== ERRORS ====================================\n_ ERROR at setup of test_merge_requires_separate_human_approval_and_exact_checks _\n\nflow = (<switchcrew.store.Store object at 0xffff8faae7b0>, <switchcrew.engineering.Ledger object at 0xffff8faaf1a0>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0/source'), '9203b557ea1af7950d9f8f427b031eef48db0e1d')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0')\n\n    @pytest.fixture\n    async def ready(flow, tmp_path):\n>       revision, *_ = await implement_and_review(flow, tmp_path)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_guarded_merge.py:69: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nflow = (<switchcrew.store.Store object at 0xffff8faae7b0>, <switchcrew.engineering.Ledger object at 0xffff8faaf1a0>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0/source'), '9203b557ea1af7950d9f8f427b031eef48db0e1d')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0')\ncorrect = True\n\n    async def implement_and_review(flow, tmp_path, correct=True):\n        store, ledger, workflow, task_id, source, base = flow\n        data = decide(flow)\n        identity = data[\"engineering_handoff\"]\n        state = handoff_state(store, identity, \"engineering\")\n        session = ControlledSession()\n        executor = EngineeringExecutor(\n            ledger,\n            tmp_path / \"engineering\",\n            source,\n            base,\n            session,\n            authorize=lambda state: workflow.require_engineering(state, \"engineering\"),\n        )\n        store.accept_handoff(identity, \"engineering\")\n>       assert (await executor(state))[\"status\"] == \"pending_execution\"\nE       AssertionError: assert 'blocked_configuration' == 'pending_execution'\nE         \nE         - pending_execution\nE         + blocked_configuration\n\ntests/test_approval_release.py:92: AssertionError\n____ ERROR at setup of test_remote_changes_block_merge_after_approval[head] ____\n\nflow = (<switchcrew.store.Store object at 0xffff8fa9f4d0>, <switchcrew.engineering.Ledger object at 0xffff8fa9de20>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0/source'), '9203b557ea1af7950d9f8f427b031eef48db0e1d')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0')\n\n    @pytest.fixture\n    async def ready(flow, tmp_path):\n>       revision, *_ = await implement_and_review(flow, tmp_path)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_guarded_merge.py:69: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nflow = (<switchcrew.store.Store object at 0xffff8fa9f4d0>, <switchcrew.engineering.Ledger object at 0xffff8fa9de20>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0/source'), '9203b557ea1af7950d9f8f427b031eef48db0e1d')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0')\ncorrect = True\n\n    async def implement_and_review(flow, tmp_path, correct=True):\n        store, ledger, work",
+          "output_bytes": 718657,
+          "output_sha256": "b9e77323a312f6b1327632d09e41abf3ec9632851885705444d22a9df03f07bc",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-workspace/command-1.log",
+          "started_at": "2026-11-05T13:56:16.392906+00:00",
+          "finished_at": "2026-11-05T13:56:29.727701+00:00",
+          "duration_seconds": 13.3349,
+          "command": [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        }
+      ],
+      "name": "managed-validation-20261105-workspace",
+      "suite_summary": "124 failed, 544 passed, 3 skipped, 35 warnings, 55 errors in 12.39s",
+      "containment": {
+        "network": "none",
+        "root_filesystem": "read_only",
+        "capabilities": "dropped",
+        "no_new_privileges": true,
+        "credential_mounts": false,
+        "docker_socket_mount": false,
+        "memory_mb": 768,
+        "tmpfs_mb": 64,
+        "pids_limit": 128
+      }
+    },
+    {
+      "kind": "operator_diagnostic_not_workflow_qa",
+      "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+      "image": "flip-green-check-recovery-runner@sha256:312f7e27b9917ce2f9a1ce467e2c6e88ce57138dab9b04f27e6c29ef556a80f9",
+      "commands": [
+        {
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "{\"status\": \"scanner_failed\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"findings\": [], \"scanners\": [{\"name\": \"incomplete-native-contract\", \"status\": \"completed\", \"version\": \"unknown\", \"category\": \"unspecified\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"repository\": \"/workspace\", \"argv\": [\"/usr/local/bin/python\", \"-c\", \"import json;print(json.dumps(dict(Results=[])))\"], \"started_at\": \"2026-11-05T13:57:56.629370+00:00\", \"database_updated_at\": null, \"isolation\": \"host\", \"exit_code\": 0, \"output_exceeded\": false, \"display_logs\": \"\", \"output_sha256\": \"91d4bcb3486f4ab270d3998dd1819e51c86015180fa1eb7480fecf6d6120c560\", \"finished_at\": \"2026-11-05T13:57:56.637978+00:00\", \"duration_seconds\": 0.009}], \"warnings\": [\"Scanner output did not match the supported findings schema.\"]}\n",
+          "output_bytes": 805,
+          "output_sha256": "1adf5a541966f45ee9644a7652a4453527c7872d8bc8dc04d95354afe24b86db",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-retention/command-0.log",
+          "started_at": "2026-11-05T13:57:56.403149+00:00",
+          "finished_at": "2026-11-05T13:57:56.673018+00:00",
+          "duration_seconds": 0.2698,
+          "command": [
+            "python",
+            "-c",
+            "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list),flush=True)\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        },
+        {
+          "exit_code": 1,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "........................................................................ [  9%]\n........................................................................ [ 19%]\n......................................................................F. [ 29%]\n..F.....F.F.F...F......F.F.....F..EEEEEEEEEEEF.EEEEE..........FFF....... [ 39%]\n..F............F..FF.................................................... [ 49%]\n.....................F.......FF.F.......F...FFFFF.FF.................... [ 59%]\n...............FFFFFFFFF..............FFFFFFFFFFFFFFFF.................. [ 69%]\n..................................................................FFFFFF [ 79%]\nFFFEEEEEEEEEEEEEEEEEEEEFFFFFFFFFFFFFFFFF.....FF.FFFFFFF................. [ 89%]\nsss.F.F...FFFFFFFFFFFFFFFFFFFE.EEEEEEEEEEEEEE.FEEEEFFFFFFFF............. [ 99%]\n......                                                                   [100%]\n==================================== ERRORS ====================================\n_ ERROR at setup of test_merge_requires_separate_human_approval_and_exact_checks _\n\nflow = (<switchcrew.store.Store object at 0xffff81b16ae0>, <switchcrew.engineering.Ledger object at 0xffff81b15970>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0/source'), 'b3459544febaf11927d41de30d26d56a8a7c1bc7')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0')\n\n    @pytest.fixture\n    async def ready(flow, tmp_path):\n>       revision, *_ = await implement_and_review(flow, tmp_path)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_guarded_merge.py:69: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nflow = (<switchcrew.store.Store object at 0xffff81b16ae0>, <switchcrew.engineering.Ledger object at 0xffff81b15970>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0/source'), 'b3459544febaf11927d41de30d26d56a8a7c1bc7')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0')\ncorrect = True\n\n    async def implement_and_review(flow, tmp_path, correct=True):\n        store, ledger, workflow, task_id, source, base = flow\n        data = decide(flow)\n        identity = data[\"engineering_handoff\"]\n        state = handoff_state(store, identity, \"engineering\")\n        session = ControlledSession()\n        executor = EngineeringExecutor(\n            ledger,\n            tmp_path / \"engineering\",\n            source,\n            base,\n            session,\n            authorize=lambda state: workflow.require_engineering(state, \"engineering\"),\n        )\n        store.accept_handoff(identity, \"engineering\")\n>       assert (await executor(state))[\"status\"] == \"pending_execution\"\nE       AssertionError: assert 'blocked_configuration' == 'pending_execution'\nE         \nE         - pending_execution\nE         + blocked_configuration\n\ntests/test_approval_release.py:92: AssertionError\n____ ERROR at setup of test_remote_changes_block_merge_after_approval[head] ____\n\nflow = (<switchcrew.store.Store object at 0xffff81afd580>, <switchcrew.engineering.Ledger object at 0xffff81afc830>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0/source'), 'b3459544febaf11927d41de30d26d56a8a7c1bc7')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0')\n\n    @pytest.fixture\n    async def ready(flow, tmp_path):\n>       revision, *_ = await implement_and_review(flow, tmp_path)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_guarded_merge.py:69: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nflow = (<switchcrew.store.Store object at 0xffff81afd580>, <switchcrew.engineering.Ledger object at 0xffff81afc830>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0/source'), 'b3459544febaf11927d41de30d26d56a8a7c1bc7')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0')\ncorrect = True\n\n    async def implement_and_review(flow, tmp_path, correct=True):\n        store, ledger, work",
+          "output_bytes": 692916,
+          "output_sha256": "47051d41d79b2caa32396bbe035d9eb44278a6b96cde8176cf7891091eb2482f",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-retention/command-1.log",
+          "started_at": "2026-11-05T13:57:56.780147+00:00",
+          "finished_at": "2026-11-05T13:58:10.982156+00:00",
+          "duration_seconds": 14.2021,
+          "command": [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "-o",
+            "tmp_path_retention_policy=none"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        }
+      ],
+      "name": "managed-validation-20261105-retention",
+      "suite_summary": "119 failed, 549 passed, 3 skipped, 35 warnings, 55 errors in 13.26s",
+      "containment": {
+        "network": "none",
+        "root_filesystem": "read_only",
+        "capabilities": "dropped",
+        "no_new_privileges": true,
+        "credential_mounts": false,
+        "docker_socket_mount": false,
+        "memory_mb": 768,
+        "tmpfs_mb": 64,
+        "pids_limit": 128
+      }
+    },
+    {
+      "kind": "operator_diagnostic_not_workflow_qa",
+      "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+      "image": "flip-green-check-recovery-runner@sha256:312f7e27b9917ce2f9a1ce467e2c6e88ce57138dab9b04f27e6c29ef556a80f9",
+      "commands": [
+        {
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "{\"status\": \"scanner_failed\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"findings\": [], \"scanners\": [{\"name\": \"incomplete-native-contract\", \"status\": \"completed\", \"version\": \"unknown\", \"category\": \"unspecified\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"repository\": \"/workspace\", \"argv\": [\"/usr/local/bin/python\", \"-c\", \"import json;print(json.dumps(dict(Results=[])))\"], \"started_at\": \"2026-11-05T13:58:57.411710+00:00\", \"database_updated_at\": null, \"isolation\": \"host\", \"exit_code\": 0, \"output_exceeded\": false, \"display_logs\": \"\", \"output_sha256\": \"91d4bcb3486f4ab270d3998dd1819e51c86015180fa1eb7480fecf6d6120c560\", \"finished_at\": \"2026-11-05T13:58:57.419703+00:00\", \"duration_seconds\": 0.008}], \"warnings\": [\"Scanner output did not match the supported findings schema.\"]}\n",
+          "output_bytes": 805,
+          "output_sha256": "b3e5f7f0a747deb040a14cbd350e8bcc147896e6d6b4a10d4794e3f2a1e32af1",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-capacity/command-0.log",
+          "started_at": "2026-11-05T13:58:57.013758+00:00",
+          "finished_at": "2026-11-05T13:58:57.462536+00:00",
+          "duration_seconds": 0.4487,
+          "command": [
+            "python",
+            "-c",
+            "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list),flush=True)\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        },
+        {
+          "exit_code": 1,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "........................................................................ [  9%]\n........................................................................ [ 19%]\n......................................................................F. [ 29%]\n..F.....F.F..F.................F..EEEEEEEEEEEF.EEEEE..........FFF....... [ 39%]\n..F............F..FF.................................................... [ 49%]\n.....................F.......FF.F.......F...FFFFF.FF.................... [ 59%]\n...............FFFFFFFFF..............FFFFFFFFFFFFFFFF.................. [ 69%]\n........................................................................ [ 79%]\n....................................................F................... [ 89%]\nsss...F.............FFF...F............................................. [ 99%]\n......                                                                   [100%]\n==================================== ERRORS ====================================\n_ ERROR at setup of test_merge_requires_separate_human_approval_and_exact_checks _\n\nflow = (<switchcrew.store.Store object at 0xffffa65bda90>, <switchcrew.engineering.Ledger object at 0xffffa65bd0d0>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0/source'), '0f5112b5ce97e8d4fba6b383f7a7ba9c562a53d9')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0')\n\n    @pytest.fixture\n    async def ready(flow, tmp_path):\n>       revision, *_ = await implement_and_review(flow, tmp_path)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_guarded_merge.py:69: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nflow = (<switchcrew.store.Store object at 0xffffa65bda90>, <switchcrew.engineering.Ledger object at 0xffffa65bd0d0>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0/source'), '0f5112b5ce97e8d4fba6b383f7a7ba9c562a53d9')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_merge_requires_separate_h0')\ncorrect = True\n\n    async def implement_and_review(flow, tmp_path, correct=True):\n        store, ledger, workflow, task_id, source, base = flow\n        data = decide(flow)\n        identity = data[\"engineering_handoff\"]\n        state = handoff_state(store, identity, \"engineering\")\n        session = ControlledSession()\n        executor = EngineeringExecutor(\n            ledger,\n            tmp_path / \"engineering\",\n            source,\n            base,\n            session,\n            authorize=lambda state: workflow.require_engineering(state, \"engineering\"),\n        )\n        store.accept_handoff(identity, \"engineering\")\n>       assert (await executor(state))[\"status\"] == \"pending_execution\"\nE       AssertionError: assert 'blocked_configuration' == 'pending_execution'\nE         \nE         - pending_execution\nE         + blocked_configuration\n\ntests/test_approval_release.py:92: AssertionError\n____ ERROR at setup of test_remote_changes_block_merge_after_approval[head] ____\n\nflow = (<switchcrew.store.Store object at 0xffffa65be090>, <switchcrew.engineering.Ledger object at 0xffffa65bdd30>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0/source'), '0f5112b5ce97e8d4fba6b383f7a7ba9c562a53d9')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0')\n\n    @pytest.fixture\n    async def ready(flow, tmp_path):\n>       revision, *_ = await implement_and_review(flow, tmp_path)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_guarded_merge.py:69: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nflow = (<switchcrew.store.Store object at 0xffffa65be090>, <switchcrew.engineering.Ledger object at 0xffffa65bdd30>, <switchc...('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0/source'), '0f5112b5ce97e8d4fba6b383f7a7ba9c562a53d9')\ntmp_path = PosixPath('/tmp/pytest-of-unknown/pytest-0/test_remote_changes_block_merg0')\ncorrect = True\n\n    async def implement_and_review(flow, tmp_path, correct=True):\n        store, ledger, work",
+          "output_bytes": 354858,
+          "output_sha256": "52a9b192689ff19e92f8083ff05c6e65132ad6738281d1204f0150e4664cda59",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-capacity/command-1.log",
+          "started_at": "2026-11-05T13:58:57.572580+00:00",
+          "finished_at": "2026-11-05T13:59:10.684282+00:00",
+          "duration_seconds": 13.1114,
+          "command": [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        }
+      ],
+      "name": "managed-validation-20261105-capacity",
+      "suite_summary": "57 failed, 650 passed, 3 skipped, 45 warnings, 16 errors in 12.04s",
+      "containment": {
+        "network": "none",
+        "root_filesystem": "read_only",
+        "capabilities": "dropped",
+        "no_new_privileges": true,
+        "credential_mounts": false,
+        "docker_socket_mount": false,
+        "memory_mb": 2048,
+        "tmpfs_mb": 512,
+        "pids_limit": 128
+      }
+    },
+    {
+      "kind": "operator_diagnostic_not_workflow_qa",
+      "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+      "image": "flip-green-check-recovery-runner@sha256:312f7e27b9917ce2f9a1ce467e2c6e88ce57138dab9b04f27e6c29ef556a80f9",
+      "commands": [
+        {
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "{\"status\": \"scanner_failed\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"findings\": [], \"scanners\": [{\"name\": \"incomplete-native-contract\", \"status\": \"completed\", \"version\": \"unknown\", \"category\": \"unspecified\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"repository\": \"/workspace\", \"argv\": [\"/usr/local/bin/python\", \"-c\", \"import json;print(json.dumps(dict(Results=[])))\"], \"started_at\": \"2026-11-05T14:00:32.294712+00:00\", \"database_updated_at\": null, \"isolation\": \"host\", \"exit_code\": 0, \"output_exceeded\": false, \"display_logs\": \"\", \"output_sha256\": \"91d4bcb3486f4ab270d3998dd1819e51c86015180fa1eb7480fecf6d6120c560\", \"finished_at\": \"2026-11-05T14:00:32.305329+00:00\", \"duration_seconds\": 0.011}], \"warnings\": [\"Scanner output did not match the supported findings schema.\"]}\n",
+          "output_bytes": 805,
+          "output_sha256": "558a4ff85d5ee8fb5ff90bd3d380192ba0cea89e0e5bd97ec68502dca8cc1391",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-scanner-suite/command-0.log",
+          "started_at": "2026-11-05T14:00:32.040104+00:00",
+          "finished_at": "2026-11-05T14:00:32.346242+00:00",
+          "duration_seconds": 0.3058,
+          "command": [
+            "python",
+            "-c",
+            "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list),flush=True)\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        },
+        {
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "........................................................................ [ 70%]\n..............................                                           [100%]\n102 passed in 1.01s\n",
+          "output_bytes": 180,
+          "output_sha256": "fed351119aa2496a4773aad167b2e9f7538dfcea953af390756b3bd9ba9f554f",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-scanner-suite/command-1.log",
+          "started_at": "2026-11-05T14:00:32.459076+00:00",
+          "finished_at": "2026-11-05T14:00:34.209691+00:00",
+          "duration_seconds": 1.7506,
+          "command": [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "tests/test_security.py",
+            "tests/test_security_gate.py"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        }
+      ],
+      "name": "managed-validation-20261105-scanner-suite",
+      "suite_summary": "102 passed in 1.01s",
+      "containment": {
+        "network": "none",
+        "root_filesystem": "read_only",
+        "capabilities": "dropped",
+        "no_new_privileges": true,
+        "credential_mounts": false,
+        "docker_socket_mount": false,
+        "memory_mb": 2048,
+        "tmpfs_mb": 512,
+        "pids_limit": 128
+      }
+    },
+    {
+      "kind": "operator_diagnostic_not_workflow_qa",
+      "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+      "image": "flip-green-check-recovery-runner@sha256:312f7e27b9917ce2f9a1ce467e2c6e88ce57138dab9b04f27e6c29ef556a80f9",
+      "commands": [
+        {
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "{\"status\": \"scanner_failed\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"findings\": [], \"scanners\": [{\"name\": \"incomplete-native-contract\", \"status\": \"completed\", \"version\": \"unknown\", \"category\": \"unspecified\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"repository\": \"/workspace\", \"argv\": [\"/usr/local/bin/python\", \"-c\", \"import json;print(json.dumps(dict(Results=[])))\"], \"started_at\": \"2026-11-05T14:01:14.692723+00:00\", \"database_updated_at\": null, \"isolation\": \"host\", \"exit_code\": 0, \"output_exceeded\": false, \"display_logs\": \"\", \"output_sha256\": \"91d4bcb3486f4ab270d3998dd1819e51c86015180fa1eb7480fecf6d6120c560\", \"finished_at\": \"2026-11-05T14:01:14.699978+00:00\", \"duration_seconds\": 0.007}], \"warnings\": [\"Scanner output did not match the supported findings schema.\"]}\n",
+          "output_bytes": 805,
+          "output_sha256": "f667d02669ff5c9fefebc1c7f3c503b0d998957839540fe2a51d23f2957cf5df",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-fixtures/command-0.log",
+          "started_at": "2026-11-05T14:01:14.468335+00:00",
+          "finished_at": "2026-11-05T14:01:14.737332+00:00",
+          "duration_seconds": 0.2686,
+          "command": [
+            "python",
+            "-c",
+            "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list),flush=True)\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        },
+        {
+          "exit_code": 1,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "output_summary": "...............F...FFFFF.....F....F.F..F.FFF.FFFFF.FF.FF.FFFF.F..FF.FFFF [  9%]\n...FFFF................F.......................FF.FFF................... [ 19%]\n...................................EEEE.......F..F.F..FFF....F.FF...F.F. [ 29%]\n........F.F.......................EEEEEEEEEEE..EEEEE.................... [ 39%]\n...............F..FF........F........................................... [ 49%]\n..................................................FF.................... [ 59%]\n...............FFFFFFFFF.............................................F.. [ 69%]\n........................................................................ [ 79%]\n.......................F................................................ [ 89%]\nsss.................FFF...F............................................. [ 99%]\n......                                                                   [100%]\n==================================== ERRORS ====================================\n_ ERROR at setup of test_employee_runtime_uses_private_profile_and_records_actual_session _\n\ntmp_path = PosixPath('/workspace/qa-fixtures-r_knllmj/pytest/test_employee_runtime_uses_pri0')\nmonkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xffff895426f0>\n\n    @pytest.fixture\n    def runtime_case(tmp_path, monkeypatch):\n        FakeConsole.instances.clear()\n        FakeConsole.revoke = None\n        FakeEngineeringExecutor.instances.clear()\n        workspace = tmp_path / \"employee-workspace\"\n        workspace.mkdir()\n        source = workspace / \"source\"\n>       base = repo(source)\n               ^^^^^^^^^^^^\n\ntests/test_employee_runtime.py:173: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \ntests/test_employee_runtime.py:25: in repo\n    git(path, \"add\", \"README.md\")\ntests/test_employee_runtime.py:16: in git\n    return subprocess.check_output(\n/usr/local/lib/python3.12/subprocess.py:466: in check_output\n    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ninput = None, capture_output = False, timeout = None, check = True\npopenargs = (['git', '-C', '/workspace/qa-fixtures-r_knllmj/pytest/test_employee_runtime_uses_pri0/employee-workspace/source', 'add', 'README.md'],)\nkwargs = {'stdout': -1, 'text': True, 'stderr': -1}\n\n    def run(*popenargs,\n            input=None, capture_output=False, timeout=None, check=False, **kwargs):\n        \"\"\"Run command with arguments and return a CompletedProcess instance.\n    \n        The returned instance will have attributes args, returncode, stdout and\n        stderr. By default, stdout and stderr are not captured, and those attributes\n        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,\n        or pass capture_output=True to capture both.\n    \n        If check is True and the exit code was non-zero, it raises a\n        CalledProcessError. The CalledProcessError object will have the return code\n        in the returncode attribute, and output & stderr attributes if those streams\n        were captured.\n    \n        If timeout (seconds) is given and the process takes too long,\n         a TimeoutExpired exception will be raised.\n    \n        There is an optional argument \"input\", allowing you to\n        pass bytes or a string to the subprocess's stdin.  If you use this argument\n        you may not also use the Popen constructor's \"stdin\" argument, as\n        it will be used internally.\n    \n        By default, all communication is in bytes, and therefore any \"input\" should\n        be bytes, and the stdout and stderr will be bytes. If in text mode, any\n        \"input\" should be a string, and stdout and stderr will be strings decoded\n        according to locale encoding, or by \"encoding\" if set. Text mode is\n        triggered by setting any of text, encoding, errors or universal_newlines.\n    \n        The other arguments are the same as for the Popen constructor.\n        \"\"\"\n        if input is not None:\n            if kwargs.get('stdin') is not None:\n                raise ValueError('st",
+          "output_bytes": 343062,
+          "output_sha256": "30450011be432f9822803b4955f682095adc0c8e92fcadf57d116219b5301749",
+          "log_artifact": "$RECOVERY_ROOT/managed-validation-20261105-fixtures/command-1.log",
+          "started_at": "2026-11-05T14:01:14.846994+00:00",
+          "finished_at": "2026-11-05T14:01:39.726783+00:00",
+          "duration_seconds": 24.8799,
+          "command": [
+            "python",
+            "-c",
+            "import os,sys,tempfile\nfrom pathlib import Path\nimport pytest\nwith tempfile.TemporaryDirectory(prefix=\"qa-fixtures-\",dir=\".\") as folder:\n    base=Path(folder).resolve()\n    os.environ[\"TMPDIR\"]=str(base)\n    tempfile.tempdir=None\n    result=pytest.main([\"-q\",\"-p\",\"no:cacheprovider\",\"--basetemp\",str(base/\"pytest\")])\nsys.exit(result)\n"
+          ],
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "isolation": "docker"
+        }
+      ],
+      "name": "managed-validation-20261105-fixtures",
+      "suite_summary": "77 failed, 626 passed, 3 skipped, 20 errors in 21.82s",
+      "containment": {
+        "network": "none",
+        "root_filesystem": "read_only",
+        "capabilities": "dropped",
+        "no_new_privileges": true,
+        "credential_mounts": false,
+        "docker_socket_mount": false,
+        "memory_mb": 2048,
+        "tmpfs_mb": 512,
+        "pids_limit": 512
+      }
+    }
+  ]
+}

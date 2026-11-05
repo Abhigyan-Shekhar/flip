@@ -1,8 +1,12 @@
 # Guarded GitHub merge
 
 Merge is disabled by default. Publication still creates a draft PR. The PR must
-be explicitly marked ready for review in GitHub before this service will merge.
-The service never marks drafts ready or approves its own PR.
+be explicitly marked ready for review before this service will merge. An
+allowlisted human can use signed `/flip ready-for-review` with the exact head SHA
+in the verified original thread, or mark it ready in GitHub. The service only
+converts the draft on that human request; it never grants merge approval itself.
+The signed route and receipt-derived check publication are automatically tested,
+but have not completed the Green Check story live.
 
 Configure these values on the **API process only**:
 

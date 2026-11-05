@@ -30,7 +30,8 @@ The same pinned image must provide the operator-configured QA and review binarie
         "image": "registry.example/test-runner@sha256:REPLACE_WITH_64_HEX_DIGEST",
         "memory_mb": 768,
         "pids_limit": 128,
-        "cpus": 1.0
+        "cpus": 1.0,
+      "tmpfs_mb": 64
       }
     }
   }
@@ -49,6 +50,13 @@ connects to that exact Unix socket and confirms the daemon reports rootless
 mode. The container runs as UID 0 *inside its user namespace*, which maps to
 the unprivileged worker UID on the host; rootful Docker continues to use an
 unprivileged container UID. Do not set `rootless=true` for a rootful daemon.
+
+`tmpfs_mb` defaults to 64 MiB. It accepts 16–1024 MiB, no more than
+`memory_mb`. The full Python suite creates enough temporary Git/SQLite fixtures
+to exhaust 64 MiB on the recovery host. Use `memory_mb: 2048` and
+`tmpfs_mb: 512` for that assignment and verify the resulting receipt. This keeps
+storage bounded; it adds no host mount, network access or credentials. Host free
+space does not measure the container's temporary filesystem capacity.
 
 Changing a pinned image or isolation setting invalidates cached QA and review
 evidence for that handoff; create a fresh handoff before retrying. Every

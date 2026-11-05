@@ -28,12 +28,18 @@ class DockerIsolation:
     binary: str = "docker"
     daemon_socket: str | None = None
     rootless: bool = False
+    tmpfs_mb: int = 64
 
     def __post_init__(self):
         if not isinstance(self.image, str) or not _IMAGE.fullmatch(self.image):
             raise ValueError("Docker image must be pinned by a full sha256 digest")
         if type(self.memory_mb) is not int or not 128 <= self.memory_mb <= 4096:
             raise ValueError("Docker memory must be between 128 and 4096 MiB")
+        if type(self.tmpfs_mb) is not int or not 16 <= self.tmpfs_mb <= min(1024, self.memory_mb):
+            raise ValueError(
+                "Docker temporary storage must be between 16 MiB and the memory quota, "
+                "at most 1024 MiB"
+            )
         if type(self.pids_limit) is not int or not 16 <= self.pids_limit <= 512:
             raise ValueError("Docker PID limit must be between 16 and 512")
         if (
@@ -66,6 +72,7 @@ class DockerIsolation:
             "binary",
             "daemon_socket",
             "rootless",
+            "tmpfs_mb",
         }
         if not isinstance(raw, dict) or not raw or set(raw) - allowed:
             raise ValueError("Invalid Docker isolation configuration")
@@ -148,7 +155,7 @@ class DockerIsolation:
             f"--memory={self.memory_mb}m",
             f"--cpus={self.cpus}",
             f"--user={uid}:{gid}",
-            "--tmpfs=/tmp:rw,nosuid,nodev,size=64m",
+            f"--tmpfs=/tmp:rw,nosuid,nodev,size={self.tmpfs_mb}m",
             mount,
             "--workdir=/workspace",
             "--env=HOME=/tmp",

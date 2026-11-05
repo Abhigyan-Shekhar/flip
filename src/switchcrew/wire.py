@@ -1,5 +1,6 @@
 """Evidence-reference envelopes for Switch transport; durable payloads remain in SQLite."""
 
+import errno
 import hashlib
 import json
 import re
@@ -97,6 +98,44 @@ def artifact_preview(result, role):
     return ""
 
 
+def qa_failure_summary(detail):
+    """Stored agent results are untrusted; render only recognized diagnostic fields."""
+    stages = {
+        "prepare_run_directory": "preparing its working folder",
+        "authorization": "checking task permission",
+        "clone": "copying the code",
+        "checkout": "selecting the exact commit",
+        "prepare_environment": "preparing the test environment",
+        "record_command_intent": "saving the planned check",
+        "isolation_setup": "preparing the isolated runner",
+        "command_execution": "starting or recording a check",
+        "isolation_cleanup": "cleaning up the isolated runner",
+        "record_command_result": "saving a check result",
+        "verify_worktree": "checking for code changes after a test",
+        "implementation_currency": "checking that the commit is still current",
+    }
+    categories = {
+        "os_error": "operating system error",
+        "subprocess_error": "command error",
+        "validation_error": "validation error",
+    }
+    if not isinstance(detail, dict):
+        detail = {}
+    stage, category = detail.get("stage"), detail.get("category")
+    if not isinstance(stage, str) or not isinstance(category, str):
+        return "QA could not finish its checks. Release remains blocked."
+    if stage not in stages or category not in categories:
+        return "QA could not finish its checks. Release remains blocked."
+    code = detail.get("code")
+    suffix = categories[category]
+    if category == "os_error" and isinstance(code, str) and code in errno.errorcode.values():
+        suffix += ", " + code
+    exit_code = detail.get("exit_code")
+    if category == "subprocess_error" and type(exit_code) is int and -255 <= exit_code <= 255:
+        suffix += f", exit {exit_code}"
+    return f"QA could not finish while {stages[stage]} ({suffix}). Release remains blocked."
+
+
 def render_message(item, task, handoff, *, role="", target=""):
     """Readable Switch/Discord messages with an opaque durable audit reference."""
     payload = item["payload"]
@@ -129,11 +168,14 @@ def render_message(item, task, handoff, *, role="", target=""):
     elif status == "not_reproduced":
         text = "The configured reproduction did not confirm the suspected defect."
     elif status == "qa_failed":
-        text = "The tests failed. I'm sending the findings back to Engineering for correction."
-        commands = result.get("commands", [])
-        failed = sum(c.get("exit_code") != 0 or bool(c.get("timed_out")) for c in commands)
-        if commands:
-            text += f" {failed} of {len(commands)} configured checks failed."
+        if result.get("reason") == "validation_launch_or_checkout_failed":
+            text = qa_failure_summary(result.get("failure_detail"))
+        else:
+            text = "The tests failed. I'm sending the findings back to Engineering for correction."
+            commands = result.get("commands", [])
+            failed = sum(c.get("exit_code") != 0 or bool(c.get("timed_out")) for c in commands)
+            if commands:
+                text += f" {failed} of {len(commands)} configured checks failed."
     elif status == "review_accepted":
         text = (
             "I've completed the independent review and found no issues under the configured checks."

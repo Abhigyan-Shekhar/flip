@@ -1,5 +1,13 @@
 # Phase 1 demo runbook
 
+## Current recovery status
+
+See [the recovery report](PHASE1_RECOVERY_2026-11-05.md). The old task remains
+FAILED. Use a fresh task, thread and disposable target; never overwrite its result.
+The recovery host has healthy storage and a new clean baseline, but the original
+private seven-role runtime, signed app setup and editable video project were not
+transferred. Existing PM/Research health is not seven-role acceptance.
+
 ## Operator setup
 
 Use a disposable `codex/demo-*` branch in the explicitly selected FLIP repository.
@@ -46,7 +54,12 @@ revision's evidence. The pinned baseline is
    and gate tests. Use an image containing all required dependencies. Reviewer
    must inspect the real diff and emit its established accepted/findings schema.
    `require_isolation` must stay enabled. Preserve independent identities and
-   exact-SHA invalidation/correction behavior.
+   exact-SHA invalidation/correction behavior. On Docker Desktop, use a runner
+   image trusting only its fixed `/workspace` mount. For a large Python suite,
+   inspect actual temporary-space and PID needs; `tmpfs_mb` is bounded and part
+   of the validation identity. Changing it requires a fresh handoff. Host free
+   space alone does not establish container capacity. A full suite with host
+   executable fixtures is not automatically compatible with restricted `/tmp`.
 7. Set `SWITCHCREW_ENGINEERING_JOB_KEY=green-check`, the explicit Release repository
    and disposable base, and the registered identities. Reuse the existing managed
    Console provisioning **after** human Engineering approval; preserve its
@@ -60,9 +73,10 @@ revision's evidence. The pinned baseline is
    are intentionally refused.
 9. Configure Release's private repository-scoped credential and API-only guarded
    merge credential/required checks. Provide actual GitHub check publishers; local
-   passing tests alone do not create required GitHub checks. Draft-to-ready is an
-   explicit human GitHub action in the current implementation. `/flip` ready-PR
-   support is not implemented.
+   passing tests alone do not create required GitHub checks. Signed
+   `/flip ready-for-review` is implemented and automatically tested. Configure its
+   verified human/thread mapping and service before attempting it live. It is a
+   separate action from merge approval and has not completed this live story.
 10. Run the read-only, repeatable preflight:
 
     ```sh
@@ -89,13 +103,15 @@ revision's evidence. The pinned baseline is
 4. Send **Fix it. Add a regression test and create a PR. Don't merge without my approval.**
    Observe an Engineering proposal with no session before approval.
 5. The actual human approver uses `/flip approve-engineering` with the displayed
-   task and task version. A test operator must not impersonate that decision.
+   task and current task version. A test operator must not impersonate that decision.
 6. Observe managed Engineering's commit SHA, independent QA, real Reviewer and
    Security receipts. A failed check must prevent release; corrections need
    fresh evidence at the new SHA. Inspect `/flip logs TASK_UUID`.
 7. The actual human uses `/flip approve-release` with task, current task version
-   and full verified SHA. Observe the real draft PR URL. Make it ready explicitly
-   in GitHub; current implementation cannot do that solely through Discord.
+   and full verified SHA. Observe the real draft PR URL. The human then uses
+   `/flip ready-for-review` with the task and exact full SHA in the original
+   verified thread. Confirm GitHub actually reports `draft: false`; this action
+   does not approve or execute a merge.
 8. Inspect `/flip merge-status`; obtain real current required GitHub checks.
    Human uses `/flip approve-merge` with task, full SHA and **merge version**,
    then `/flip merge` with the same task/SHA. Observe GitHub's actual merge SHA.

@@ -53,3 +53,24 @@ The source registry contains 17 roles (`src/switchcrew/agents.py`). The list bel
 - The longer Discord walkthrough and additional real footage are therefore incomplete. Existing source footage in the private demo directory is authentic but covers only the captured PM/Research messages.
 - The urllib3 issue #5181 baseline reproduction is real and isolated, but no Engineering change was requested or approved for that repository during this rehearsal. No upstream code or PR was changed.
 - A consented recording and speech provider are still required for Voice/Notes acceptance.
+
+## Green Check story and second-Mac recovery
+
+This section supersedes earlier role-wide statements for this specific story.
+Historical live evidence belongs to the original host; new operator diagnostics
+are separate. See [Phase 1 acceptance](PHASE1_ACCEPTANCE.md) and
+[the recovery report](PHASE1_RECOVERY_2026-11-05.md).
+
+| Capability | Implemented / automatically tested | Demonstrated live for this story |
+| --- | --- | --- |
+| Discord investigation, Security reproduction, Knowledge graph retrieval | Yes; scope/replay and evidence validation tested | Yes, original investigation receipts |
+| Signed human Engineering approval and official managed fix | Yes | Yes, original task/session and `d8e0562…` |
+| Independent complete QA after managed fix | Exact-SHA runner and safe failure diagnostics tested | Failed original task; new operator assertion + 102 scanner/gate tests pass, broad isolated suite still fails |
+| Security after managed fix | Independent policy and fail-closed parser tested | Original secret-only Trivy scan passed; no dependency-coverage claim |
+| Independent Reviewer, human publication and workflow PR | Existing workflow tested | Not completed for this story |
+| Signed `/flip ready-for-review` | Implemented and automatically tested | Not completed for this story |
+| Receipt-derived GitHub check publication | Implemented; absent/stale evidence refusal tested | Not completed for this story; source-branch Actions are separate |
+| Separate human merge approval and Discord guarded merge | Implemented and automatically tested | Not completed for this story |
+| Fresh baseline, full-revision graph and byte-checked citations | Supported operator tooling | Re-indexed on second Mac; operator-selected scanner/gate tests, not a new live handoff |
+| Python-equipped official managed image | Built and version/bundle-checked locally | Prepared only; no new managed assignment |
+| Final narrated merge video | Previous partial preview is historical | Unfinished; original editable project absent on this Mac |

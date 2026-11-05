@@ -83,3 +83,13 @@ in the prepared development environment. Tests invoke real subprocesses and Git.
 
 All live status and unresolved work are in `PHASE1_ACCEPTANCE.md`. A historical
 successful answer-file pipeline is not acceptance of this scanner workflow.
+
+## Recovery status
+
+The [second-Mac recovery report](PHASE1_RECOVERY_2026-11-05.md) records safe QA
+failure details, preserved completed-command evidence, bounded temporary storage,
+a clean baseline index and prepared Python-equipped official controller image.
+Signed `ready-for-review` is implemented and tested. These changes do not complete
+the unchecked live story above: the original task remains FAILED, the broad
+isolated historical suite has no passing receipt, and no workflow PR, merge or
+final narrated video is claimed.

@@ -34,3 +34,15 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.hatch.build.targets.sdist]
+# Local runtime state, credentials, nested demo clones and vendor bundles are not source artifacts.
+only-include = [
+  "src", "tests", "scripts", "deploy", "docs", "research", ".github",
+  "pyproject.toml", "uv.lock", "README.md", "Dockerfile", "compose.yaml",
+  ".env.example", ".python-version", ".dockerignore", ".gitignore",
+]
+exclude = [
+  "/deploy/console-controller/agent-controller.mjs",
+  "/deploy/console-controller/shared-host.mjs",
+]

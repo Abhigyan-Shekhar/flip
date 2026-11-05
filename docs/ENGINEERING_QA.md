@@ -122,6 +122,15 @@ keeps the assignment pending instead of completing it as blocked. The managed
 agent/location identity must validate again before a receipt is accepted. A
 non-object or otherwise malformed receipt fails implementation verification.
 
+QA setup and launch failures include a bounded `failure_detail`: a fixed stage,
+exception category, zero-based command index where applicable, and a recognized
+OS error name or bounded process exit code. No exception message, private path,
+command arguments, stderr or chained exception text is copied into this detail.
+Discord displays only recognized labels and codes. Earlier completed command
+receipts survive later setup/cleanup failures. Working-directory preparation is
+also inside the recorded failure boundary. This diagnosis does not turn a failed
+check into a pass or authorize a retry.
+
 QA checks implementation currency before running, after running, and before
 returning a cached result. A consumer must compare both
 `implementation_assignment` and `tested_revision` with the currently selected

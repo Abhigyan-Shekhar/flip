@@ -1,0 +1,407 @@
+{
+  "status": {
+    "status": "ok",
+    "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+    "evidence": [],
+    "warnings": [],
+    "untrusted_source_excerpts": [],
+    "verification": "static_evidence",
+    "repo_root": "$BASELINE_CHECKOUT",
+    "repo_id": "github.com/Abhigyan-Shekhar/flip",
+    "repo_url": "https://github.com/Abhigyan-Shekhar/flip",
+    "local_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+    "working_tree_dirty": false,
+    "repository": {
+      "repo_root": "$BASELINE_CHECKOUT",
+      "repo_id": "github.com/Abhigyan-Shekhar/flip"
+    }
+  },
+  "change": {
+    "status": "ok",
+    "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+    "evidence": [],
+    "warnings": [
+      "missing_call_edges_do_not_prove_no_dependencies",
+      "historical_file_links_are_not_symbol_constraints",
+      "no_recorded_historical_file_associations"
+    ],
+    "untrusted_source_excerpts": [],
+    "verification": "static_evidence",
+    "precision": "symbol",
+    "targets": [
+      {
+        "uid": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py::SecurityRunner.run",
+        "path": "src/switchcrew/security.py",
+        "qualname": "SecurityRunner.run",
+        "lineno": 270,
+        "end_lineno": 551
+      },
+      {
+        "uid": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py::_extract_findings",
+        "path": "src/switchcrew/security.py",
+        "qualname": "_extract_findings",
+        "lineno": 145,
+        "end_lineno": 253
+      }
+    ],
+    "caller_paths": [
+      {
+        "path": [
+          "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py::SecurityRunner.run",
+          "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py::_extract_findings"
+        ],
+        "confidence": [
+          "exact"
+        ],
+        "resolution": [
+          "statically_resolved_lexical"
+        ],
+        "target_uid": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py::_extract_findings",
+        "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3"
+      }
+    ],
+    "must_preserve": [],
+    "review": [],
+    "owners": [
+      {
+        "status": "ok",
+        "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+        "evidence": [],
+        "warnings": [
+          "Git activity is not attested symbol ownership",
+          "git_and_github_identities_are_not_joined",
+          "PR review is file-associated expertise, not explicit ownership"
+        ],
+        "untrusted_source_excerpts": [],
+        "verification": "static_evidence",
+        "file": "src/switchcrew/security.py",
+        "ownership": "inferred_maintainer",
+        "items": [
+          {
+            "uid": "github.com/Abhigyan-Shekhar/flip:identity:git:da1a443f576762d8e818f4115f2493b065c745d769c4c3b5e0aad621ee98341a",
+            "name": "Abhigyan Shekhar",
+            "identity_basis": "git_author",
+            "commits": 5,
+            "evidence_commits": [
+              "github.com/Abhigyan-Shekhar/flip:commit:c26948e4d4205b45d54a2faad86fb486d78576f3",
+              "github.com/Abhigyan-Shekhar/flip:commit:6c5989545037eec03b9ee0c851fe00fe9a7b032e",
+              "github.com/Abhigyan-Shekhar/flip:commit:1f45141886c573c744d5323133ca7965bc96a22b",
+              "github.com/Abhigyan-Shekhar/flip:commit:9dad86bdc91daa786c8e5a5b2c4b5fe3246f20b7",
+              "github.com/Abhigyan-Shekhar/flip:commit:8830491bc243b9b0f7396cb81f383a6d2680acd5"
+            ]
+          }
+        ],
+        "inferred_maintainers": [
+          {
+            "uid": "github.com/Abhigyan-Shekhar/flip:identity:git:da1a443f576762d8e818f4115f2493b065c745d769c4c3b5e0aad621ee98341a",
+            "name": "Abhigyan Shekhar",
+            "identity_basis": "git_author",
+            "commits": 5,
+            "evidence_commits": [
+              "github.com/Abhigyan-Shekhar/flip:commit:c26948e4d4205b45d54a2faad86fb486d78576f3",
+              "github.com/Abhigyan-Shekhar/flip:commit:6c5989545037eec03b9ee0c851fe00fe9a7b032e",
+              "github.com/Abhigyan-Shekhar/flip:commit:1f45141886c573c744d5323133ca7965bc96a22b",
+              "github.com/Abhigyan-Shekhar/flip:commit:9dad86bdc91daa786c8e5a5b2c4b5fe3246f20b7",
+              "github.com/Abhigyan-Shekhar/flip:commit:8830491bc243b9b0f7396cb81f383a6d2680acd5"
+            ]
+          }
+        ],
+        "reviewer_evidence": [],
+        "truncated": []
+      },
+      {
+        "status": "ok",
+        "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+        "evidence": [],
+        "warnings": [
+          "Git activity is not attested symbol ownership",
+          "git_and_github_identities_are_not_joined",
+          "PR review is file-associated expertise, not explicit ownership"
+        ],
+        "untrusted_source_excerpts": [],
+        "verification": "static_evidence",
+        "file": "src/switchcrew/security_gate.py",
+        "ownership": "inferred_maintainer",
+        "items": [
+          {
+            "uid": "github.com/Abhigyan-Shekhar/flip:identity:git:da1a443f576762d8e818f4115f2493b065c745d769c4c3b5e0aad621ee98341a",
+            "name": "Abhigyan Shekhar",
+            "identity_basis": "git_author",
+            "commits": 2,
+            "evidence_commits": [
+              "github.com/Abhigyan-Shekhar/flip:commit:c26948e4d4205b45d54a2faad86fb486d78576f3",
+              "github.com/Abhigyan-Shekhar/flip:commit:8830491bc243b9b0f7396cb81f383a6d2680acd5"
+            ]
+          }
+        ],
+        "inferred_maintainers": [
+          {
+            "uid": "github.com/Abhigyan-Shekhar/flip:identity:git:da1a443f576762d8e818f4115f2493b065c745d769c4c3b5e0aad621ee98341a",
+            "name": "Abhigyan Shekhar",
+            "identity_basis": "git_author",
+            "commits": 2,
+            "evidence_commits": [
+              "github.com/Abhigyan-Shekhar/flip:commit:c26948e4d4205b45d54a2faad86fb486d78576f3",
+              "github.com/Abhigyan-Shekhar/flip:commit:8830491bc243b9b0f7396cb81f383a6d2680acd5"
+            ]
+          }
+        ],
+        "reviewer_evidence": [],
+        "truncated": []
+      }
+    ],
+    "file_associations": [],
+    "coverage": {
+      "affected_files": [
+        {
+          "file_uid": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py",
+          "path": "src/switchcrew/security.py"
+        }
+      ],
+      "incoming_call_hops": 2,
+      "cross_module_call_resolution": "recorded_static_imports_including_explicit_reexports",
+      "no_missing_edges_inferred": true,
+      "historical_file_links_are_not_symbol_constraints": true
+    },
+    "limits": {
+      "sources": 20,
+      "excerpt_chars": 2000,
+      "total_excerpt_chars": 12000,
+      "caller_paths": 100,
+      "file_associations": 20,
+      "affected_files": 200,
+      "ownership_files": 50
+    },
+    "truncated": [],
+    "repository": {
+      "repo_root": "$BASELINE_CHECKOUT",
+      "repo_id": "github.com/Abhigyan-Shekhar/flip"
+    }
+  },
+  "parser": {
+    "status": "ok",
+    "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+    "evidence": [],
+    "warnings": [],
+    "untrusted_source_excerpts": [],
+    "verification": "static_evidence",
+    "checked_evidence": [
+      {
+        "id": "348f752f2bd77b0f2f745338",
+        "kind": "code",
+        "ref": {
+          "path": "src/switchcrew/security.py",
+          "start": 210,
+          "end": 253
+        },
+        "title": "src/switchcrew/security.py:210\u2013253",
+        "text": "                        + \", \".join(map(str, vulnerability.get(\"fix_versions\", []))),\n                        \"evidence\": vulnerability[\"id\"],\n                    }\n                )\n        return items\n    # Trivy omits Results entirely when a successful scan has no findings.\n    # Require its native report envelope so arbitrary empty JSON stays blocked.\n    if (\n        \"Results\" not in data\n        and data.get(\"SchemaVersion\") == 2\n        and data.get(\"ArtifactType\") in {\"filesystem\", \"repository\", \"container_image\"}\n        and isinstance(data.get(\"ArtifactName\"), str)\n        and bool(data[\"ArtifactName\"])\n        and isinstance(data.get(\"Trivy\"), dict)\n        and isinstance(data[\"Trivy\"].get(\"Version\"), str)\n        and bool(data[\"Trivy\"][\"Version\"])\n    ):\n        return []\n    results = data.get(\"Results\")\n    if isinstance(results, list):\n        items = []\n        for result in results:\n            if not isinstance(result, dict):\n                return None\n            for key in (\"Misconfigurations\", \"Vulnerabilities\", \"Secrets\"):\n                entries = result.get(key, [])\n                if not isinstance(entries, list):\n                    return None\n                for entry in entries:\n                    if not isinstance(entry, dict):\n                        return None\n                    items.append(\n                        {\n                            \"file\": result.get(\"Target\", \"\"),\n                            \"category\": {\n                                \"Misconfigurations\": \"configuration\",\n                                \"Vulnerabilities\": \"dependency\",\n                                \"Secrets\": \"secret\",\n                            }[key],\n                            **entry,\n                        }\n                    )\n        return items\n    return None\n",
+        "digest": "6879ba3f489063144a3d5a715019609c3b0e5b7c8334b74dee9da621687fb1fc",
+        "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+        "uri": "https://github.com/Abhigyan-Shekhar/flip/blob/c26948e4d4205b45d54a2faad86fb486d78576f3/src/switchcrew/security.py#L210-L253",
+        "graph": {
+          "nodes": [
+            {
+              "id": "github.com/Abhigyan-Shekhar/flip",
+              "labels": [
+                "Project"
+              ],
+              "label": "github.com/Abhigyan-Shekhar/flip"
+            },
+            {
+              "id": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py",
+              "labels": [
+                "File"
+              ],
+              "label": "src/switchcrew/security.py"
+            }
+          ],
+          "edges": [
+            {
+              "source": "github.com/Abhigyan-Shekhar/flip",
+              "target": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py",
+              "edge_type": "CONTAINS",
+              "relation": "CONTAINS"
+            }
+          ]
+        },
+        "verification": "source_bytes_and_native_graph",
+        "binding": false
+      }
+    ],
+    "repository": {
+      "repo_root": "$BASELINE_CHECKOUT",
+      "repo_id": "github.com/Abhigyan-Shekhar/flip"
+    }
+  },
+  "gate": {
+    "status": "ok",
+    "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+    "evidence": [],
+    "warnings": [],
+    "untrusted_source_excerpts": [],
+    "verification": "static_evidence",
+    "checked_evidence": [
+      {
+        "id": "7b58be250eb0dcc4eb7920fb",
+        "kind": "code",
+        "ref": {
+          "path": "src/switchcrew/security_gate.py",
+          "start": 314,
+          "end": 365
+        },
+        "title": "src/switchcrew/security_gate.py:314\u2013365",
+        "text": "class GateSecurityExecutor:\n    \"\"\"Validate a persisted gate assignment then run SecurityRunner at its SHA.\"\"\"\n\n    def __init__(self, store, recipient, runner):\n        self.store = store\n        self.recipient = recipient\n        self.runner = runner\n\n    async def __call__(self, state):\n        handoff_id = state.get(\"handoff_id\") if isinstance(state, dict) else None\n        handoff = self.store.get_handoff(handoff_id) if handoff_id else None\n        task = self.store.get_task(handoff[\"task_id\"]) if handoff else None\n        source = (task or {}).get(\"source\", {})\n        if (\n            not handoff\n            or handoff[\"recipient\"] != self.recipient\n            or handoff[\"status\"] not in {\"pending\", \"accepted\"}\n            or not source.get(\"security_gate\")\n            or state.get(\"task_id\") != task[\"id\"]\n        ):\n            return {\"status\": \"blocked\", \"reason\": \"security_gate_scope_denied\"}\n        gate = self.store.connection.execute(\n            \"SELECT * FROM security_gates WHERE security_task_id=? AND security_handoff_id=?\",\n            (task[\"id\"], handoff_id),\n        ).fetchone()\n        if not gate or gate[\"security_recipient\"] != self.recipient:\n            return {\"status\": \"blocked\", \"reason\": \"security_gate_mapping_missing\"}\n        allowed = json.loads(gate[\"policy\"])[\"allowed_repo_roots\"]\n        checkout = Path(source.get(\"checkout\", \"\")).resolve()\n        revision = source.get(\"revision\")\n        if (\n            not _within_allowed_root(checkout, allowed)\n            or source.get(\"source_evidence_task_id\") != gate[\"task_id\"]\n            or source.get(\"engineering_handoff_id\") != gate[\"engineering_handoff_id\"]\n            or source.get(\"revision\") != gate[\"revision\"]\n            or source.get(\"checkout\") != str(checkout)\n        ):\n            return {\"status\": \"blocked\", \"reason\": \"security_gate_checkout_denied\"}\n        before = self._current_assignment(gate, source, checkout, revision)\n        if before is not None:\n            return {\"status\": \"blocked\", \"reason\": before}\n        report = await self.runner.run(checkout, revision)\n        after = self._current_assignment(gate, source, checkout, revision)\n        if after is not None:\n            return {\"status\": \"blocked\", \"reason\": after}\n        result = report.to_dict()\n        # Display only: authorization continues to validate the persisted handoff,\n        # source mapping, policy and revision independently in require_security_gate.\n        threshold = _SEVERITY[json.loads(gate[\"policy\"])[\"block_at_or_above\"]]\n        successful = (\n            result.get(\"revision\") == revision\n            and result.get(\"status\") in {\"verified_success\", \"findings\"}\n",
+        "digest": "a935c3f5d6ee0ecbebe144c337c2ef8172670133cec2446186158e04805cdd5b",
+        "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+        "uri": "https://github.com/Abhigyan-Shekhar/flip/blob/c26948e4d4205b45d54a2faad86fb486d78576f3/src/switchcrew/security_gate.py#L314-L365",
+        "graph": {
+          "nodes": [
+            {
+              "id": "github.com/Abhigyan-Shekhar/flip",
+              "labels": [
+                "Project"
+              ],
+              "label": "github.com/Abhigyan-Shekhar/flip"
+            },
+            {
+              "id": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security_gate.py",
+              "labels": [
+                "File"
+              ],
+              "label": "src/switchcrew/security_gate.py"
+            }
+          ],
+          "edges": [
+            {
+              "source": "github.com/Abhigyan-Shekhar/flip",
+              "target": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security_gate.py",
+              "edge_type": "CONTAINS",
+              "relation": "CONTAINS"
+            }
+          ]
+        },
+        "verification": "source_bytes_and_native_graph",
+        "binding": false
+      }
+    ],
+    "repository": {
+      "repo_root": "$BASELINE_CHECKOUT",
+      "repo_id": "github.com/Abhigyan-Shekhar/flip"
+    }
+  },
+  "reopened": [
+    {
+      "status": "ok",
+      "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+      "evidence": [],
+      "warnings": [],
+      "untrusted_source_excerpts": [],
+      "verification": "static_evidence",
+      "checked_evidence": [
+        {
+          "id": "348f752f2bd77b0f2f745338",
+          "kind": "code",
+          "ref": {
+            "path": "src/switchcrew/security.py",
+            "start": 210,
+            "end": 253
+          },
+          "title": "src/switchcrew/security.py:210\u2013253",
+          "text": "                        + \", \".join(map(str, vulnerability.get(\"fix_versions\", []))),\n                        \"evidence\": vulnerability[\"id\"],\n                    }\n                )\n        return items\n    # Trivy omits Results entirely when a successful scan has no findings.\n    # Require its native report envelope so arbitrary empty JSON stays blocked.\n    if (\n        \"Results\" not in data\n        and data.get(\"SchemaVersion\") == 2\n        and data.get(\"ArtifactType\") in {\"filesystem\", \"repository\", \"container_image\"}\n        and isinstance(data.get(\"ArtifactName\"), str)\n        and bool(data[\"ArtifactName\"])\n        and isinstance(data.get(\"Trivy\"), dict)\n        and isinstance(data[\"Trivy\"].get(\"Version\"), str)\n        and bool(data[\"Trivy\"][\"Version\"])\n    ):\n        return []\n    results = data.get(\"Results\")\n    if isinstance(results, list):\n        items = []\n        for result in results:\n            if not isinstance(result, dict):\n                return None\n            for key in (\"Misconfigurations\", \"Vulnerabilities\", \"Secrets\"):\n                entries = result.get(key, [])\n                if not isinstance(entries, list):\n                    return None\n                for entry in entries:\n                    if not isinstance(entry, dict):\n                        return None\n                    items.append(\n                        {\n                            \"file\": result.get(\"Target\", \"\"),\n                            \"category\": {\n                                \"Misconfigurations\": \"configuration\",\n                                \"Vulnerabilities\": \"dependency\",\n                                \"Secrets\": \"secret\",\n                            }[key],\n                            **entry,\n                        }\n                    )\n        return items\n    return None\n",
+          "digest": "6879ba3f489063144a3d5a715019609c3b0e5b7c8334b74dee9da621687fb1fc",
+          "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+          "uri": "https://github.com/Abhigyan-Shekhar/flip/blob/c26948e4d4205b45d54a2faad86fb486d78576f3/src/switchcrew/security.py#L210-L253",
+          "graph": {
+            "nodes": [
+              {
+                "id": "github.com/Abhigyan-Shekhar/flip",
+                "labels": [
+                  "Project"
+                ],
+                "label": "github.com/Abhigyan-Shekhar/flip"
+              },
+              {
+                "id": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py",
+                "labels": [
+                  "File"
+                ],
+                "label": "src/switchcrew/security.py"
+              }
+            ],
+            "edges": [
+              {
+                "source": "github.com/Abhigyan-Shekhar/flip",
+                "target": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py",
+                "edge_type": "CONTAINS",
+                "relation": "CONTAINS"
+              }
+            ]
+          },
+          "verification": "source_bytes_and_native_graph",
+          "binding": false
+        }
+      ],
+      "repository": {
+        "repo_root": "$BASELINE_CHECKOUT",
+        "repo_id": "github.com/Abhigyan-Shekhar/flip"
+      }
+    },
+    {
+      "status": "ok",
+      "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+      "evidence": [],
+      "warnings": [],
+      "untrusted_source_excerpts": [],
+      "verification": "static_evidence",
+      "checked_evidence": [
+        {
+          "id": "7b58be250eb0dcc4eb7920fb",
+          "kind": "code",
+          "ref": {
+            "path": "src/switchcrew/security_gate.py",
+            "start": 314,
+            "end": 365
+          },
+          "title": "src/switchcrew/security_gate.py:314\u2013365",
+          "text": "class GateSecurityExecutor:\n    \"\"\"Validate a persisted gate assignment then run SecurityRunner at its SHA.\"\"\"\n\n    def __init__(self, store, recipient, runner):\n        self.store = store\n        self.recipient = recipient\n        self.runner = runner\n\n    async def __call__(self, state):\n        handoff_id = state.get(\"handoff_id\") if isinstance(state, dict) else None\n        handoff = self.store.get_handoff(handoff_id) if handoff_id else None\n        task = self.store.get_task(handoff[\"task_id\"]) if handoff else None\n        source = (task or {}).get(\"source\", {})\n        if (\n            not handoff\n            or handoff[\"recipient\"] != self.recipient\n            or handoff[\"status\"] not in {\"pending\", \"accepted\"}\n            or not source.get(\"security_gate\")\n            or state.get(\"task_id\") != task[\"id\"]\n        ):\n            return {\"status\": \"blocked\", \"reason\": \"security_gate_scope_denied\"}\n        gate = self.store.connection.execute(\n            \"SELECT * FROM security_gates WHERE security_task_id=? AND security_handoff_id=?\",\n            (task[\"id\"], handoff_id),\n        ).fetchone()\n        if not gate or gate[\"security_recipient\"] != self.recipient:\n            return {\"status\": \"blocked\", \"reason\": \"security_gate_mapping_missing\"}\n        allowed = json.loads(gate[\"policy\"])[\"allowed_repo_roots\"]\n        checkout = Path(source.get(\"checkout\", \"\")).resolve()\n        revision = source.get(\"revision\")\n        if (\n            not _within_allowed_root(checkout, allowed)\n            or source.get(\"source_evidence_task_id\") != gate[\"task_id\"]\n            or source.get(\"engineering_handoff_id\") != gate[\"engineering_handoff_id\"]\n            or source.get(\"revision\") != gate[\"revision\"]\n            or source.get(\"checkout\") != str(checkout)\n        ):\n            return {\"status\": \"blocked\", \"reason\": \"security_gate_checkout_denied\"}\n        before = self._current_assignment(gate, source, checkout, revision)\n        if before is not None:\n            return {\"status\": \"blocked\", \"reason\": before}\n        report = await self.runner.run(checkout, revision)\n        after = self._current_assignment(gate, source, checkout, revision)\n        if after is not None:\n            return {\"status\": \"blocked\", \"reason\": after}\n        result = report.to_dict()\n        # Display only: authorization continues to validate the persisted handoff,\n        # source mapping, policy and revision independently in require_security_gate.\n        threshold = _SEVERITY[json.loads(gate[\"policy\"])[\"block_at_or_above\"]]\n        successful = (\n            result.get(\"revision\") == revision\n            and result.get(\"status\") in {\"verified_success\", \"findings\"}\n",
+          "digest": "a935c3f5d6ee0ecbebe144c337c2ef8172670133cec2446186158e04805cdd5b",
+          "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+          "uri": "https://github.com/Abhigyan-Shekhar/flip/blob/c26948e4d4205b45d54a2faad86fb486d78576f3/src/switchcrew/security_gate.py#L314-L365",
+          "graph": {
+            "nodes": [
+              {
+                "id": "github.com/Abhigyan-Shekhar/flip",
+                "labels": [
+                  "Project"
+                ],
+                "label": "github.com/Abhigyan-Shekhar/flip"
+              },
+              {
+                "id": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security_gate.py",
+                "labels": [
+                  "File"
+                ],
+                "label": "src/switchcrew/security_gate.py"
+              }
+            ],
+            "edges": [
+              {
+                "source": "github.com/Abhigyan-Shekhar/flip",
+                "target": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security_gate.py",
+                "edge_type": "CONTAINS",
+                "relation": "CONTAINS"
+              }
+            ]
+          },
+          "verification": "source_bytes_and_native_graph",
+          "binding": false
+        }
+      ],
+      "repository": {
+        "repo_root": "$BASELINE_CHECKOUT",
+        "repo_id": "github.com/Abhigyan-Shekhar/flip"
+      }
+    }
+  ]
+}
