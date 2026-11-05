@@ -7,6 +7,15 @@ import pytest
 from switchcrew.security import ScannerConfig, SecurityRunner
 
 
+def trivy_envelope():
+    return {
+        "SchemaVersion": 2,
+        "ArtifactName": "/workspace",
+        "ArtifactType": "filesystem",
+        "Trivy": {"Version": "0.76.1"},
+    }
+
+
 def committed_repo(path):
     path.mkdir()
     subprocess.run(["git", "init", str(path)], check=True, capture_output=True)
@@ -99,6 +108,7 @@ async def test_operator_can_configure_scanner_finding_exit_code(tmp_path):
 async def test_trivy_native_finding_preserves_severity_file_and_redaction(tmp_path):
     root, revision = committed_repo(tmp_path / "repo")
     payload = {
+        **trivy_envelope(),
         "Results": [
             {
                 "Target": "app.py",
@@ -131,7 +141,7 @@ async def test_trivy_native_finding_preserves_severity_file_and_redaction(tmp_pa
 @pytest.mark.parametrize("result", [None, {"Secrets": {}}, {"Secrets": [None]}])
 async def test_malformed_trivy_results_fail_closed(tmp_path, result):
     root, revision = committed_repo(tmp_path / "repo")
-    code = "print(" + repr(json.dumps({"Results": [result]})) + ")"
+    code = "print(" + repr(json.dumps({**trivy_envelope(), "Results": [result]})) + ")"
     report = await SecurityRunner(
         [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
     ).run(root, revision)
@@ -370,3 +380,66 @@ async def test_clean_native_dependency_report_still_requires_database_freshness(
     ).run(root, revision)
     assert report.status == "degraded_coverage"
     assert report.scanners[0]["status"] == "degraded"
+
+
+@pytest.mark.parametrize("results", ["omitted", [], [{}]])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("SchemaVersion", None), ("SchemaVersion", 1), ("SchemaVersion", 2.0),
+        ("ArtifactType", None), ("ArtifactType", []), ("ArtifactType", "unknown"),
+        ("ArtifactName", None), ("ArtifactName", ""), ("ArtifactName", "  "),
+        ("Trivy", None), ("Trivy", {}), ("Trivy", {"Version": 1}),
+        ("Trivy", {"Version": ""}), ("Trivy", {"Version": "  "}),
+    ],
+)
+async def test_incomplete_trivy_envelope_fails_closed(tmp_path, results, field, value):
+    root, revision = committed_repo(tmp_path / "repo")
+    payload = trivy_envelope()
+    if value is None:
+        del payload[field]
+    else:
+        payload[field] = value
+    if results != "omitted":
+        payload["Results"] = results
+    code = "print(" + repr(json.dumps(payload)) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    assert report.status == "scanner_failed"
+    assert not report.findings
+
+
+@pytest.mark.parametrize("payload", [{"Results": []}, {"Results": [{}]}])
+async def test_results_alone_never_report_clean(tmp_path, payload):
+    root, revision = committed_repo(tmp_path / "repo")
+    code = "print(" + repr(json.dumps(payload)) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    assert report.status == "scanner_failed"
+
+
+@pytest.mark.parametrize("artifact_type", ["filesystem", "repository", "container_image"])
+@pytest.mark.parametrize("results", ["omitted", [], [{}], None, {}])
+async def test_native_trivy_results_require_valid_shape(tmp_path, artifact_type, results):
+    root, revision = committed_repo(tmp_path / "repo")
+    payload = {**trivy_envelope(), "ArtifactType": artifact_type}
+    if results != "omitted":
+        payload["Results"] = results
+    code = "print(" + repr(json.dumps(payload)) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    expected = "scanner_failed" if results is None or results == {} else "verified_success"
+    assert report.status == expected
+
+
+@pytest.mark.parametrize("payload", [[], {"findings": []}, {"issues": []}])
+async def test_normalized_clean_reports_do_not_require_trivy_envelope(tmp_path, payload):
+    root, revision = committed_repo(tmp_path / "repo")
+    code = "print(" + repr(json.dumps(payload)) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("normalized", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    assert report.status == "verified_success"

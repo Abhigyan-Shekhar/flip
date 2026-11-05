@@ -212,18 +212,22 @@ def _extract_findings(data: Any) -> list[Any] | None:
                     }
                 )
         return items
-    # Trivy omits Results entirely when a successful scan has no findings.
-    # Require its native report envelope so arbitrary empty JSON stays blocked.
-    if (
-        "Results" not in data
-        and data.get("SchemaVersion") == 2
+    # Validate the native envelope before accepting Results, including empty lists.
+    # Incomplete reports must never become a successful clean verdict.
+    if not (
+        type(data.get("SchemaVersion")) is int
+        and data["SchemaVersion"] == 2
+        and isinstance(data.get("ArtifactType"), str)
         and data.get("ArtifactType") in {"filesystem", "repository", "container_image"}
         and isinstance(data.get("ArtifactName"), str)
-        and bool(data["ArtifactName"])
+        and bool(data["ArtifactName"].strip())
         and isinstance(data.get("Trivy"), dict)
         and isinstance(data["Trivy"].get("Version"), str)
-        and bool(data["Trivy"]["Version"])
+        and bool(data["Trivy"]["Version"].strip())
     ):
+        return None
+    # Trivy omits Results entirely when a successful scan has no findings.
+    if "Results" not in data:
         return []
     results = data.get("Results")
     if isinstance(results, list):
