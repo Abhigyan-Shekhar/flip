@@ -27,6 +27,9 @@ class GitHubPublisher:
         self.transport = transport
 
     async def request(self, method, path, **kwargs):
+        return await self._request(method, f"/repos/{self.repository}/{path}", **kwargs)
+
+    async def _request(self, method, path, **kwargs):
         async with httpx.AsyncClient(
             base_url="https://api.github.com",
             timeout=30,
@@ -38,11 +41,26 @@ class GitHubPublisher:
             },
             transport=self.transport,
         ) as client:
-            response = await client.request(method, f"/repos/{self.repository}/{path}", **kwargs)
+            response = await client.request(method, path, **kwargs)
             if response.status_code == 404 and method == "GET":
                 return None
             response.raise_for_status()
             return response.json()
+
+    async def mark_ready(self, node_id, mutation_id):
+        result = await self._request(
+            "POST",
+            "/graphql",
+            json={
+                "query": "mutation($input: MarkPullRequestReadyForReviewInput!) { "
+                "markPullRequestReadyForReview(input: $input) { pullRequest { id isDraft } } }",
+                "variables": {"input": {"pullRequestId": node_id, "clientMutationId": mutation_id}},
+            },
+        )
+        if result.get("errors") or result.get("data", {}).get(
+            "markPullRequestReadyForReview", {}
+        ).get("pullRequest") != {"id": node_id, "isDraft": False}:
+            raise ValueError("GitHub did not confirm the pull request is ready")
 
     async def branch_revision(self, branch):
         data = await self.request("GET", "git/ref/heads/" + quote(branch, safe=""))
@@ -165,9 +183,42 @@ class GitHubPublisher:
 
 
 class ReleaseExecutor:
-    def __init__(self, workflow, ledger, agent, publisher):
+    def __init__(self, workflow, ledger, agent, publisher, *, publish_checks=False):
         self.workflow, self.ledger = workflow, ledger
         self.agent, self.publisher = agent, publisher
+        self.publish_checks = publish_checks
+
+    async def _publish_checks(self, task_id, data, pr):
+        """Mirror actual current independent receipts; never manufacture a check result."""
+        from .security_gate import require_security_gate
+
+        self.workflow.evidence(task_id)
+        self.workflow.review_evidence(task_id)
+        require_security_gate(self.workflow.store, task_id, data)
+        gate = self.workflow.store.connection.execute(
+            "SELECT security_handoff_id,security_recipient FROM security_gates "
+            "WHERE task_id=? AND engineering_handoff_id=? AND revision=? AND status='passed'",
+            (task_id, data["engineering_handoff"], data["revision"]),
+        ).fetchone()
+        if not gate or gate["security_recipient"] in {
+            data["spec"][role] for role in ("pm", "engineering", "qa", "reviewer", "release")
+        }:
+            raise PermissionError("Independent Security receipt is required")
+        for role, handoff in (
+            ("QA", data["qa_handoff"]),
+            ("Security", gate["security_handoff_id"]),
+            ("Review", data["review_handoff"]),
+        ):
+            await self.publisher.request(
+                "POST",
+                f"statuses/{data['revision']}",
+                json={
+                    "state": "success",
+                    "context": f"FLIP / {role}",
+                    "description": f"Verified receipt {handoff}",
+                    "target_url": pr["html_url"],
+                },
+            )
 
     async def __call__(self, state):
         identity = "release-" + assignment_id(state["handoff_id"])
@@ -248,6 +299,8 @@ class ReleaseExecutor:
                     indent=2,
                 )
                 pr = await self.publisher.create(branch, revision, state["question"], body)
+            if self.publish_checks:
+                await self._publish_checks(state["task_id"], data, pr)
             receipt = {
                 "task_id": state["task_id"],
                 "objective": self.workflow.store.get_task(state["task_id"])["objective"],

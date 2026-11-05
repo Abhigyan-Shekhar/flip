@@ -14,7 +14,7 @@ from .discord import DiscordBinding, DiscordSource, DiscordThreadBinding
 
 _COMMANDS = ("status", "team", "why", "dependencies", "trace", "evidence")
 _FLIP_COMMANDS = ("status", "logs", "findings", "tasks", "help")
-_MERGE_COMMANDS = ("merge-status", "approve-merge", "merge")
+_MERGE_COMMANDS = ("ready-for-review", "merge-status", "approve-merge", "merge")
 _APPROVAL_COMMANDS = (
     "approve-engineering",
     "reject-engineering",
@@ -233,7 +233,7 @@ def _resolve(settings, payload: bytes, headers, *, now=None):
         raise ValueError("Unsupported slash arguments")
     name = selected["name"]
     expected = set() if no_task else {"task_id"}
-    if name in {"approve-merge", "merge"}:
+    if name in {"ready-for-review", "approve-merge", "merge"}:
         expected.add("revision")
     if name == "approve-merge" or name in _APPROVAL_COMMANDS:
         expected.add("version")
@@ -296,6 +296,9 @@ def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None
 
 
 async def _merge_result(service, source, name, values):
+    if name == "ready-for-review":
+        result = await service.mark_ready(values["task_id"], source.user_id, values["revision"])
+        return f"PR #{result['pr_number']} is ready for review. Merge approval is still required."
     if name == "merge-status":
         result = await service.inspect(values["task_id"])
         return (

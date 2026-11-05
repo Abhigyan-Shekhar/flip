@@ -197,7 +197,13 @@ def configured_executor(config, connection, client, store, ledger, approvals):
             publisher = GitHubPublisher(
                 release_config["repository"], release_config["base"], release_config["token"]
             )
-            return await ReleaseExecutor(approvals, ledger, connection.agent_id, publisher)(state)
+            return await ReleaseExecutor(
+                approvals,
+                ledger,
+                connection.agent_id,
+                publisher,
+                publish_checks=release_config.get("publish_verification_checks") is True,
+            )(state)
         if role == "engineering":
             try:
                 workflow = approvals.require_engineering(state, connection.agent_id)

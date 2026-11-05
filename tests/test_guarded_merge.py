@@ -18,6 +18,7 @@ from test_approval_release import (
 
 from switchcrew.api import create_app
 from switchcrew.merge import GuardedMerge
+from switchcrew.release import ReleaseExecutor
 from switchcrew.security import ScannerConfig, SecurityRunner
 from switchcrew.security_gate import GateSecurityExecutor, schedule_security_gate
 from switchcrew.settings import Settings
@@ -35,6 +36,22 @@ class MergeGitHub(GitHubDouble):
         self.count = 1
 
     def handle(self, request):
+        if "/statuses/" in request.url.path:
+            self.posts.append(json.loads(request.content))
+            return httpx.Response(201, json=json.loads(request.content))
+        if request.url.path == "/graphql":
+            self.posts.append(json.loads(request.content))
+            self.pr["draft"] = False
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "markPullRequestReadyForReview": {
+                            "pullRequest": {"id": self.pr["node_id"], "isDraft": False}
+                        }
+                    }
+                },
+            )
         if request.url.path.endswith("/pulls/1"):
             return httpx.Response(200, json=self.pr)
         if request.url.path.endswith("/check-runs"):
@@ -102,6 +119,62 @@ async def ready(flow, tmp_path):
     )
     publisher.pr["base"]["sha"] = flow[-1]
     return GuardedMerge(flow[2], publisher, ["test"]), publisher, flow[3], revision
+
+
+async def test_published_checks_are_bound_to_actual_independent_receipts(ready, flow):
+    service, publisher, task, revision = ready
+    data = flow[2].get(task)
+    executor = ReleaseExecutor(flow[2], flow[1], "release", publisher, publish_checks=True)
+    before = len(publisher.posts)
+    await executor._publish_checks(task, data, publisher.pr)
+    checks = publisher.posts[before:]
+    assert [item["context"] for item in checks] == ["FLIP / QA", "FLIP / Security", "FLIP / Review"]
+    assert all(item["state"] == "success" for item in checks)
+    assert data["qa_handoff"] in checks[0]["description"]
+    assert data["review_handoff"] in checks[2]["description"]
+    flow[0].connection.execute("UPDATE security_gates SET status='failed'")
+    before = len(publisher.posts)
+    with pytest.raises(PermissionError):
+        await executor._publish_checks(task, data, publisher.pr)
+    assert len(publisher.posts) == before
+
+
+async def test_human_can_mark_verified_pr_ready_without_authorizing_merge(ready):
+    service, publisher, task, revision = ready
+    publisher.pr.update(draft=True, node_id="PR_test")
+    before = len(publisher.posts)
+    with pytest.raises(PermissionError):
+        await service.mark_ready(task, "agent", revision)
+    with pytest.raises(PermissionError):
+        await service.mark_ready(task, "owner", "b" * 40)
+    assert len(publisher.posts) == before
+    result = await service.mark_ready(task, "owner", revision)
+    assert result["ready"] and publisher.pr["draft"] is False
+    assert publisher.posts[-1]["variables"]["input"] == {
+        "pullRequestId": "PR_test",
+        "clientMutationId": f"{task}:{revision}",
+    }
+    assert service.get(task)["phase"] == "awaiting_approval"
+    with pytest.raises(PermissionError):
+        await service.execute(task, "owner", revision)
+    assert not publisher.puts
+
+
+@pytest.mark.parametrize("change", ["head", "base", "security"])
+async def test_ready_refuses_changed_or_unverified_evidence(ready, flow, change):
+    service, publisher, task, revision = ready
+    publisher.pr.update(draft=True, node_id="PR_test")
+    if change == "head":
+        publisher.pr["head"]["sha"] = "b" * 40
+    elif change == "base":
+        publisher.pr["base"]["sha"] = "b" * 40
+    else:
+        flow[0].connection.execute("UPDATE security_gates SET status='failed'")
+    before = len(publisher.posts)
+    with pytest.raises(PermissionError):
+        await service.mark_ready(task, "owner", revision)
+    assert len(publisher.posts) == before
+    assert publisher.pr["draft"] is True
 
 
 async def test_merge_requires_separate_human_approval_and_exact_checks(ready, flow):

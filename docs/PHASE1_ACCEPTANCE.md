@@ -151,3 +151,71 @@ to the investigated revision. `discord_interactions.py` adds signed decisions.
 boundaries. `phase1_preflight.py`, `scripts/phase1_compare.py` and
 `deploy/phase1-runner/` provide readiness/reproduction tooling. README, these
 three Phase 1 documents and `docs/evidence/phase1/` retain the reviewable record.
+
+## Continuation checkpoint — November 5, 2026, 18:15 IST
+
+The user requested a commit and push after the live run stopped. This section
+supersedes the earlier statement that managed Engineering had not run.
+
+- Installed a separate **FLIP Approvals** command-only application, preserving
+  the Switch bot. Discord's real endpoint validation accepted its valid signed
+  probe and rejected its invalid-signature probe. Temporary hosting is stopped.
+- The actual authorized human submitted `/flip approve-engineering` for proposal
+  `e9f51d66-3f50-5203-9cd8-c27befe4214c`, version 1, at 12:27:19 UTC.
+- PM delivered the work through Switch. Official Console-managed Codex session
+  `eecbff67-cd08-4056-9bbf-0f40756603b1` ran in its dedicated restricted container
+  and committed the actual fix as `d8e0562038d9f412edc20d24873da85853dec5bd`.
+  This is independent of the earlier local parser-fix commit.
+- A revoked old provider login was replaced privately with the current authorized
+  local Codex login. The same session restarted through official Console control.
+  The coding image lacked Python; Codex reported its inability to run pytest
+  honestly, committed its changes, and left independent QA to run them.
+- Independent QA received a real Switch handoff and its isolated original bug
+  assertion passed at that exact commit. It then returned `qa_failed` with
+  `validation_launch_or_checkout_failed` before the complete test-suite receipt.
+- Independent Security received its own Switch handoff and passed a real Trivy
+  0.76.1 **secret scan** at the same commit. Runtime networking was disabled. The
+  frozen image contained a real downloaded database with its actual timestamp;
+  no dependency-vulnerability coverage is claimed for this secret-only scan.
+- The Mac reported about 130 MB free during the failure, and local tests began
+  failing with SQLite disk I/O errors. The precise QA launch exception was not
+  preserved by its bounded receipt, so low storage is a suspected cause rather
+  than an independently isolated diagnosis. Redundant generated downloads were
+  removed; original media, source, approvals and all execution records remain.
+- FLIP failed closed: task **FAILED**, Reviewer not run, publication not approved,
+  no workflow PR and no merge. No database state was rewritten into a pass.
+  Disposable remote base `codex/demo-green-check-20261105` was created at the
+  vulnerable baseline; main/master was untouched.
+
+New code adds a separate authenticated, exact-revision Discord action to mark a
+PR ready for review. It does not authorize a merge. Optional GitHub checks mirror
+actual current independent QA/Reviewer/Security receipts and reject absent or
+stale verification. These controls passed adapter tests but have not completed
+this live story. Reconnecting workers keep deliveries pending during documented
+Switch reachability outages; execution still waits for its acceptance delivery.
+Addressing-policy refusals are not treated as connectivity outages.
+
+Before the final reachability refinements, the full suite passed **689 tests,
+with 3 opt-in live tests skipped**. Later runs encountered disk I/O failures;
+those interrupted runs are not a clean final full-suite verification.
+
+[Sanitized live receipts](evidence/phase1/live-engineering-checkpoint.json) record
+the managed commit, human decision, QA failure and Security result. Private
+credentials/configurations, controller homes, media and databases are excluded
+from Git. This task's workers and temporary public tunnel were stopped at the
+checkpoint; the established Switch services remain available.
+
+The final video is unfinished. Its next cut must use everyday language, make
+Discord and genuine agent messages the main view, and show an actual independently
+checked, human-approved merge before claiming success. The previous narrated
+preview remains a partial demonstration. Its model download can be restored
+from the public URL recorded in the private video project when work resumes.
+
+Final checkpoint checks after reclaiming space: **101 focused tests passed**
+(runtime recovery, PM delivery, guarded merge and signed Discord controls).
+Ruff and Git whitespace checks passed. The latest complete full-suite result
+remains the earlier 689 passed / 3 skipped, before the last recovery refinements.
+The implementation is checkpointed on `codex/phase1-green-check`; the managed
+agent's separate commit is backed up on `codex/phase1-managed-fix-checkpoint`.
+These source backups were explicitly requested by the user and are not workflow
+publication receipts or evidence of a passed QA/release gate.

@@ -216,18 +216,27 @@ async def test_startup_recovers_offline_handoff_once_even_with_saved_cursor(tmp_
     assert len(calls) == 1 and len(reads) == 2
 
 
-async def test_ack_delivery_failure_prevents_execution(tmp_path):
+@pytest.mark.parametrize(
+    "status", ["offline", "disconnected", "no_session", "awaiting_manual_poll", "dormant"]
+)
+async def test_ack_delivery_failure_prevents_execution(tmp_path, status):
     runtime, event, h, calls = setup_runtime(tmp_path)
+    available = runtime.switch.send_targeted_message
 
     async def unavailable(*args, **kwargs):
-        return {"target_statuses": {"PM": "offline"}}
+        return {"target_statuses": {"PM": status}}
 
     runtime.switch.send_targeted_message = unavailable
     await runtime.receive(event)
-    with pytest.raises(RuntimeError, match="not live"):
-        await runtime.process_pending()
+    await runtime.process_pending()
     assert not calls
     assert runtime.store.pending_inbox("research")
+
+    runtime.switch.send_targeted_message = available
+    await runtime.process_pending()
+    await runtime.process_pending()
+    assert len(calls) == 1
+    assert not runtime.store.pending_inbox("research")
 
 
 @pytest.mark.parametrize(

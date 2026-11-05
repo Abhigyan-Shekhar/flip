@@ -133,7 +133,10 @@ class AgentRuntime:
             handoff = self.store.get_handoff(message["handoff_id"])
             if message["type"] == "handoff" and handoff["status"] != "completed":
                 self.store.accept_handoff(handoff["id"], c.agent_id)
-                await self.flush_outbox()  # Durable acceptance must be delivered before work.
+                # Keep the connection alive while a peer reconnects. Work still
+                # waits for its durable acceptance to reach the live assigner.
+                if await self.flush_outbox() is False:
+                    return
                 if not self.is_ready():
                     return
                 task = self.store.get_task(handoff["task_id"])
@@ -187,7 +190,7 @@ class AgentRuntime:
             parent_id = task["source"].get("parent_task_id")
             parent = self.store.get_task(parent_id) if parent_id else None
             if p["type"] == "handoff" and (
-                task["status"] in {"CANCELLED", "COMPLETED"}
+                task["status"] in {"CANCELLED", "COMPLETED", "FAILED"}
                 or (parent_id and (not parent or parent["status"] != "IN_PROGRESS"))
             ):
                 continue
@@ -201,7 +204,16 @@ class AgentRuntime:
                 target_names=[target],
                 thread_id=source.get("thread_id") or source.get("message_id"),
             )
-            if result.get("target_statuses", {}).get(target) != "live":
+            status = result.get("target_statuses", {}).get(target)
+            if status in {
+                "offline",
+                "disconnected",
+                "no_session",
+                "awaiting_manual_poll",
+                "dormant",
+            }:
+                return False
+            if status != "live":
                 raise RuntimeError("Addressed Switch target is not live")
             self.store.mark_outbox_sent(item["id"], result.get("event_id"))
 

@@ -1,0 +1,113 @@
+{
+  "task_id": "e9f51d66-3f50-5203-9cd8-c27befe4214c",
+  "status": "FAILED",
+  "phase": "failed",
+  "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+  "engineering_approval": {
+    "actor": "703216309684666389",
+    "approved": true,
+    "decided_at": "2026-11-05T12:27:19.034368+00:00",
+    "task_version": 1
+  },
+  "publication_approval": null,
+  "pr_url": null,
+  "merge_receipt": null,
+  "handoffs": [
+    {
+      "stage": "engineering_handoff",
+      "id": "742cea6d-080a-5e4d-95b0-9967d7dfafa5",
+      "sender": "4a4e4c80-d6a2-4b5b-8216-3510be946f06",
+      "recipient": "2e847c37-8dae-4b4e-bbed-a99d7ca126de",
+      "status": "completed",
+      "result": {
+        "status": "implemented",
+        "assignment_id": "a06a69d4d315e2ed3b4118178e4c64f8",
+        "session_id": "eecbff67-cd08-4056-9bbf-0f40756603b1",
+        "base_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+        "final_revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+        "execution_binding": {
+          "agent_id": "164762aa-0a2a-42a4-a2b4-5334db5e46e8",
+          "assignment_id": "a06a69d4d315e2ed3b4118178e4c64f8",
+          "backend": "console-controller-v2",
+          "controller_id": "a3b3198d-9e5c-43bc-abea-c74dce4be8a1",
+          "definition_revision": 2,
+          "image_id": "sha256:c4e7d32202230963d95db820eaefc88f1a69fc9a3d89dd9ba242dee49f9087a9",
+          "network_name": "flip-codex-internal"
+        },
+        "commands": []
+      }
+    },
+    {
+      "stage": "qa_handoff",
+      "id": "qa-d07e71c7704e2c8c8b58b19d3672057e938f961dba4aa281bae1b6bf75a89b7c",
+      "sender": "2e847c37-8dae-4b4e-bbed-a99d7ca126de",
+      "recipient": "f9812933-ee44-4c43-9605-b97d0ff86310",
+      "status": "completed",
+      "result": {
+        "status": "qa_failed",
+        "reason": "validation_launch_or_checkout_failed",
+        "assignment_id": "qa-2e3ee135b48a1418701be838472bb337",
+        "tested_revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+        "commands": [
+          {
+            "command": [
+              "python",
+              "-c",
+              "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list),flush=True)\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+            ],
+            "exit_code": 0,
+            "isolation": "docker",
+            "output_sha256": "d08de9f677ab2c84950d12e009769131aee5aee4fc5c94e583f4543b94075bac",
+            "output_summary": "{\"status\": \"scanner_failed\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"findings\": [], \"scanners\": [{\"name\": \"incomplete-native-contract\", \"status\": \"completed\", \"version\": \"unknown\", \"category\": \"unspecified\", \"revision\": \"d8e0562038d9f412edc20d24873da85853dec5bd\", \"repository\": \"/workspace\", \"argv\": [\"/usr/local/bin/python\", \"-c\", \"import json;print(json.dumps(dict(Results=[])))\"], \"started_at\": \"2026-11-05T12:39:54.293117+00:00\", \"database_updated_at\": null, \"isolation\": \"host\", \"exit_code\": 0, \"output_exceeded\": false, \"display_logs\": \"\", \"output_sha256\": \"91d4bcb3486f4ab270d3998dd1819e51c86015180fa1eb7480fecf6d6120c560\", \"finished_at\": \"2026-11-05T12:39:54.302890+00:00\", \"duration_seconds\": 0.01}], \"warnings\": [\"Scanner output did not match the supported findings schema.\"]}\n"
+          }
+        ]
+      }
+    }
+  ],
+  "security_gate": {
+    "security_handoff_id": "bb5a001e-ff21-5229-a9fb-0d772dea132d",
+    "security_recipient": "f51db803-98f6-4ca4-b50d-1e183848b87e",
+    "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+    "status": "passed",
+    "report": {
+      "status": "verified_success",
+      "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+      "findings": [],
+      "warnings": [],
+      "scanners": [
+        {
+          "argv": [
+            "trivy",
+            "fs",
+            "--scanners",
+            "secret",
+            "--format",
+            "json",
+            "--quiet",
+            "--skip-db-update",
+            "--cache-dir",
+            "/opt/trivy-cache",
+            "${repo_root}"
+          ],
+          "artifact_path": "$PHASE1_RUN/artifacts/security/c12282465fbcd99be4fb22af969dc568a0972c75e19c2406ca47c8229b215e36.json.txt",
+          "category": "secret",
+          "database_updated_at": "2026-11-05T07:00:54.926777429Z",
+          "display_logs": "",
+          "duration_seconds": 0.657,
+          "exit_code": 0,
+          "finished_at": "2026-11-05T12:39:53.855570+00:00",
+          "isolation": "docker",
+          "name": "Trivy secret scan",
+          "output_exceeded": false,
+          "output_sha256": "965aeea287d2d3178396b0f1ab869a635de080267ff50bd3a18b1ef8913e838f",
+          "repository": "$ACCEPTANCE_RUN/engineering/a06a69d4d315e2ed3b4118178e4c64f8",
+          "revision": "d8e0562038d9f412edc20d24873da85853dec5bd",
+          "started_at": "2026-11-05T12:39:53.198676+00:00",
+          "status": "completed",
+          "version": "0.76.1",
+          "version_source": "scanner_report"
+        }
+      ]
+    }
+  }
+}

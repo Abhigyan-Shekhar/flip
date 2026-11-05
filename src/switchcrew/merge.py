@@ -116,6 +116,34 @@ class GuardedMerge:
             )
         return data, number, pr
 
+    async def mark_ready(self, task_id, actor, revision):
+        """A separate human decision; this does not authorize a merge."""
+        self._human(actor)
+        data, number, pr = await self._pull(task_id)
+        implementation = self.store.get_handoff(data["engineering_handoff"])["result"]
+        if (
+            revision != data["revision"]
+            or pr.get("state") != "open"
+            or pr["base"]["sha"] != implementation.get("base_revision")
+            or type(pr.get("draft")) is not bool
+            or not isinstance(pr.get("node_id"), str)
+            or not pr["node_id"]
+        ):
+            raise PermissionError("Current verified pull request required")
+        if pr["draft"]:
+            await self.publisher.mark_ready(pr["node_id"], f"{task_id}:{revision}")
+        _, _, current = await self._pull(task_id)
+        if current.get("draft") is not False or current.get("state") != "open":
+            raise PermissionError("GitHub has not confirmed readiness")
+        with self.store.transaction():
+            self.store._event(
+                task_id,
+                "release.ready_for_review",
+                {"actor": actor, "revision": revision, "pr_number": number},
+                self.store.get_task(task_id)["version"],
+            )
+        return {"pr_number": number, "revision": revision, "ready": True}
+
     async def inspect(self, task_id):
         data, number, pr = await self._pull(task_id)
         revision = data["revision"]

@@ -233,8 +233,7 @@ async def test_disconnected_handoff_remains_pending():
         event("human", json.dumps({"question": "SSE", "acceptance_criteria": ["Find evidence"]}))
     )
     await pm.process_pending()
-    with pytest.raises(RuntimeError, match="not live"):
-        await pm.flush_outbox()
+    await pm.flush_outbox()
     assert any(item["recipient"] == "research" for item in store.pending_outbox())
 
 

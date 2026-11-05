@@ -1089,7 +1089,7 @@ class Worker:
             parent_id = task["source"].get("parent_task_id")
             parent = self.store.get_task(parent_id) if parent_id else None
             if payload.get("type") == "handoff" and (
-                task["status"] in {"CANCELLED", "COMPLETED"}
+                task["status"] in {"CANCELLED", "COMPLETED", "FAILED"}
                 or (parent_id and (not parent or parent["status"] != "IN_PROGRESS"))
             ):
                 continue
@@ -1111,6 +1111,14 @@ class Worker:
                 )
             if item["recipient"] != "discord":
                 statuses = result.get("target_statuses", {})
+                if statuses.get(self.names[item["recipient"]]) in {
+                    "offline",
+                    "disconnected",
+                    "no_session",
+                    "awaiting_manual_poll",
+                    "dormant",
+                }:
+                    return
                 if statuses.get(self.names[item["recipient"]]) != "live":
                     raise RuntimeError(f"Target is not live: {statuses}")
             external_id = (
