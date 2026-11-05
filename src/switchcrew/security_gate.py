@@ -356,7 +356,28 @@ class GateSecurityExecutor:
         after = self._current_assignment(gate, source, checkout, revision)
         if after is not None:
             return {"status": "blocked", "reason": after}
-        return report.to_dict()
+        result = report.to_dict()
+        # Display only: authorization continues to validate the persisted handoff,
+        # source mapping, policy and revision independently in require_security_gate.
+        threshold = _SEVERITY[json.loads(gate["policy"])["block_at_or_above"]]
+        successful = (
+            result.get("revision") == revision
+            and result.get("status") in {"verified_success", "findings"}
+            and not result.get("warnings")
+            and bool(result.get("scanners"))
+            and all(s.get("status") == "completed" for s in result["scanners"])
+        )
+        blocked = any(
+            _SEVERITY.get(str(f.get("severity", "")).lower(), threshold) >= threshold
+            for f in result.get("findings", [])
+        )
+        status = "passed" if successful and not blocked else "blocked" if successful else "failed"
+        with self.store.transaction():
+            self.store.connection.execute(
+                "UPDATE security_gates SET status=? WHERE security_handoff_id=? AND revision=?",
+                (status, handoff_id, revision),
+            )
+        return result
 
     def _current_assignment(self, gate, source, checkout, revision):
         """Recheck parent state around scanning to reject cancellation and stale work."""

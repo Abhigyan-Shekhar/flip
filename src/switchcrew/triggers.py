@@ -264,6 +264,111 @@ def accept_github_webhook(
     }
 
 
+def schedule_security_scan(
+    store,
+    *,
+    task_id: str,
+    source: dict[str, Any],
+    repository: str,
+    repo_root: str | Path,
+    pm_id: str,
+    security_id: str,
+    expected_repository: str | None = None,
+) -> dict[str, Any]:
+    """Schedule an authenticated Discord request using an operator repository binding.
+
+    Caller supplies verified Discord context and an operator-only root/identity;
+    neither source text nor model output selects a filesystem path or command.
+    """
+    if (
+        not isinstance(repository, str)
+        or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
+        or (
+            expected_repository is not None
+            and repository.casefold() != expected_repository.casefold()
+        )
+        or not all(isinstance(v, str) and v.strip() for v in (task_id, pm_id, security_id))
+        or pm_id == security_id
+        or not isinstance(source, dict)
+        or not all(
+            isinstance(source.get(k), str) and source[k].strip()
+            for k in ("room_id", "message_id", "user_id")
+        )
+    ):
+        raise ValueError("Authenticated context and operator repository/identity binding required")
+    root = Path(repo_root).resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("Configured scanner checkout is unavailable")
+    # Replays use the original SHA even if HEAD has advanced since intake.
+    existing = store.get_task(task_id)
+    if existing:
+        persisted = existing["source"]
+        if (
+            persisted.get("trigger_type") != "discord_security_scan"
+            or persisted.get("repository") != repository
+            or persisted.get("repo_root") != str(root)
+            or any(persisted.get(k) != source.get(k) for k in ("room_id", "message_id", "user_id"))
+        ):
+            raise PermissionError("Scan task identity already belongs to a different request")
+        revision = persisted.get("revision")
+    else:
+        revision = git(root, "rev-parse", "HEAD")
+    if not _revision(revision):
+        raise ValueError("Configured scanner repository has no exact revision")
+    context_keys = {
+        "room_id",
+        "thread_id",
+        "message_id",
+        "user_id",
+        "channel_id",
+        "guild_id",
+        "project_id",
+    }
+    with store.transaction():
+        task = store.create_task(
+            f"Scan {repository} for security findings at {revision}",
+            {
+                **{key: value for key, value in source.items() if key in context_keys},
+                "trigger_type": "discord_security_scan",
+                "repository": repository,
+                "revision": revision,
+                "repo_root": str(root),
+            },
+            [
+                "Run only configured scanners against the exact revision.",
+                "Report findings and degraded coverage honestly; do not execute repairs.",
+            ],
+            task_id=task_id,
+        )
+        if task["status"] == "DRAFT":
+            task = store.transition_task(task_id, "PLANNED", task["version"])
+        if task["status"] == "PLANNED":
+            task = store.transition_task(task_id, "IN_PROGRESS", task["version"])
+        handoff_id = "discord-scan-" + hashlib.sha256(task_id.encode()).hexdigest()[:32]
+        prior = store.get_handoff(handoff_id)
+        if prior and (prior["sender"] != pm_id or prior["recipient"] != security_id):
+            raise PermissionError("Scan handoff already has different operator identities")
+        if not prior and task["status"] != "IN_PROGRESS":
+            raise PermissionError("Inactive scan request cannot create a new execution")
+        handoff = prior or store.create_handoff(
+            task_id,
+            pm_id,
+            security_id,
+            task["objective"],
+            task["acceptance_criteria"],
+            task["version"],
+            handoff_id=handoff_id,
+        )
+    return {
+        "status": "duplicate" if prior else "accepted",
+        "task_id": task_id,
+        "revision": revision,
+        "repository": repository,
+        "security_handoff_id": handoff["id"],
+        "outbox_pending": True,
+    }
+
+
 def _redact(value: bytes, limit: int = 8000) -> str:
     text = value.decode("utf-8", errors="replace")
     return _SECRET.sub("[REDACTED]", text)[:limit]
@@ -480,7 +585,11 @@ class TriggeredSecurityExecutor:
             not task
             or task.get("status") not in {"IN_PROGRESS", "QA_REVIEW"}
             or handoff.get("status") not in {"pending", "accepted"}
-            or source.get("trigger_type") != "github_webhook"
+            or source.get("trigger_type") not in {"github_webhook", "discord_security_scan"}
+            or (
+                source.get("trigger_type") == "discord_security_scan"
+                and source.get("repo_root") != str(self.root)
+            )
             or source.get("repository") != self.repository
             or not _revision(source.get("revision"))
         ):
@@ -488,4 +597,11 @@ class TriggeredSecurityExecutor:
         if self.authorize and self.authorize(task, handoff) is not True:
             return {"status": "blocked", "reason": "trigger_authorization_denied"}
         report = await self.runner.run(self.root, source["revision"])
+        current = self.store.get_task(task["id"])
+        if (
+            not current
+            or current["status"] not in {"IN_PROGRESS", "QA_REVIEW"}
+            or current.get("source", {}).get("revision") != source["revision"]
+        ):
+            return {"status": "blocked", "reason": "trigger_task_cancelled_or_changed"}
         return {**report.to_dict(), "handoff_id": handoff_id}

@@ -100,7 +100,9 @@ def case(status, offset, file):
 for code in (307, 308):
     for position in (0, 6):
         for use_file in (False, True):
-            setattr(RedirectTests, f"test_{code}_{position}_{use_file}", case(code, position, use_file))
+            setattr(
+                RedirectTests, f"test_{code}_{position}_{use_file}", case(code, position, use_file)
+            )
 
 
 if __name__ == "__main__":

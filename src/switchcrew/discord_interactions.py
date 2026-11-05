@@ -1,4 +1,4 @@
-"""Signed, allowlisted Discord slash commands for read-only task inspection."""
+"""Signed Discord inspection and separately authorized, exact-SHA merge controls."""
 
 from __future__ import annotations
 
@@ -13,11 +13,13 @@ from .crew import handle_crew_command
 from .discord import DiscordBinding, DiscordSource, DiscordThreadBinding
 
 _COMMANDS = ("status", "team", "why", "dependencies", "trace", "evidence")
+_FLIP_COMMANDS = ("status", "logs", "findings", "tasks", "help")
+_MERGE_COMMANDS = ("merge-status", "approve-merge", "merge")
 _HEX = re.compile(r"^[0-9a-fA-F]+$")
 
 
 def slash_manifest() -> list[dict]:
-    return [
+    manifests = [
         {
             "name": "crew",
             "description": "Inspect a scoped Flip task in this Discord thread",
@@ -40,6 +42,59 @@ def slash_manifest() -> list[dict]:
             ],
         }
     ]
+
+    flip = {
+        "name": "flip",
+        "description": "Inspect Flip tasks and sandbox receipts",
+        "type": 1,
+        "options": [
+            {
+                "name": command,
+                "description": f"Inspect {command}",
+                "type": 1,
+                **(
+                    {
+                        "options": [
+                            {
+                                "name": "task_id",
+                                "description": "Exact Flip task UUID",
+                                "type": 3,
+                                "required": True,
+                            }
+                        ]
+                    }
+                    if command not in {"tasks", "help"}
+                    else {}
+                ),
+            }
+            for command in _FLIP_COMMANDS
+        ],
+    }
+    for name in _MERGE_COMMANDS:
+        args = [{"name": "task_id", "description": "Exact task UUID", "type": 3, "required": True}]
+        if name != "merge-status":
+            args.append(
+                {
+                    "name": "revision",
+                    "description": "Verified full 40-character head SHA",
+                    "type": 3,
+                    "required": True,
+                }
+            )
+        if name == "approve-merge":
+            args.append(
+                {
+                    "name": "version",
+                    "description": "Merge version from merge-status",
+                    "type": 4,
+                    "min_value": 0,
+                    "required": True,
+                }
+            )
+        flip["options"].append(
+            {"name": name, "description": f"Guarded {name}", "type": 1, "options": args}
+        )
+    return [*manifests, flip]
 
 
 def _verified(payload: bytes, headers, public_key: str, *, now=None) -> dict:
@@ -72,12 +127,12 @@ def _verified(payload: bytes, headers, public_key: str, *, now=None) -> dict:
     return document
 
 
-def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None) -> dict:
+def _resolve(settings, payload: bytes, headers, *, now=None):
     if len(payload) > 32768:
         raise ValueError("Discord interaction exceeds byte limit")
     document = _verified(payload, headers, settings.discord_application_public_key, now=now)
     if document.get("type") == 1:
-        return {"type": 1}
+        return document, None, None, {}
     if document.get("type") != 2:
         raise ValueError("Only slash command interactions are supported")
     guild = document.get("guild_id")
@@ -125,20 +180,39 @@ def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None
     if not isinstance(data, dict):
         raise ValueError("Discord command data must be an object")
     options = data.get("options") or []
-    if not isinstance(options, list) or data.get("name") != "crew" or len(options) != 1:
+    if (
+        not isinstance(options, list)
+        or data.get("name") not in {"crew", "flip"}
+        or len(options) != 1
+    ):
         raise ValueError("Unknown slash command")
     selected = options[0]
     args = selected.get("options", []) if isinstance(selected, dict) else []
+    commands = _COMMANDS if data["name"] == "crew" else (*_FLIP_COMMANDS, *_MERGE_COMMANDS)
+    no_task = isinstance(selected, dict) and selected.get("name") in {"tasks", "help"}
     if (
         not isinstance(selected, dict)
-        or selected.get("name") not in _COMMANDS
+        or selected.get("name") not in commands
         or not isinstance(args, list)
-        or len(args) != 1
-        or not isinstance(args[0], dict)
-        or args[0].get("name") != "task_id"
-        or not isinstance(args[0].get("value"), str)
     ):
         raise ValueError("Unsupported slash arguments")
+    name = selected["name"]
+    expected = set() if no_task else {"task_id"}
+    if name in {"approve-merge", "merge"}:
+        expected.add("revision")
+    if name == "approve-merge":
+        expected.add("version")
+    if any(not isinstance(arg, dict) or not isinstance(arg.get("name"), str) for arg in args):
+        raise ValueError("Unsupported slash arguments")
+    values = {arg["name"]: arg.get("value") for arg in args}
+    if len(values) != len(args) or set(values) != expected:
+        raise ValueError("Unsupported slash arguments")
+    if not no_task and not isinstance(values["task_id"], str):
+        raise ValueError("Task UUID required")
+    if "revision" in values and not re.fullmatch(r"[a-f0-9]{40}", str(values["revision"])):
+        raise ValueError("An exact full revision is required")
+    if "version" in values and (type(values["version"]) is not int or values["version"] < 0):
+        raise ValueError("A nonnegative merge version is required")
     binding = matches[0]
     source = DiscordSource(
         guild,
@@ -148,9 +222,97 @@ def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None
         binding.participant_id,
         document.get("id", ""),
         switch_thread,
-        f"/crew {selected['name']} {args[0]['value']}",
+        f"/{data['name']} {selected['name']}" + ("" if no_task else f" {values['task_id']}"),
         binding.roles,
     )
+    return document, source, name, values
+
+
+def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None) -> dict:
+    document, source, name, values = _resolve(settings, payload, headers, now=now)
+    if source is None:
+        return {"type": 1}
+    if name in _MERGE_COMMANDS:
+        raise ValueError("Merge commands require the configured asynchronous release service")
     response = handle_crew_command(store, source, can_cancel=False)
     message = (response or {}).get("text") or "Task is unavailable in this thread."
     return {"type": 4, "data": {"content": message[:1900], "flags": 64}}
+
+
+async def _merge_result(service, source, name, values):
+    if name == "merge-status":
+        result = await service.inspect(values["task_id"])
+        return (
+            f"PR #{result['pr_number']}; revision {result['revision']}\n"
+            f"Merge phase: {result['merge']['phase']}; version {result['merge']['version']}\n"
+            "Approve using /flip approve-merge with this task, revision and merge version. "
+            "Then explicitly execute /flip merge with the same task and revision."
+        )
+    if name == "approve-merge":
+        result = await service.approve(
+            values["task_id"], source.user_id, values["version"], values["revision"]
+        )
+        return (
+            f"Human merge approval recorded; phase {result['phase']}; version {result['version']}."
+        )
+    result = await service.execute(values["task_id"], source.user_id, values["revision"])
+    return (
+        f"Merge status: {result['status']}; revision {result['revision']}\n"
+        f"Merge commit: {result.get('merge_commit_sha', 'pending reconciliation')}"
+    )
+
+
+async def _finish_merge(service, source, name, values, application_id, token):
+    import httpx
+
+    from .store import ConflictError
+
+    try:
+        content = await _merge_result(service, source, name, values)
+    except (PermissionError, ValueError, ConflictError):
+        content = (
+            "Merge action refused: current authorization, revision or verification "
+            "gates did not pass."
+        )
+    except Exception:
+        content = (
+            "Merge outcome is unavailable. Inspect merge status before retrying; "
+            "no automatic retry was made."
+        )
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.patch(
+                f"https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original",
+                json={"content": content[:1900], "allowed_mentions": {"parse": []}},
+            )
+    except httpx.HTTPError:
+        # Interaction credentials are transient and must not enter exception logs.
+        pass
+
+
+async def respond_to_interaction_async(
+    store, settings, payload, headers, *, merge_service=None, background_tasks=None, now=None
+):
+    from .crew import _task_scope
+
+    document, source, name, values = _resolve(settings, payload, headers, now=now)
+    if source is None or name not in _MERGE_COMMANDS:
+        return respond_to_interaction(store, settings, payload, headers, now=now)
+    if merge_service is None:
+        raise PermissionError("Guarded merge is not configured")
+    task = store.get_task(values["task_id"])
+    if not task or not _task_scope(task, source):
+        raise PermissionError("Merge task is unavailable in this thread")
+    if name != "merge-status" and source.user_id not in settings.approval_user_ids:
+        raise PermissionError("An explicitly configured Discord human approver is required")
+    if background_tasks is None:
+        raise ValueError("Deferred Discord acknowledgement is required for merge commands")
+    application_id, token = document.get("application_id"), document.get("token")
+    if not isinstance(application_id, str) or not re.fullmatch(r"[0-9]{1,30}", application_id):
+        raise ValueError("Discord application identity required")
+    if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,500}", token):
+        raise ValueError("Discord interaction callback required")
+    background_tasks.add_task(
+        _finish_merge, merge_service, source, name, values, application_id, token
+    )
+    return {"type": 5, "data": {"flags": 64}}

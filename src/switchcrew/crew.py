@@ -3,12 +3,13 @@
 import json
 import re
 import sqlite3
+from dataclasses import replace
 from uuid import UUID
 
 from .store import ConflictError, InvalidTransitionError
 
 _COMMAND = re.compile(
-    r"^/crew\s+(status|task|team|why|replay|trace|dependencies|evidence|cancel)\s+([0-9a-fA-F-]{36})\s*$",
+    r"^/(?:crew|flip)\s+(status|task|team|why|replay|trace|dependencies|evidence|logs|findings|cancel)\s+([0-9a-fA-F-]{36})\s*$",
     re.I,
 )
 _MAX_TEXT = 12_000
@@ -30,7 +31,7 @@ _SECRET = re.compile(
     r"prompt|raw[_ -]?tool[_ -]?output|diff|private[_ -]?context)\s*[:=]\s*\S+|"
     r"(?:/[\w.-]+){2,})"
 )
-_CREW_PREFIX = re.compile(r"^/crew(?:\s|$)", re.I)
+_CREW_PREFIX = re.compile(r"^/(?:crew|flip)(?:\s|$)", re.I)
 
 
 def _clip(value, limit=160):
@@ -221,9 +222,155 @@ def _render(store, task, kind):
     return text[:_MAX_TEXT]
 
 
+def _display(value, limit=800):
+    from .security import _redact
+
+    return _clip(_redact(value, limit), limit).replace("@", "＠").replace("`", "ˋ")
+
+
+def _inspection(store, task, action):
+    from .trace import execution_trace
+
+    lines = [f"FLIP SANDBOX · TASK {task['id']}", f"Status: {task['status']}"]
+    found = False
+    for child in execution_trace(store, task["id"])["tasks"]:
+        with store._lock:
+            rows = store.connection.execute(
+                "SELECT * FROM handoffs WHERE task_id=? ORDER BY rowid DESC LIMIT 100",
+                (child["task_id"],),
+            ).fetchall()
+        for row in rows:
+            handoff = store._row(row)
+            result = handoff.get("result")
+            if not isinstance(result, dict):
+                continue
+            revision = result.get("tested_revision", result.get("revision", ""))
+            if not isinstance(revision, str) or not re.fullmatch(r"[a-f0-9]{40,64}", revision):
+                revision = "unknown"
+            if action == "findings":
+                report = result.get("security_report", result)
+                if not isinstance(report, dict) or not isinstance(
+                    report.get("findings"), (list, tuple)
+                ):
+                    continue
+                found = True
+                lines.append(
+                    f"Security: {_display(report.get('status', 'unknown'), 80)}; "
+                    f"revision {revision}"
+                )
+                for index, finding in enumerate(report["findings"][:30], 1):
+                    if isinstance(finding, dict):
+                        lines.append(
+                            f"{index}. {_display(finding.get('finding_id', 'unassigned'), 80)} "
+                            f"[{_display(finding.get('severity', 'unknown'), 30)}] "
+                            f"{_display(finding.get('file', ''), 180)}: "
+                            f"{_display(finding.get('explanation', ''), 400)}"
+                        )
+                if not report["findings"]:
+                    lines.append("No findings recorded; consult scanner coverage and warnings.")
+                for warning in (report.get("warnings") or [])[:5]:
+                    lines.append("Warning: " + _display(warning, 200))
+            else:
+                commands = result.get("commands")
+                if not isinstance(commands, list):
+                    continue
+                for command in commands[-10:]:
+                    if not isinstance(command, dict):
+                        continue
+                    found = True
+                    lines.append(
+                        f"Agent: {_display(handoff['recipient'], 80)}; revision {revision}"
+                    )
+                    argv = command.get("command", [])
+                    if isinstance(argv, list) and all(isinstance(arg, str) for arg in argv):
+                        lines.append("$ " + _display(json.dumps(argv, ensure_ascii=False), 350))
+                    lines.append(
+                        _display(command.get("output_summary", "No display output recorded."))
+                    )
+                    lines.append(
+                        f"Exit code: {_display(command.get('exit_code', 'unknown'), 30)}; "
+                        f"timed out: {command.get('timed_out') is True}"
+                    )
+    if not found:
+        lines.append(
+            "No recorded findings." if action == "findings" else "No command logs recorded yet."
+        )
+    if action == "logs":
+        lines.append(
+            "Bounded recorded previews; live streaming and full log downloads are unavailable."
+        )
+    return "\n".join(lines)[:_MAX_TEXT]
+
+
+def _context_control(store, source):
+    from .conversation import conversation_control
+
+    action = conversation_control(source.body)
+    if action is None:
+        return None
+    candidates = []
+    with store._lock:
+        rows = store.connection.execute(
+            "SELECT * FROM tasks ORDER BY rowid DESC LIMIT 1001"
+        ).fetchall()
+    for row in rows:
+        task = store._row(row)
+        origin = task.get("source") or {}
+        if (
+            origin.get("command_receipt")
+            or origin.get("parent_task_id")
+            or origin.get("security_gate")
+        ):
+            continue
+        if not _task_scope(task, source):
+            continue
+        if action == "cancel" and task["status"] in {
+            "COMPLETED",
+            "CANCELLED",
+            "FAILED",
+            "BLOCKED",
+            "MERGED",
+        }:
+            continue
+        candidates.append(task)
+    if len(candidates) != 1 or len(rows) > 1000:
+        return {
+            "handled": True,
+            "task_id": None,
+            "kind": "crew_context",
+            "durable_reply": True,
+            "text": "Select a task explicitly: /flip "
+            + action
+            + " TASK_UUID. "
+            + (
+                "Multiple tasks match this thread."
+                if candidates
+                else "No task matches this thread."
+            ),
+        }
+    return replace(source, body=f"/flip {action} {candidates[0]['id']}")
+
+
 def handle_crew_command(store, source, *, can_cancel: bool = False) -> dict | None:
     """Handle a text command from an already authenticated DiscordSource."""
+    contextual = _context_control(store, source)
+    if isinstance(contextual, dict):
+        return contextual
+    if contextual is not None:
+        source = contextual
     text = source.body.strip()
+    if re.fullmatch(r"/(?:crew|flip)\s+help", text, re.I):
+        return {
+            "handled": True,
+            "task_id": None,
+            "kind": "crew_help",
+            "durable_reply": True,
+            "text": "Use /flip tasks or /flip status, logs, findings, team, trace, evidence, "
+            "dependencies, "
+            "or cancel TASK_UUID. Commands stay scoped to the original task thread. "
+            "Logs are bounded recorded previews. Approvals require the exact versioned phrase.",
+        }
+    text = re.sub(r"^/flip(?=\s|$)", "/crew", text, flags=re.I)
     if re.match(r"^/crew\s+create(?:\s|$)", text, re.I):
         parts = [
             part.strip() for part in re.sub(r"^/crew\s+create\s*", "", text, flags=re.I).split("|")
@@ -337,6 +484,13 @@ def handle_crew_command(store, source, *, can_cancel: bool = False) -> dict | No
     task = store.get_task(task_id)
     if not task or not _task_scope(task, source):
         return denied
+    if action in {"logs", "findings"}:
+        return {
+            "handled": True,
+            "task_id": task_id,
+            "kind": kind,
+            "text": _inspection(store, task, action),
+        }
     if action in {"trace", "evidence", "dependencies"}:
         from .trace import execution_trace
 

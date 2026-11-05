@@ -99,6 +99,7 @@ class Worker:
         self.project_id = project_id
         self.meetings = None
         self.security_gate = None
+        self.security_scans = {}
         self.documentation_id = (specialist_targets or {}).get("documentation", {}).get("agent_id")
         self.engineering_id, self.qa_id, self.release_id = engineering_id, qa_id, release_id
         self.reviewer_id, self.max_corrections = reviewer_id, max_corrections
@@ -480,7 +481,8 @@ class Worker:
             "SELECT * FROM tasks WHERE status='IN_PROGRESS' AND "
             "(json_extract(source,'$.kind') IN ('meeting_notes','meeting_transcription',"
             "'confirmed_meeting_action','change_intelligence') "
-            "OR json_extract(source,'$.trigger_type')='github_webhook' "
+            "OR json_extract(source,'$.trigger_type') IN "
+            "('github_webhook','discord_security_scan') "
             "OR json_extract(source,'$.security_gate')=1) LIMIT 100"
         ).fetchall()
         for row in rows:
@@ -509,7 +511,8 @@ class Worker:
                     except PermissionError:
                         statuses = ["blocked_consent"]
             passed = all(
-                status in {"completed", "evidence_found", "verified_success"} for status in statuses
+                status in {"completed", "evidence_found", "verified_success", "findings"}
+                for status in statuses
             )
             self.store.transition_task(
                 task["id"], "COMPLETED" if passed else "BLOCKED", task["version"]
@@ -552,11 +555,24 @@ class Worker:
             allowed_guilds=self.allowed_guilds,
             allowed_users=self.allowed_users,
         )
-        from .crew import handle_crew_command
+        from .security_intake import handle_scan_request
 
-        command = handle_crew_command(
-            self.store, source, can_cancel=source.user_id in self.approvals.approvers
+        if await handle_scan_request(self, source):
+            return
+        from .crew import handle_crew_command
+        from .finding_selection import resolve_finding_request
+
+        command = resolve_finding_request(
+            self.store,
+            source,
+            pm_id=self.pm_id,
+            engineering_job_key=self.engineering_job_key,
+            engineering_repository=self.release_repository,
         )
+        if command is None:
+            command = handle_crew_command(
+                self.store, source, can_cancel=source.user_id in self.approvals.approvers
+            )
         if command is not None and "request" not in command:
             if command.get("task_id"):
                 self._reply(
@@ -691,10 +707,27 @@ class Worker:
                 "channel_id": source.channel_id,
                 "guild_id": source.guild_id,
                 "project_id": self.project_id,
+                **(
+                    {"selected_finding": command["trusted_selection"]}
+                    if command is not None and "trusted_selection" in command
+                    else {}
+                ),
             },
             criteria,
             task_id=task_id,
         )
+        if command is not None and "trusted_selection" in command:
+            selected = command["trusted_selection"]
+            self._reply(
+                task_id,
+                "finding_selected",
+                f"Selected finding {selected['finding_id']} (rank {selected['rank']}) "
+                f"from scan task {selected['scan_task_id']}.\n"
+                f"Repository: {selected['repository']}; scan revision: {selected['revision']}.\n"
+                "Scanner evidence still requires investigation; "
+                "Engineering requires human approval.",
+                freeze=True,
+            )
         requested_kind = request.get("kind")
         if requested_kind is None and self.orchestrator.planner is not None:
             requested_kind = "orchestrate"
@@ -1224,6 +1257,9 @@ async def _main(role):
             from .organization import configure_security
 
             worker.security_gate = configure_security(store, settings, organization)
+            worker.security_scans = organization.get("security_scans", {})
+            if not isinstance(worker.security_scans, dict):
+                raise ValueError("Security scan routes must be an operator-owned mapping")
 
             worker.meetings = meeting_service(
                 store, settings, organization, enable_voice_provider=False

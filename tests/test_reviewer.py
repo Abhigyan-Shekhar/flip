@@ -167,3 +167,45 @@ def test_async_authorizer_cannot_accidentally_grant_permission(tmp_path):
         is None
     )
     ledger.close()
+
+
+def test_configured_isolation_mounts_review_checkout_read_only(tmp_path):
+    from contextlib import contextmanager
+
+    calls = []
+
+    class Isolation:
+        @contextmanager
+        def launch(self, argv, workspace, *, writable=False):
+            calls.append(writable)
+            yield argv
+
+    # Reserve metadata needs a serializable dataclass just like DockerIsolation.
+    from dataclasses import dataclass
+
+    @dataclass
+    class Policy(Isolation):
+        image: str = "controlled-test"
+
+    payload = repo(tmp_path)
+    ledger, review = executor(
+        tmp_path, payload, "import json; print(json.dumps({'accepted': True, 'findings': []}))"
+    )
+    review.isolation = Policy()
+    result = asyncio.run(review({"handoff_id": "readonly-review"}))
+    assert result["status"] == "review_accepted"
+    assert calls == [False]
+    ledger.close()
+
+
+def test_excess_review_output_is_bounded_and_rejected(tmp_path):
+    from pathlib import Path
+
+    payload = repo(tmp_path)
+    ledger, review = executor(tmp_path, payload, "print('x' * 1000000)")
+    result = asyncio.run(review({"handoff_id": "output-flood"}))
+    assert result["status"] == "review_rejected"
+    rec = result["commands"][0]
+    assert rec["output_limit_exceeded"] is True
+    assert Path(rec["log_artifact"]).stat().st_size <= 256 * 1024
+    ledger.close()

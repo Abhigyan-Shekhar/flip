@@ -1,9 +1,6 @@
 """Independent revision-pinned validation; commands come only from the operator."""
 
-import asyncio
-import hashlib
 import os
-import signal
 import subprocess
 import tempfile
 from contextlib import nullcontext
@@ -11,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .engineering import assignment_id, git, outcome
+from .execution import capture_command
 
 
 def generated_inputs(checkout):
@@ -150,49 +148,29 @@ class QAExecutor:
                         "tested_revision": self.revision,
                     },
                 )
-                with tempfile.TemporaryFile() as output:
-                    self.check_approval(state)
-                    context = (
-                        self.isolation.launch(command, checkout, writable=True)
-                        if self.isolation is not None
-                        else nullcontext(command)
+                self.check_approval(state)
+                context = (
+                    self.isolation.launch(command, checkout, writable=True)
+                    if self.isolation is not None
+                    else nullcontext(command)
+                )
+                with context as execution:
+                    receipt = await capture_command(
+                        execution,
+                        cwd=checkout,
+                        env=env,
+                        timeout=self.timeout,
+                        artifact=run_dir / f"command-{index}.log",
                     )
-                    with context as execution:
-                        process = await asyncio.create_subprocess_exec(
-                            *execution,
-                            cwd=checkout,
-                            env=env,
-                            stdout=output,
-                            stderr=asyncio.subprocess.STDOUT,
-                            start_new_session=True,
-                        )
-                        timed_out = False
-                        try:
-                            await asyncio.wait_for(process.wait(), self.timeout)
-                        except (TimeoutError, asyncio.CancelledError) as exc:
-                            os.killpg(process.pid, signal.SIGKILL)
-                            await process.wait()
-                            if isinstance(exc, asyncio.CancelledError):
-                                raise
-                            timed_out = True
-                    output.seek(0)
-                    digest = hashlib.sha256()
-                    size = 0
-                    preview = b""
-                    while chunk := output.read(65536):
-                        digest.update(chunk)
-                        size += len(chunk)
-                        if len(preview) < 4096:
-                            preview += chunk[: 4096 - len(preview)]
                 records.append(
                     {
+                        **receipt,
                         "command": command,
-                        "exit_code": process.returncode,
-                        "timed_out": timed_out,
-                        "output_summary": preview.decode("utf-8", errors="replace"),
-                        "output_bytes": size,
-                        "output_sha256": digest.hexdigest(),
                         "revision": self.revision,
+                        "task_id": state["task_id"],
+                        "sandbox_id": checkout.name,
+                        "working_directory": "/workspace" if self.isolation else str(checkout),
+                        "isolation": "docker" if self.isolation else "host_process",
                     }
                 )
                 self.ledger.put(
@@ -209,7 +187,10 @@ class QAExecutor:
             status = (
                 "verified_success"
                 if revision_unchanged
-                and all(r["exit_code"] == 0 and not r["timed_out"] for r in records)
+                and all(
+                    r["exit_code"] == 0 and not r["timed_out"] and not r["output_limit_exceeded"]
+                    for r in records
+                )
                 else "qa_failed"
             )
             self.check_approval(state)

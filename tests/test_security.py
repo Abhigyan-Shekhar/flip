@@ -47,7 +47,9 @@ async def test_scanner_runs_on_isolated_exact_sha_and_reports_clean_only_for_val
     ).run(root, revision)
     assert report.status == "verified_success"
     assert report.revision == revision
-    assert report.scanners == ({"name": "fixture", "status": "completed"},)
+    assert report.scanners[0]["name"] == "fixture"
+    assert report.scanners[0]["status"] == "completed"
+    assert report.scanners[0]["exit_code"] == 0
     assert (
         subprocess.check_output(["git", "-C", str(root), "status", "--porcelain"], text=True) == ""
     )
@@ -238,3 +240,133 @@ async def test_repository_snapshot_has_separate_bound_from_rendered_git_diff(tmp
     result = await runner.run(root, revision)
     assert result.status == "verified_success"
     assert result.revision == revision
+
+
+async def test_native_semgrep_finding_ids_are_stable_ranked_and_preserve_rule_lines(tmp_path):
+    root, revision = committed_repo(tmp_path / "repo")
+
+    def entry(rule, severity, line):
+        return {
+            "check_id": rule,
+            "path": "app.py",
+            "start": {"line": line},
+            "extra": {
+                "severity": severity,
+                "message": "Inspect this call",
+                "metadata": {"confidence": "HIGH"},
+            },
+        }
+
+    entries = [entry("low-rule", "INFO", 1), entry("high-rule", "ERROR", 2)]
+
+    async def scan(items):
+        payload = {"results": items, "version": "1.1.0", "errors": [], "skipped_rules": []}
+        return await SecurityRunner(
+            [
+                ScannerConfig(
+                    "semgrep", (sys.executable, "-c", "print(" + repr(json.dumps(payload)) + ")")
+                )
+            ]
+        ).run(root, revision)
+
+    first, second = await scan(entries), await scan(list(reversed(entries)))
+    assert first.status == "findings"
+    assert first.findings == second.findings
+    assert first.findings[0].rule_id == "high-rule"
+    assert first.findings[0].line == 2
+    assert first.findings[0].category == "source"
+    assert first.findings[0].finding_id.startswith("F-")
+    assert first.scanners[0]["version"] == "1.1.0"
+
+
+@pytest.mark.parametrize(
+    "extra", [{"errors": [{"message": "rule failed"}]}, {"skipped_rules": ["missing-rule"]}]
+)
+async def test_partial_semgrep_scan_never_reports_clean(tmp_path, extra):
+    root, revision = committed_repo(tmp_path / "repo")
+    payload = {"results": [], "version": "1", **extra}
+    report = await SecurityRunner(
+        [
+            ScannerConfig(
+                "semgrep", (sys.executable, "-c", "print(" + repr(json.dumps(payload)) + ")")
+            )
+        ]
+    ).run(root, revision)
+    assert report.status == "scanner_failed"
+
+
+async def test_dependency_findings_keep_unknown_severity_and_require_fresh_database(tmp_path):
+    from datetime import UTC, datetime
+
+    root, revision = committed_repo(tmp_path / "repo")
+    payload = {
+        "dependencies": [
+            {
+                "name": "example",
+                "version": "1.0",
+                "vulns": [
+                    {
+                        "id": "PYSEC-EXAMPLE",
+                        "description": "Controlled advisory",
+                        "fix_versions": ["2"],
+                    }
+                ],
+            }
+        ]
+    }
+    argv = (sys.executable, "-c", "print(" + repr(json.dumps(payload)) + ")")
+    stale = await SecurityRunner([ScannerConfig("pip-audit", argv)]).run(root, revision)
+    assert stale.status == "degraded_coverage"
+    assert stale.findings[0].severity == "Unknown"
+    assert stale.findings[0].component == "example@1.0"
+    fresh = await SecurityRunner(
+        [ScannerConfig("pip-audit", argv, database_updated_at=datetime.now(UTC).isoformat())]
+    ).run(root, revision)
+    assert fresh.status == "findings"
+    assert fresh.findings[0].rule_id == "PYSEC-EXAMPLE"
+
+
+async def test_scan_artifact_is_bounded_redacted_and_private(tmp_path):
+    root, revision = committed_repo(tmp_path / "repo")
+    code = 'print(\'{"findings": [], "note": "password=hidden-value"}\')'
+    report = await SecurityRunner(
+        [ScannerConfig("fixture", (sys.executable, "-c", code))],
+        artifact_dir=tmp_path / "artifacts",
+    ).run(root, revision)
+    from pathlib import Path
+
+    artifact = Path(report.scanners[0]["artifact_path"])
+    assert "hidden-value" not in artifact.read_text()
+    assert artifact.stat().st_mode & 0o777 == 0o600
+    assert report.scanners[0]["exit_code"] == 0
+    assert report.scanners[0]["revision"] == revision
+    assert len(report.scanners[0]["output_sha256"]) == 64
+
+
+async def test_timeout_records_failed_scanner_receipt(tmp_path):
+    root, revision = committed_repo(tmp_path / "repo")
+    report = await SecurityRunner(
+        [
+            ScannerConfig(
+                "sleep", (sys.executable, "-c", "import time; time.sleep(10)"), timeout=0.01
+            )
+        ]
+    ).run(root, revision)
+    assert report.status == "scanner_failed"
+    assert report.scanners[0]["status"] == "timed_out"
+    assert report.scanners[0]["timed_out"] is True
+    assert report.scanners[0]["finished_at"]
+
+
+async def test_clean_native_dependency_report_still_requires_database_freshness(tmp_path):
+    root, revision = committed_repo(tmp_path / "repo")
+    payload = {"dependencies": [{"name": "example", "version": "1", "vulns": []}]}
+    report = await SecurityRunner(
+        [
+            ScannerConfig(
+                "pip-audit", (sys.executable, "-c", "print(" + repr(json.dumps(payload)) + ")")
+            )
+        ]
+    ).run(root, revision)
+    assert report.status == "degraded_coverage"
+    assert report.scanners[0]["status"] == "degraded"

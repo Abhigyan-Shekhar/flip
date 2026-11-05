@@ -7,7 +7,6 @@ import json
 import math
 import os
 import re
-import signal
 import subprocess
 import tempfile
 from contextlib import nullcontext
@@ -15,6 +14,7 @@ from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 
 from .engineering import assignment_id, git, outcome
+from .execution import capture_command
 from .qa import generated_inputs
 
 _MAX_OUTPUT = 256 * 1024
@@ -191,69 +191,50 @@ class ReviewerExecutor:
                 self.ledger.put(
                     identity, {"phase": "running", "commands": records, "current_command": i}
                 )
-                with tempfile.TemporaryFile() as output:
-                    self._approved(state)
-                    context = (
-                        self.isolation.launch(command, checkout, writable=True)
-                        if self.isolation is not None
-                        else nullcontext(command)
-                    )
+                self._approved(state)
+                context = (
+                    self.isolation.launch(command, checkout, writable=False)
+                    if self.isolation is not None
+                    else nullcontext(command)
+                )
+                try:
                     with context as execution:
-                        proc = await asyncio.create_subprocess_exec(
-                            *execution,
+                        receipt = await capture_command(
+                            execution,
                             cwd=checkout,
                             env=env,
-                            stdout=output,
-                            stderr=asyncio.subprocess.STDOUT,
-                            start_new_session=True,
+                            timeout=self.timeout,
+                            artifact=run_dir / f"command-{i}.log",
+                            max_bytes=_MAX_OUTPUT,
                         )
-                        timed_out = False
-                        try:
-                            await asyncio.wait_for(proc.wait(), self.timeout)
-                        except (TimeoutError, asyncio.CancelledError) as exc:
-                            os.killpg(proc.pid, signal.SIGKILL)
-                            await proc.wait()
-                            if isinstance(exc, asyncio.CancelledError):
-                                self.ledger.put(
-                                    identity,
-                                    {
-                                        "phase": "uncertain",
-                                        "commands": records,
-                                        "current_command": i,
-                                    },
-                                )
-                                raise
-                            timed_out = True
-                    output.seek(0)
-                    digest_builder = hashlib.sha256()
-                    size = 0
-                    captured = bytearray()
-                    while chunk := output.read(65536):
-                        digest_builder.update(chunk)
-                        size += len(chunk)
-                        if len(captured) < _MAX_OUTPUT + 1:
-                            captured.extend(chunk[: _MAX_OUTPUT + 1 - len(captured)])
-                raw = bytes(captured)
-                digest = digest_builder.hexdigest()
-                too_large = size > _MAX_OUTPUT
-                preview = _redact(raw[:_MAX_OUTPUT].decode("utf-8", errors="replace"))
+                except asyncio.CancelledError:
+                    self.ledger.put(
+                        identity, {"phase": "uncertain", "commands": records, "current_command": i}
+                    )
+                    raise
+                raw = Path(receipt["log_artifact"]).read_bytes()
+                too_large = receipt["output_limit_exceeded"]
+                preview = _redact(raw.decode("utf-8", errors="replace"))
                 rec = {
+                    **receipt,
                     "command": command,
                     "revision": self.revision,
-                    "exit_code": proc.returncode,
-                    "timed_out": timed_out,
-                    "output_sha256": digest,
+                    "task_id": state.get("task_id"),
+                    "sandbox_id": checkout.name,
+                    "working_directory": "/workspace" if self.isolation else str(checkout),
+                    "isolation": "docker" if self.isolation else "host_process",
                     "output_summary": preview,
                 }
                 records.append(rec)
-                if proc.returncode != 0 or timed_out:
+                if rec["exit_code"] != 0 or rec["timed_out"] or too_large:
                     rejected = True
                     command_findings.append(
                         {
                             "command_index": i,
                             "message": (
-                                f"Review command failed (exit={proc.returncode}, "
-                                f"timeout={timed_out}): {preview[:500]}"
+                                f"Review command failed (exit={rec['exit_code']}, "
+                                f"timeout={rec['timed_out']}, output_limit={too_large}): "
+                                f"{preview[:500]}"
                             ),
                         }
                     )

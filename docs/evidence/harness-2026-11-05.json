@@ -1,0 +1,87 @@
+{
+  "repository": "github.com/ria-kayy/Discord-server",
+  "branch": "codex/security-to-merge",
+  "base_revision": "010fd3d1d107512be58c4b1e54d7d6b630cb2bd7",
+  "working_tree_changes": true,
+  "verified_at": "2026-11-05T10:04:18.571827+00:00",
+  "automated_checks": [
+    {
+      "command": "uv run --no-sync pytest -q",
+      "result": "passed",
+      "passed": 661,
+      "skipped": 3,
+      "duration_seconds": 65.68,
+      "classification": "automated; external integrations controlled or opt-in skipped"
+    },
+    {
+      "command": "uv run --no-sync ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --no-sync ruff format --check src tests scripts",
+      "result": "passed",
+      "files": 134
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "uv build",
+      "result": "passed",
+      "artifacts": [
+        "dist/switchcrew-0.1.0.tar.gz",
+        "dist/switchcrew-0.1.0-py3-none-any.whl"
+      ]
+    }
+  ],
+  "live_checks": {
+    "docker": "blocked: configured Colima socket unavailable",
+    "native_scanner_host_binaries": "trivy, semgrep, pip-audit unavailable",
+    "discord_switch_github": "not run",
+    "company_brain_current_checkout": "not live verified",
+    "waggle_two_task_learning": "incomplete",
+    "voice_note": "incomplete"
+  },
+  "remote_ci": "not run",
+  "external_repository_mutations": "none",
+  "changed_files_sha256": {
+    ".env.example": "7a0211c351aed51773fe6a351cb2555555a68573b701d0f662f63679cb6ab29d",
+    "README.md": "82b696c7dd0abfa70a5635f9f4363b3e3e1aced4ff11c691e60de1ca64ded6c7",
+    "demo/urllib3_5181_repro.py": "4cfcca932c07ce708aa551b4697317835dd1036d092217cdd4a1e69aa7c1e16e",
+    "docs/DISCORD_CONTROLS.md": "752724471f1e9c6ee706fa075b78a1e3b157a53d213085e5714a602abfc29103",
+    "docs/GUARDED_MERGE.md": "2d158ba15c6f65b67ea70fc1c7f4fdc1f2ac832ceec12e89274f6170b4a85778",
+    "docs/HARNESS_COMPLETION_2026-11-05.md": "01cc022c3e6a3365de156a2528348e5166b8636c39240f8ab9fe6369bdecc35b",
+    "docs/SECURITY_SCANNERS.md": "bcd5f8cf6577b33c301dff4ff251f1d791c62d5dfb294415b0e9da647b3b4910",
+    "src/switchcrew/api.py": "3758fec42bd1af2503453b4292c526cf0e4924d1807e8046eba9dc37072120a4",
+    "src/switchcrew/approval.py": "3b155110ee85fa552361dc87e4ca610f881a954dc3b3108ab1355e7d5da1ffb0",
+    "src/switchcrew/company_brain.py": "84fd091fac84bb98fdcc95acf3b3b436cfa04b07725a347a4e6bf6b96fba0cd6",
+    "src/switchcrew/conversation.py": "6cf6ed219d7699125102913e9b5e5dc94b9b667bdf97971caef5859e8aeed19c",
+    "src/switchcrew/crew.py": "ffb40ccd2b00879fd491f8414c9abc472ffd14e7a3009bbb325451511f16fbfb",
+    "src/switchcrew/discord_interactions.py": "6e9c84bfa204585298a540f3af73daeeb45a57dba039ed91460ee453bec26921",
+    "src/switchcrew/execution.py": "41cf0c326371b02f4d0346f30ce90a2dde94ff026e5679dc7efd3eceac360f9b",
+    "src/switchcrew/finding_selection.py": "1396ce3f40b7174a001aea79ac5cd40f1ea9f5a0637427a774e7f5dbba9619da",
+    "src/switchcrew/graphs.py": "a4313052b5453598c043a7cacda42435747b3596eecd6495735d92208fb64d1b",
+    "src/switchcrew/merge.py": "3e9f348e4c8042a7170444098eff7d52ecd1b11f899c4936bef1d0c942e223e1",
+    "src/switchcrew/organization_runtime.py": "5f2295ea565aa85f63a3c8bb40d9d451178961be6df3cbc230b2b69fb6f46fbc",
+    "src/switchcrew/qa.py": "1d60ef1d101cd27189b7805ecd80c18bfdcb74de351b3b6d07f88df1507157f0",
+    "src/switchcrew/research.py": "60b012b94a426dc587ef09920200dc7c1af1b3da2cb35f782d624bde367ef54e",
+    "src/switchcrew/reviewer.py": "d3a0bd13a0c062b11f397b8e3a083ae40e1d96daecd825ff98a2d4beef0cae4e",
+    "src/switchcrew/security.py": "712ad58aed7936768f37134cd785b76be51334515bc4c9ae9ed9870c14252f82",
+    "src/switchcrew/security_gate.py": "b95c83a0998680495fde6ef1c01bafa349271622b71869c2896a6992a1168799",
+    "src/switchcrew/security_intake.py": "37fa9ff59ad9b09134d34dacebc5d7d1e66aba76a3831cb0686e79cf7d490b31",
+    "src/switchcrew/settings.py": "32893f4d311721188df161e9d9d5503e10d131fcccedeccc848ee873c786739c",
+    "src/switchcrew/triggers.py": "ce72caf7e5b2f98deeb99b3f7955d35db6b14c92d361142b03810ee470b1b5eb",
+    "src/switchcrew/workers.py": "6433239d6ad4af50ca98c6d298cade3c809ce4adc9155a22c368eca99062da00",
+    "tests/test_conversation_controls.py": "0f91be096dd1b1a202a73f61d95df837de56b4432d77621e29f6c3cd17d738cc",
+    "tests/test_execution.py": "0d123d08c466d59c0f2cb4b1936ded2632d0676eb3a199a6061015af2bb3da66",
+    "tests/test_finding_selection.py": "ffa57a88ed2e9824f579c52f973fcf5f3d3d9974589ec575be190b8eba760ca5",
+    "tests/test_graph_guided_research.py": "0bb122b4686d0fa59347a88602f7c462b270ba26e5e7a96d46a41142d787226d",
+    "tests/test_guarded_merge.py": "aadc84864324a6e09e53610324a93f44f0e868bc658f918795941227da32ba8b",
+    "tests/test_reviewer.py": "4e8000701802c48d9b60128418f9c31f6b791ebfbf38e8c5048b53200f96c4a0",
+    "tests/test_security.py": "d1be172284f203a3a7b7f07e106d7b2f0e60ce83f152e769fb1f9f5fff1fddd4",
+    "tests/test_security_gate.py": "7b1e2c9523da57b684e24c327b64db52d704e4be1f7fe8b9e1fd6b8ec4bab729",
+    "tests/test_security_intake.py": "c69909c6a4208bcad15b49699b731e82084469c57ba6d75bf8d47cfa7bc521c1",
+    "tests/test_triggers.py": "d4bbb15696c743ad46849be5dd320fc8c18dc334924a39546ad51f8dd9a5004d"
+  }
+}

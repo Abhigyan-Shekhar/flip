@@ -424,6 +424,7 @@ class ApprovalWorkflow:
             and all(
                 c.get("exit_code") == 0
                 and c.get("timed_out") is False
+                and c.get("output_limit_exceeded", False) is False
                 and c.get("revision") == data["revision"]
                 for c in commands
             )
@@ -507,7 +508,9 @@ class ApprovalWorkflow:
             and commands
             and all(isinstance(c, dict) for c in commands)
             and all(
-                c.get("revision") == data["revision"] and c.get("timed_out") is False
+                c.get("revision") == data["revision"]
+                and c.get("timed_out") is False
+                and c.get("output_limit_exceeded", False) is False
                 for c in commands
             )
         )

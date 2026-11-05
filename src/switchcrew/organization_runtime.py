@@ -228,7 +228,9 @@ def configured_executor(role, capability, store, connection, settings):
             capability["repo_root"],
             connection.agent_id,
             capability["repository"],
-            SecurityRunner(scanners, isolation=isolation),
+            SecurityRunner(
+                scanners, isolation=isolation, artifact_dir=capability.get("artifact_dir")
+            ),
         )
     if role == "security" and mode == "engineering_security_gate":
         from .isolation import DockerIsolation
@@ -248,6 +250,7 @@ def configured_executor(role, capability, store, connection, settings):
             SecurityRunner(
                 [ScannerConfig(**item) for item in capability.get("scanners", [])],
                 isolation=isolation,
+                artifact_dir=capability.get("artifact_dir"),
             ),
         )
     return None

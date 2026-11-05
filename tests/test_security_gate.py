@@ -263,6 +263,13 @@ async def test_executor_uses_only_persisted_authorized_checkout_and_revision(con
     state = {"task_id": handoff["task_id"], "handoff_id": handoff["id"]}
     report = await executor(state)
     assert report["status"] == "verified_success"
+    assert (
+        store.connection.execute(
+            "SELECT status FROM security_gates WHERE security_handoff_id=?",
+            (handoff["id"],),
+        ).fetchone()[0]
+        == "passed"
+    )
     denied = await executor({"task_id": "other", "handoff_id": handoff["id"]})
     assert denied["status"] == "blocked"
 

@@ -301,6 +301,13 @@ class CompanyBrain:
         try:
             args = {**arguments, "repo_root": self.repo_root}
             payload = await self._call(tool, args)
+            head, dirty = await asyncio.gather(
+                self._git("rev-parse", "HEAD"), self._git("status", "--porcelain")
+            )
+            if head != status.get("graph_revision") or dirty is None or dirty:
+                return BrainResult(
+                    warning="Company Brain evidence omitted: checkout changed during retrieval."
+                )
             data = self._dict(payload)
             # Reject explicit server claims about a different checkout or revision.
             repository = self._dict(data.get("repository"))

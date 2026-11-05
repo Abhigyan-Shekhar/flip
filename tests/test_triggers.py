@@ -294,3 +294,97 @@ async def test_triggered_qa_cannot_pass_after_test_mutates_pinned_tree(tmp_path)
     assert result["status"] == "qa_failed"
     assert result["commands"][0]["revision_unchanged"] is False
     store.close()
+
+
+async def test_discord_scan_uses_operator_root_and_deduplicates_pinned_revision(tmp_path):
+    from switchcrew.triggers import schedule_security_scan
+
+    root, revision = git_repo(tmp_path / "repo")
+    store = Store(tmp_path / "scan.sqlite")
+    source = {
+        "room_id": "room",
+        "thread_id": "thread",
+        "message_id": "message",
+        "user_id": "human",
+        "repo_root": "/malicious/source/path",
+    }
+    kwargs = {
+        "task_id": "scan-request",
+        "source": source,
+        "repository": "owner/project",
+        "repo_root": root,
+        "pm_id": "pm",
+        "security_id": "security-agent",
+    }
+    first = schedule_security_scan(store, **kwargs)
+    assert first["revision"] == revision
+    assert store.get_task(first["task_id"])["source"]["repo_root"] == str(root)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "advance",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    second = schedule_security_scan(store, **kwargs)
+    assert second["status"] == "duplicate"
+    assert second["revision"] == revision
+    assert (
+        store.connection.execute(
+            "SELECT count(*) FROM handoffs WHERE task_id='scan-request'"
+        ).fetchone()[0]
+        == 1
+    )
+    runner = SecurityRunner(
+        [ScannerConfig("fixture", (sys.executable, "-c", "print('{\"findings\": []}')"))]
+    )
+    executor = TriggeredSecurityExecutor(store, root, "security-agent", "owner/project", runner)
+    report = await executor({"handoff_id": first["security_handoff_id"]})
+    assert report["status"] == "verified_success"
+    assert report["revision"] == revision
+    wrong = TriggeredSecurityExecutor(store, tmp_path, "security-agent", "owner/project", runner)
+    denied = await wrong({"handoff_id": first["security_handoff_id"]})
+    assert denied["status"] == "blocked"
+    with pytest.raises(PermissionError, match="different request"):
+        schedule_security_scan(store, **{**kwargs, "source": {**source, "user_id": "other"}})
+
+
+async def test_cancelled_discord_scan_discards_finished_scanner_evidence(tmp_path):
+    from switchcrew.triggers import schedule_security_scan
+
+    root, revision = git_repo(tmp_path / "repo")
+    store = Store(tmp_path / "scan.sqlite")
+    receipt = schedule_security_scan(
+        store,
+        task_id="scan",
+        source={"room_id": "room", "message_id": "msg", "user_id": "human"},
+        repository="owner/project",
+        repo_root=root,
+        pm_id="pm",
+        security_id="security-agent",
+    )
+
+    class Runner:
+        async def run(self, *_):
+            task = store.get_task("scan")
+            store.transition_task("scan", "CANCELLED", task["version"])
+
+            class Report:
+                def to_dict(self):
+                    return {"status": "verified_success", "revision": revision}
+
+            return Report()
+
+    executor = TriggeredSecurityExecutor(store, root, "security-agent", "owner/project", Runner())
+    result = await executor({"handoff_id": receipt["security_handoff_id"]})
+    assert result["reason"] == "trigger_task_cancelled_or_changed"

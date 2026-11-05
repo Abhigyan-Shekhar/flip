@@ -142,24 +142,31 @@ def build_agent_graph(
                 "acceptance_criteria": state["acceptance_criteria"],
             }
         elif spec.role == AgentRole.RESEARCH:
-            result = await provider.investigate(state["question"], state["acceptance_criteria"])
+            snapshot = None
             if company_brain is not None:
                 try:
                     brain = await company_brain.get_context(
                         state["question"],
                         max_results=getattr(company_brain, "max_results", 5),
                     )
-                    result["company_brain"] = {
+                    snapshot = {
                         "context": brain.context,
                         "warning": brain.warning,
                     }
                 except Exception as exc:
                     # Brain enriches evidence but cannot block the independent
                     # Switch handoff or turn an outage into a research claim.
-                    result["company_brain"] = {
+                    snapshot = {
                         "context": None,
                         "warning": f"Company Brain unavailable ({type(exc).__name__})",
                     }
+            contextual = getattr(provider, "investigate_with_context", None)
+            if snapshot and contextual is not None:
+                result = await contextual(state["question"], state["acceptance_criteria"], snapshot)
+            else:
+                result = await provider.investigate(state["question"], state["acceptance_criteria"])
+            if snapshot is not None:
+                result["company_brain"] = snapshot
         else:
             result = {
                 "status": "blocked",

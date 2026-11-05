@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -54,6 +54,15 @@ class ApprovalDecision(RequestModel):
     stage: Literal["engineering", "release"]
     approved: bool = Field(strict=True)
     expected_version: int = Field(ge=0)
+
+
+class MergeApproval(RequestModel):
+    revision: str = Field(pattern=r"^[0-9a-f]{40}$")
+    expected_version: int = Field(ge=0, strict=True)
+
+
+class MergeExecution(RequestModel):
+    revision: str = Field(pattern=r"^[0-9a-f]{40}$")
 
 
 class PlanStepDecision(RequestModel):
@@ -113,6 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.research_api_key,
             settings.waggle_token,
             settings.company_brain_token,
+            settings.merge_github_token,
         )
         if field is not None
     ]
@@ -154,6 +164,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.database_path.parent.mkdir(parents=True, exist_ok=True)
         app.state.store = Store(settings.database_path)
         app.state.approvals = ApprovalWorkflow(app.state.store, human_tokens)
+        app.state.guarded_merge = None
+        if settings.merge_enabled:
+            if (
+                settings.merge_github_token is None
+                or not settings.merge_github_token.get_secret_value().strip()
+            ):
+                raise RuntimeError("Merge requires an API-only GitHub token")
+            from switchcrew.merge import GuardedMerge
+            from switchcrew.release import GitHubPublisher
+
+            app.state.guarded_merge = GuardedMerge(
+                ApprovalWorkflow(
+                    app.state.store, set(human_tokens) | set(settings.approval_user_ids)
+                ),
+                GitHubPublisher(
+                    settings.release_repository,
+                    settings.release_base,
+                    settings.merge_github_token.get_secret_value(),
+                ),
+                settings.merge_required_checks,
+            )
         app.state.company_brain = None
         from switchcrew.harnesses import HarnessPlanner, load_harness_config
 
@@ -346,8 +377,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return sanitize(snapshot(request.app.state.store, settings, limit=limit))
 
     @app.post("/discord/interactions", include_in_schema=False)
-    async def discord_interaction(request: Request):
-        from .discord_interactions import respond_to_interaction
+    async def discord_interaction(request: Request, background_tasks: BackgroundTasks):
+        from .discord_interactions import respond_to_interaction_async
 
         if not settings.discord_application_public_key:
             raise HTTPException(503, "Discord interactions are not provisioned")
@@ -357,11 +388,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if len(content) > 32768:
                 raise HTTPException(413, "Discord interaction too large")
         try:
-            return respond_to_interaction(
+            return await respond_to_interaction_async(
                 request.app.state.store,
                 settings,
                 bytes(content),
                 {k.lower(): v for k, v in request.headers.items()},
+                merge_service=request.app.state.guarded_merge,
+                background_tasks=background_tasks,
             )
         except PermissionError:
             raise HTTPException(401, "Discord signature or scope denied") from None
@@ -577,6 +610,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             body.expected_version,
         )
         return sanitize(result)
+
+    def merger(request):
+        service = request.app.state.guarded_merge
+        if service is None:
+            raise HTTPException(503, "Guarded merge is disabled")
+        return service
+
+    @app.get("/tasks/{task_id}/pull-request", dependencies=authenticated)
+    async def inspect_pull_request(task_id: str, request: Request):
+        return sanitize(await merger(request).inspect(task_id))
+
+    @app.post("/tasks/{task_id}/merge-approval")
+    async def approve_merge(
+        task_id: str,
+        body: MergeApproval,
+        request: Request,
+        actor: Annotated[str, Depends(authenticate_human)],
+    ):
+        return sanitize(
+            await merger(request).approve(task_id, actor, body.expected_version, body.revision)
+        )
+
+    @app.post("/tasks/{task_id}/merge")
+    async def execute_merge(
+        task_id: str,
+        body: MergeExecution,
+        request: Request,
+        actor: Annotated[str, Depends(authenticate_human)],
+    ):
+        return sanitize(await merger(request).execute(task_id, actor, body.revision))
 
     from .organization_api import install_organization_routes
 

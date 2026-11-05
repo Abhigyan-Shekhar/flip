@@ -79,3 +79,24 @@ def human_request(text, engineering_job_key=""):
 
 def decision_phrase(task_id, stage, version, *, approved=True):
     return f"{'Approve' if approved else 'Reject'} {stage} for task {task_id} version {version}"
+
+
+_CONTROL_PHRASES = {
+    "show me the logs": "logs",
+    "show logs": "logs",
+    "show me the sandbox logs": "logs",
+    "show sandbox status": "status",
+    "what is the status": "status",
+    "what's the status": "status",
+    "stop the current task": "cancel",
+    "cancel the current task": "cancel",
+    "show me the findings": "findings",
+    "what did security find": "findings",
+}
+
+
+def conversation_control(text):
+    """Recognize bounded controls; never infer approvals or shell commands."""
+    if not isinstance(text, str) or len(text) > 300:
+        return None
+    return _CONTROL_PHRASES.get(re.sub(r"[.!?]+$", "", text.strip()).strip().lower())

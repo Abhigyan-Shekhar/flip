@@ -6,7 +6,17 @@ and Python 3.12/FastAPI with SQLite preserves tasks, handoffs and approvals.
 Engineering changes require independent QA/Reviewer checks and human approval
 before Release can publish a draft PR.
 
-## Current checkpoint — November 4, 2026
+## Implementation checkpoint — November 5, 2026
+
+The `ria-kayy/Discord-server` checkout now adds configured natural-language
+Security scans, scoped `/flip` task controls, graph-guided Research, bounded
+QA/Reviewer logs, native scanner parsing and separately human-approved guarded
+merge controls. These changes require operator setup and have automated coverage;
+they have not been run as a new live Discord-to-merge workflow. See the
+[implementation, acceptance matrix and phone demo runbook](docs/HARNESS_COMPLETION_2026-11-05.md),
+[scanner setup](docs/SECURITY_SCANNERS.md), and [guarded merge](docs/GUARDED_MERGE.md).
+
+## Historical deployment checkpoint — November 4, 2026
 
 - **Running and verified on the Mac:** local Switch, gateway, API/dashboard,
   PM and Research; a real Discord request produced a cited Research reply in

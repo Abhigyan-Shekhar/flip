@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     release_name: str = ""
     release_repository: str = ""
     release_base: str = ""
+    merge_enabled: bool = False
+    merge_github_token: SecretStr | None = None
+    merge_required_checks: list[str] = Field(default_factory=list)
     switch_base_url: str = "http://127.0.0.1:8080"
     switch_room_id: str = ""
     pm_participant_id: str = ""

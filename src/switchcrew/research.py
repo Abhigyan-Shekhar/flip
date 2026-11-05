@@ -150,7 +150,39 @@ class ResearchProvider:
     max_sources: int = 5
     fetch: object = retrieve_https
 
-    async def investigate(self, question: str, acceptance_criteria: list[str]) -> dict:
+    async def investigate_with_context(self, question, acceptance_criteria, snapshot):
+        """Use graph identifiers to rank configured sources, never to add capabilities.
+
+        Excerpts, instructions, URLs and commands from graph text are not followed.
+        The revision-grounded adapter owns provenance validation.
+        """
+        context = snapshot.get("context")
+        terms = set()
+        if isinstance(context, dict) and context.get("revision"):
+            remaining = 200
+
+            def visit(value, depth=0):
+                nonlocal remaining
+                if depth > 8 or remaining <= 0:
+                    return
+                remaining -= 1
+                if isinstance(value, dict):
+                    for key, item in list(value.items())[:50]:
+                        if key in {"symbol", "symbol_name", "path", "file", "file_path"}:
+                            if isinstance(item, str) and len(item) <= 300:
+                                terms.update(research_terms(item))
+                        elif isinstance(item, (dict, list)):
+                            visit(item, depth + 1)
+                elif isinstance(value, list):
+                    for item in value[:50]:
+                        visit(item, depth + 1)
+
+            visit(context.get("evidence", {}))
+        return await self.investigate(question, acceptance_criteria, graph_terms=terms)
+
+    async def investigate(
+        self, question: str, acceptance_criteria: list[str], *, graph_terms=None
+    ) -> dict:
         if (
             not question.strip()
             or not acceptance_criteria
@@ -158,6 +190,7 @@ class ResearchProvider:
         ):
             raise ResearchError("A research question and explicit acceptance criteria are required")
         terms = research_terms(question)
+        graph_terms = set(graph_terms or ())
         criterion_terms = [research_terms(c) for c in acceptance_criteria]
         evidence, errors = [], []
         for url in list(dict.fromkeys(self.source_urls))[: self.max_sources]:
@@ -169,6 +202,7 @@ class ResearchProvider:
                     key=lambda item: (
                         -(
                             2 * len(terms & research_terms(item[1]))
+                            + 5 * len(graph_terms & research_terms(item[1]))
                             + 3
                             * sum(len(words & research_terms(item[1])) for words in criterion_terms)
                         )
@@ -177,7 +211,8 @@ class ResearchProvider:
                 matches = [
                     sentence
                     for _, sentence in ranked
-                    if (terms | set().union(*criterion_terms)) & research_terms(sentence)
+                    if (terms | graph_terms | set().union(*criterion_terms))
+                    & research_terms(sentence)
                 ][:3]
                 if matches:
                     evidence.append({"url": url, "excerpts": matches})
@@ -202,6 +237,11 @@ class ResearchProvider:
             "evidence": evidence,
             "errors": errors,
             "criterion_evidence": criterion_evidence,
+            "graph_guidance": {
+                "used": bool(graph_terms),
+                "ranking_terms": sorted(graph_terms)[:100],
+                "scope": "ranking configured sources only",
+            },
             "limitations": (
                 "Extractive matches from configured sources only; "
                 "acceptance criteria require human assessment."
