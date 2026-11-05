@@ -3,6 +3,12 @@
 The [November 5 live run](LIVE_PIPELINE_2026-11-05.md) created a real draft PR
 after separate human Engineering and Release approvals.
 
+Normal Discord messages now use [readable conversation](NATURAL_LANGUAGE_2026-11-05.md).
+Humans can submit prose with a `Success criteria:` section and use the exact
+`Approve engineering for task … version …` / `Approve release for task … version …`
+phrases shown by PM. Configure `SWITCHCREW_ENGINEERING_JOB_KEY` for natural coding
+requests. The JSON examples below remain supported for API and legacy callers.
+
 The mandatory independent Reviewer and bounded correction loop are documented in
 [REVIEW_CORRECTIONS.md](REVIEW_CORRECTIONS.md). Reviewer identity/configuration is
 now required; older workflow diagrams below describe the pre-review lifecycle.

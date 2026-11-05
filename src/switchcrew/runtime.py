@@ -7,7 +7,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
@@ -16,7 +15,7 @@ from .agents import AGENT_ROLES
 from .graphs import graph_result, invoke_agent_graph
 from .store import Store
 from .switch import SwitchClient, SwitchOwnershipLost
-from .wire import transport_payload
+from .wire import read_message, render_message
 
 log = logging.getLogger("switchcrew.runtime")
 
@@ -87,8 +86,7 @@ class AgentRuntime:
             return False
         try:
             body = p["body"]
-            marker = re.search(r"```switchcrew\n(.*?)\n```\s*$", body, re.DOTALL)
-            message = json.loads(marker.group(1) if marker else body)
+            message = read_message(body, self.store)
             if not isinstance(message, dict):
                 return False
             if not isinstance(message.get("handoff_id"), str) or not message["handoff_id"]:
@@ -197,14 +195,7 @@ class AgentRuntime:
             if not target:
                 raise ValueError("Missing target name for durable delivery")
             source = task["source"]
-            body = (
-                "```switchcrew\n"
-                + json.dumps(
-                    {**transport_payload(p), "task_id": item["task_id"], "delivery_id": item["id"]},
-                    sort_keys=True,
-                )
-                + "\n```"
-            )
+            body = render_message(item, task, h, role=c.role, target=target)
             result = await self.switch.send_targeted_message(
                 body,
                 target_names=[target],

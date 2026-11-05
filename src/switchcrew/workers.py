@@ -8,6 +8,7 @@ import re
 from uuid import NAMESPACE_URL, uuid5
 
 from .approval import ApprovalWorkflow
+from .conversation import decision_phrase, human_request
 from .discord import DiscordBinding, normalize_discord_event
 from .graphs import build_agent_graph, graph_result, invoke_agent_graph
 from .harnesses import HarnessError
@@ -16,7 +17,7 @@ from .orchestration import Orchestrator
 from .research import ResearchProvider
 from .store import ConflictError, Store
 from .switch import SwitchClient, SwitchOwnershipLost
-from .wire import transport_payload
+from .wire import plan_summary, read_message, render_message, research_summary
 
 log = logging.getLogger("switchcrew.workers")
 
@@ -72,6 +73,7 @@ class Worker:
         checkpointer=None,
         engineering_id="",
         engineering_name="",
+        engineering_job_key="",
         qa_id="",
         reviewer_id="",
         max_corrections=2,
@@ -93,6 +95,7 @@ class Worker:
         if role not in {"pm", "research"} or pm_id == research_id:
             raise ValueError("Distinct PM and Research identities are required")
         self.role, self.store, self.switch = role, store, switch
+        self.engineering_job_key = engineering_job_key
         self.project_id = project_id
         self.meetings = None
         self.security_gate = None
@@ -221,8 +224,7 @@ class Worker:
         ):
             try:
                 body = payload["body"]
-                marker = re.search(r"```switchcrew\n(.*?)\n```\s*$", body, re.DOTALL)
-                message = json.loads(marker.group(1) if marker else body)
+                message = read_message(body, self.store)
                 if isinstance(message.get("delivery_id"), str):
                     message_id = message["delivery_id"]
                     event = {
@@ -263,19 +265,8 @@ class Worker:
                     self._reply(
                         row[0],
                         "plan_" + data["phase"],
-                        "PM orchestration "
-                        + data["phase"]
-                        + ": "
-                        + json.dumps(
-                            {
-                                key: {
-                                    field: step[field]
-                                    for field in ("role", "status", "task_id", "reason")
-                                    if field in step
-                                }
-                                for key, step in data["steps"].items()
-                            }
-                        ),
+                        plan_summary(data),
+                        freeze=True,
                     )
             for row in self.store.connection.execute(
                 "SELECT task_id FROM approval_workflows"
@@ -331,10 +322,15 @@ class Worker:
                     self._reply(
                         task_id,
                         data["phase"],
-                        f"Engineering task {task_id}: {data['phase']}; "
-                        f"revision {data.get('revision', 'unavailable')}; "
-                        f"task version {task['version']}. "
-                        "Review QA evidence before release approval.",
+                        (
+                            "Engineering's changes passed QA and independent review. "
+                            f"Revision: {data.get('revision', 'unavailable')}.\n"
+                            "Review the evidence, then authorize the draft PR by replying:\n"
+                            + decision_phrase(task_id, "release", task["version"])
+                            if data["phase"] == "human_review"
+                            else "The checks haven't passed. This needs attention before release."
+                        ),
+                        freeze=True,
                     )
                 if data and self.documentation_id and data["spec"]["pm"] == self.pm_id:
                     from .organization_runtime import schedule_documentation
@@ -449,7 +445,10 @@ class Worker:
                     }
                 else:
                     public = {"status": "recorded"}
-                text = "Meeting command recorded: " + _clip(json.dumps(public), 1400)
+                text = "Meeting command recorded.\n" + "\n".join(
+                    key.replace("_", " ").capitalize() + ": " + _clip(str(value), 300)
+                    for key, value in public.items()
+                )
             except (PermissionError, ValueError, KeyError, TypeError):
                 text = (
                     "Meeting command denied or invalid; "
@@ -573,7 +572,13 @@ class Worker:
                 )
             return
         try:
-            request = command["request"] if command is not None else json.loads(source.body)
+            request = (
+                command["request"]
+                if command is not None
+                else (
+                    human_request(source.body, self.engineering_job_key) or json.loads(source.body)
+                )
+            )
             if not isinstance(request, dict):
                 request = {}
         except ValueError:
@@ -689,9 +694,10 @@ class Worker:
                 task_id,
                 "clarification",
                 (
-                    "Send a new JSON request with question and nonempty acceptance_criteria. "
-                    "This task remains awaiting clarification."
+                    "Describe the work and add a 'Success criteria:' section with a short list "
+                    "of what should pass. I need those details before I can delegate it."
                 ),
+                freeze=True,
             )
             return
         if requested_kind == "orchestrate":
@@ -811,7 +817,11 @@ class Worker:
                 task_id,
                 kind,
                 f"Engineering request {task_id} awaits human approval. "
-                f"Task version: {version}. No Engineering action has started.",
+                f"Task version: {version}. No Engineering action has started.\n\n"
+                "To authorize the work, reply in this thread:\n"
+                + decision_phrase(task_id, "engineering", version)
+                + "\n\nRelease will require a separate approval after QA and review.",
+                freeze=True,
             )
 
     def _reply(self, task_id, kind, text, *, freeze=False):
@@ -844,8 +854,7 @@ class Worker:
     async def _handoff(self, event):
         try:
             body = event["payload"]["body"]
-            marker = re.search(r"```switchcrew\n(.*?)\n```\s*$", body, re.DOTALL)
-            message = json.loads(marker.group(1) if marker else body)
+            message = read_message(body, self.store)
             if not isinstance(message, dict):
                 return
             if not isinstance(message.get("handoff_id"), str) or not message["handoff_id"]:
@@ -939,7 +948,8 @@ class Worker:
                 self._reply(
                     handoff["task_id"],
                     "research_result",
-                    "Research result: " + json.dumps(handoff["result"], ensure_ascii=False),
+                    research_summary(handoff["result"]),
+                    freeze=True,
                 )
 
     async def flush_outbox(self):
@@ -991,15 +1001,11 @@ class Worker:
             # Persisted logical delivery ID allows receiving workers to deduplicate
             # ambiguous transport outcomes; Switch itself has no POST idempotency API.
             body = (
-                "```switchcrew\n"
-                + json.dumps(
-                    {
-                        **transport_payload(payload),
-                        "task_id": item["task_id"],
-                        "delivery_id": item["id"],
-                    }
+                render_message(
+                    item, task, handoff, role=self.role, target=self.names[item["recipient"]]
                 )
-                + "\n```"
+                if handoff
+                else ""
             )
             if item["recipient"] == "discord":
                 result = await self.switch.post_message(payload["text"], thread_id=thread)
@@ -1164,6 +1170,7 @@ async def _main(role):
                 checkpointer=saver,
                 engineering_id=settings.engineering_agent_id,
                 engineering_name=settings.engineering_name,
+                engineering_job_key=settings.engineering_job_key,
                 qa_id=settings.qa_agent_id,
                 reviewer_id=settings.reviewer_agent_id,
                 max_corrections=settings.max_corrections,

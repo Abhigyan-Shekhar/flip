@@ -1,5 +1,9 @@
 # Live coding-to-draft-PR acceptance — November 5, 2026 IST
 
+Follow-up: [readable conversation and plain-text requests](NATURAL_LANGUAGE_2026-11-05.md)
+are now deployed. Their live Research check is separate from this historical
+coding-to-PR run; the complete coding pipeline has not been rerun with that display.
+
 **The complete disposable coding workflow passed live.** A human submitted the
 request and both approval stages in Discord; real Switch handoffs drove two
 Console-managed Codex assignments, independent QA and review, an independent

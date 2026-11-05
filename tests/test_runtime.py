@@ -5,6 +5,7 @@ import pytest
 
 from switchcrew.runtime import AgentConnection, AgentRuntime
 from switchcrew.store import Store
+from switchcrew.wire import read_message, render_message
 
 
 class Switch:
@@ -17,7 +18,7 @@ class Switch:
         self.acks = []
 
     async def send_targeted_message(self, body, target_names, thread_id):
-        self.sent.append(json.loads(body.split("\n")[1]))
+        self.sent.append(read_message(body, self.store))
         return {"target_statuses": {target_names[0]: "live"}, "event_id": "external"}
 
     async def connect_to_room(self, room):
@@ -37,6 +38,7 @@ def setup_runtime(tmp_path, switch=None):
     task = store.create_task("Question", {}, ["Evidence"])
     handoff = store.create_handoff(task["id"], "pm", "research", "Question", ["Evidence"], 0)
     switch = switch or Switch()
+    switch.store = store
     calls = []
 
     class Graph:
@@ -127,12 +129,31 @@ async def test_durable_ack_result_replay_and_cursor(tmp_path):
     runtime.switch.stream = [{"type": "connection_state"}, event, event]
     await runtime.run()
     assert len(calls) == 1
+
     assert calls[0]["handoff_id"] == h["id"]
     assert runtime.store.get_handoff(h["id"])["result"]["status"] == "blocked"
     assert [p["type"] for p in runtime.switch.sent] == ["handoff.accepted", "handoff.completed"]
     assert runtime.store.get_cursor("research") == "4"
     await runtime.run()
     assert len(calls) == 1
+
+
+async def test_prose_delivery_keeps_sender_checks_and_replay_identity(tmp_path):
+    runtime, event, handoff, calls = setup_runtime(tmp_path)
+    task = runtime.store.get_task(handoff["task_id"])
+    item = runtime.store.pending_outbox()[0]
+    event["payload"]["body"] = render_message(item, task, handoff)
+    assert not await runtime.receive(
+        {**event, "payload": {**event["payload"], "sender": "stranger"}}
+    )
+    assert await runtime.receive(event)
+    await runtime.process_pending()
+    assert not await runtime.receive(
+        {**event, "payload": {**event["payload"], "message_id": "replay"}}
+    )
+    await runtime.process_pending()
+    assert len(calls) == 1
+    runtime.store.close()
 
 
 @pytest.mark.parametrize("mutation", ["sender", "room", "task", "body", "proxy", "recipient"])
@@ -251,6 +272,7 @@ async def test_each_identity_executes_own_compiled_graph(tmp_path, role):
         {"dispatcher": "Dispatcher"},
     )
     switch = Switch()
+    switch.store = store
     switch.agent_id = connection.agent_id
     calls = []
 

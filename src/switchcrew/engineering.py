@@ -10,6 +10,7 @@ import hashlib
 import json
 import sqlite3
 import subprocess
+import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
@@ -157,19 +158,47 @@ class ConsoleCodex:
         return result["session"]["id"]
 
     async def deliver(self, identity, checkout, question, criteria):
-        prompt = json.dumps(
-            {
-                "assignment_id": identity,
-                "checkout": str(checkout),
-                "question": question,
-                "acceptance_criteria": criteria,
-                "instructions": "Work only in this checkout. Implement the request. Commit all "
-                "changes. Then atomically write .switchcrew-result.json "
-                "(do not commit this receipt) with "
-                "assignment_id, status=implemented or implementation_failed, final_revision="
-                "the exact full git HEAD. Never publish or push. Do not modify QA commands.",
-            },
-            sort_keys=True,
+        if len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity):
+            raise ValueError("A canonical assignment identity is required")
+        # Keep the complete structured brief local to the isolated checkout.
+        # The public Switch/Discord conversation contains only a readable summary.
+        directory = Path(checkout) / ".switch"
+        for part in (directory, directory / "config"):
+            if part.is_symlink():
+                raise ValueError("Assignment brief directory cannot be a symlink")
+            part.mkdir(exist_ok=True)
+        directory = directory / "config"
+        name = "switchcrew-assignment-" + identity + ".json"
+        if git(checkout, "ls-files", "--", ".switch/config/" + name):
+            raise ValueError("Assignment brief must not overwrite tracked source")
+        with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(
+                {
+                    "assignment_id": identity,
+                    "checkout": str(checkout),
+                    "question": question,
+                    "acceptance_criteria": criteria,
+                    "instructions": "Work only in this checkout. Implement the request. Commit all "
+                    "changes. Then atomically write .switchcrew-result.json "
+                    "(do not commit this receipt) with "
+                    "assignment_id, status=implemented or implementation_failed, final_revision="
+                    "the exact full git HEAD. Never publish or push. Do not modify QA commands.",
+                },
+                stream,
+                sort_keys=True,
+            )
+        temporary.replace(directory / name)
+        summary = question.partition("\n\n")[0].replace("@", "@\u200b")[:700]
+        prompt = (
+            "Please implement this approved assignment:\n\n"
+            + summary
+            + "\n\nRead the complete assignment brief at .switch/config/"
+            + name
+            + ". It includes the approved criteria, review context and result-file contract. "
+            "Work only in the assigned checkout, commit the changes, then write the required "
+            "local result receipt. Keep the brief and receipt out of Git. "
+            "Do not push, publish, or change QA commands.\n\nAssignment: " + identity
         )
         result = await self.switch.send_targeted_message(prompt, target_names=[self.codex_name])
         if result.get("target_statuses", {}).get(self.codex_name) != "live":

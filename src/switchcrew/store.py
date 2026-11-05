@@ -416,6 +416,12 @@ class Store:
             )
         ]
 
+    def get_outbox(self, item_id):
+        with self._lock:
+            return self._row(
+                self.connection.execute("SELECT * FROM outbox WHERE id=?", (item_id,)).fetchone()
+            )
+
     def mark_outbox_sent(self, item_id, external_id=None):
         self.connection.execute(
             "UPDATE outbox SET status='sent',external_id=? WHERE id=?", (external_id, item_id)

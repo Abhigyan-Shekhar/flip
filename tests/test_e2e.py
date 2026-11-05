@@ -11,6 +11,7 @@ from test_workers import Transport, event, worker
 from switchcrew.discord import DiscordBinding
 from switchcrew.research import ResearchProvider
 from switchcrew.store import Store
+from switchcrew.wire import read_message
 from switchcrew.workers import Worker
 
 
@@ -35,7 +36,7 @@ async def test_handoff_ack_result_and_restart(tmp_path):
 
     def fetch(url):
         assert any(
-            json.loads(body.split("\n")[1])["type"] == "handoff.accepted"
+            read_message(body, store)["type"] == "handoff.accepted"
             for target, body, thread in research_bus.sent
         )
         calls.append(url)
@@ -105,7 +106,7 @@ async def test_restart_after_research_acceptance(tmp_path):
             [
                 body
                 for target, body, thread in research_bus.sent
-                if json.loads(body.split("\n")[1])["type"] == "handoff.accepted"
+                if read_message(body, store)["type"] == "handoff.accepted"
             ]
         )
         == 1

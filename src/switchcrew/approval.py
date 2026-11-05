@@ -588,12 +588,11 @@ class ApprovalWorkflow:
                 f"Draft PR release receipt\nCommit: {receipt['commit_sha']}\n"
                 f"Engineering approval: {receipt['engineering_approval']['actor']}\n"
                 f"Release approval: {receipt['approval']['actor']} "
-                f"at {receipt['approval']['decided_at']}\nPR: {receipt['pr_url']}\nTests:\n"
-                + "\n".join(
-                    f"{encode(test['command'])}: exit {test['exit_code']}, "
-                    f"timeout={test['timed_out']}"
-                    for test in receipt["tests"]
-                )
+                f"at {receipt['approval']['decided_at']}\nPR: {receipt['pr_url']}\n"
+                f"QA passed all {len(receipt['tests'])} configured checks.\n"
+                "Independent review accepted this revision.\n"
+                f"Execution receipt: {receipt['verification']['implementation_assignment']}\n"
+                "The draft PR is ready for human review."
             )
             for index, offset in enumerate(range(0, len(text), 1600)):
                 self.store._enqueue(

@@ -1,0 +1,91 @@
+{
+  "status": "live_pm_research_prose_roundtrip_verified",
+  "original_human_request": {
+    "id": "1567733439984042149",
+    "content": "Please investigate Discord Gateway reconnect and resume behavior.\nSuccess criteria:\n- Return relevant excerpts about reconnect and resume.\n- Cite the configured Discord documentation.",
+    "author_id": "703216309684666389"
+  },
+  "task": {
+    "id": "eb714d1c-e95c-5c31-aeb8-fa4a140b05aa",
+    "status": "COMPLETED",
+    "version": 4
+  },
+  "handoff": {
+    "id": "df973814-6c86-5170-9fd8-de26d8f2d62f",
+    "status": "completed",
+    "result_status": "evidence_found"
+  },
+  "discord_thread_url": "https://discord.com/channels/1565566745622872115/1567733439984042149",
+  "messages": [
+    {
+      "id": "1567733455863685198",
+      "content": "<@&1566349436580528148> Please take the next step on this task.\n\nPlease investigate Discord Gateway reconnect and resume behavior.\n\nWhat needs to pass:\n- Return relevant excerpts about reconnect and resume.\n- Cite the configured Discord documentation.\n\nReference: `3878190a-16c1-4bcd-8468-91c70aa7cd16`",
+      "timestamp": "2026-11-05T02:53:02.957000+00:00"
+    },
+    {
+      "id": "1567733457885593664",
+      "content": "PM delegated the question and criteria to Research; awaiting acknowledgment.",
+      "timestamp": "2026-11-05T02:53:03.439000+00:00"
+    },
+    {
+      "id": "1567733460372689018",
+      "content": "<@&1566349434097508392> I've accepted the assignment. I'll check the requirements and report back here.\n\nReference: `a077e989-a5cf-4a6d-b28e-aa9f7263f22b`",
+      "timestamp": "2026-11-05T02:53:04.032000+00:00"
+    },
+    {
+      "id": "1567733462335627315",
+      "content": "Research explicitly acknowledged the handoff.",
+      "timestamp": "2026-11-05T02:53:04.500000+00:00"
+    },
+    {
+      "id": "1567733531663278212",
+      "content": "<@&1566349434097508392> I've finished the investigation and sent the supporting evidence to PM.\n\nReference: `c6d43437-7555-40ba-9834-694fbe06ac2f`",
+      "timestamp": "2026-11-05T02:53:21.029000+00:00"
+    },
+    {
+      "id": "1567733534041444374",
+      "content": "Research result:\n\nI couldn't find supporting evidence in the configured sources.\n\n['Analysis is grounded in the supplied configured-source excerpts; the live documentation was not independently verified.', 'The triggering context for the immediate-termination excerpt is missing, so it cannot establish a universal disconnect rule.', 'The supplied excerpts do not enumerate close-code handling, Resume payload fields, retry timing, or invalid-session behavior.']",
+      "timestamp": "2026-11-05T02:53:21.596000+00:00"
+    },
+    {
+      "id": "1567733988205010987",
+      "content": "Correction to the result display: the investigation did find evidence.\n\nResearch result:\n\nRelevant excerpts from the configured [Discord Gateway documentation](https://docs.discord.com/developers/events/gateway.md):\n\n1. Reconnect and resume procedure:\n\u201cIf an app **can** resume/reconnect, it should open a new connection using 'resume_gateway_url' with the same version and encoding, then send a [Resume (opcode '6')](https://docs.discord.com/developers/events/gateway-events#resume) event.\u201d\n\n2. Connection termination instruction:\n\u201cThe client should immediately terminate the connection with any close code besides '1000' or '1001', then reconnect and attempt to [Resume](https://docs.discord.com/developers/events/gateway.md#resuming).\u201d\n\n3. Resume versus a fresh session:\n\u201cWhen your app encounters a disconnect, it will typically be sent a [close code](https://docs.discord.com/developers/topics/opcodes-and-status-codes.md#gateway-gateway-close-event-codes) which can be used to determine whether you can reconnect and [Resume](https://docs.discord.com/developers/events/gateway.md#resuming) the session, or whether you have to start over and re-Identify.\u201d\n\nTaken together, these excerpts support a conditional recovery flow: inspect the disconnect close code; if the session is resumable, reconnect using resume_gateway_url with the original version and encoding and send opcode 6; otherwise, sta",
+      "timestamp": "2026-11-05T02:55:09.877000+00:00"
+    },
+    {
+      "id": "1567733991451136110",
+      "content": "rt over with Identify. The termination instruction in excerpt 2 should be applied only in its original triggering context, which was not included in the supplied extract.\n\nConfigured source: https://docs.discord.com/developers/events/gateway.md \u2014 supplied excerpt specifies resume_gateway_url, unchanged version and encoding, and Resume opcode 6.\n\nConfigured source: https://docs.discord.com/developers/events/gateway.md#resuming \u2014 supplied excerpt distinguishes resumable disconnects from those requiring re-Identify.\n\nLinked close-code reference: https://docs.discord.com/developers/topics/opcodes-and-status-codes.md#gateway-gateway-close-event-codes \u2014 referenced by the supplied documentation; its contents were not supplied or independently retrieved.\n\nLimitations:\n- Analysis is grounded in the supplied configured-source excerpts; the live documentation was not independently verified.\n- The triggering context for the immediate-termination excerpt is missing, so it cannot establish a universal disconnect rule.\n- The supplied excerpts do not enumerate close-code handling, Resume payload fields, retry timing, or invalid-session behavior.",
+      "timestamp": "2026-11-05T02:55:10.651000+00:00"
+    }
+  ],
+  "raw_switchcrew_json_blocks": 0,
+  "structured_handoff_keys_visible": 0,
+  "display_correction": "Operator enqueued a correction from the unchanged durable Research result after finding the model artifact/string-evidence rendering defect. No new handoff or investigation was created.",
+  "engineering_ledger_count": 6,
+  "engineering_ledger_sha256": "754848f487a7fe5cb52bf5d0891674a248936bd8973bc81ca883f893a4bdc1c7",
+  "limitations": [
+    "Natural Engineering/Release approval phrases covered by controlled regressions; full coding-to-PR flow not rerun with this presentation",
+    "Historical messages and existing frozen prompts retain original wording",
+    "Debug/API/file artifacts remain structured; normal chat messages are prose"
+  ],
+  "application_base_commit": "6c5989545037eec03b9ee0c851fe00fe9a7b032e",
+  "tests": {
+    "passed": 610,
+    "skipped": 3,
+    "seconds": 31.29,
+    "ruff_check": "passed for src tests",
+    "ruff_format": "passed for src tests",
+    "git_diff_check": "passed",
+    "controller_node_syntax": "passed"
+  },
+  "tested_source_sha256": {
+    "src/switchcrew/conversation.py": "3d1b86610bc9f5b9c133a0d9cd107d286cd445d8937a69ab121fc56d114bf32d",
+    "src/switchcrew/wire.py": "c8a2c6ffd28937fd443228c9a5208c507899bfd0134c752fa590eae2f4d587e3",
+    "src/switchcrew/workers.py": "272c50934ac11f91fcfcc87439703e10a346b332bd8d01f5dfb8861b22ca3e99",
+    "src/switchcrew/runtime.py": "d50bd00da0bef1227807aa9aa716436f4d4bef5d8556e742946c36d3e756c049",
+    "src/switchcrew/engineering.py": "5c29c3560308f076b8d2c00e31f717da76c094ecdcf5d0e7f044fcb600a0bc24",
+    "src/switchcrew/approval.py": "ace7465106d753f2c2e975447b9f7e6d4ce9d5dfe45776cf1e82a0089485a37d",
+    "src/switchcrew/store.py": "d0b02080fb37cd21004bddbc90a272bf2ecc0410380b9edb7443f368a2e0b009",
+    "src/switchcrew/settings.py": "766e61c6023f791b19e4fe64991e259eaa92d6820d6d75b396fed9b536b00da7"
+  }
+}

@@ -89,6 +89,20 @@ async def test_malformed_approval_is_not_repaired_or_created_as_a_task():
     store.close()
 
 
+async def test_presentation_upgrade_preserves_existing_pending_approval_prompt():
+    store = Store(":memory:")
+    pm = worker("pm", store, Transport())
+    task = store.create_task("Fix answer", {"room_id": "room"}, ["Pass"])
+    store.transition_task(task["id"], "AWAITING_APPROVAL", task["version"])
+    pm._reply(task["id"], "engineering_approval", "Earlier saved approval prompt")
+    pm._engineering_prompt(task["id"])
+    rows = [row for row in store.pending_outbox() if row["recipient"] == "discord"]
+    assert len(rows) == 1
+    assert rows[0]["payload"]["text"] == "Earlier saved approval prompt"
+    assert not store.connection.execute("SELECT * FROM handoffs").fetchall()
+    store.close()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["pm", "research"])
 async def test_room_role_reacquired_before_delivery_on_each_connection(role):
@@ -152,7 +166,7 @@ async def test_missing_criteria_and_forged_sender():
     await pm.receive(event("human", "Investigate SSE"))
     await pm.process_pending()
     await pm.flush_outbox()
-    assert "acceptance_criteria" in transport.sent[0][1]
+    assert "Success criteria:" in transport.sent[0][1]
     assert not store.connection.execute("SELECT * FROM handoffs").fetchall()
 
 
@@ -294,7 +308,7 @@ async def test_blank_question_requests_clarification():
     )
     await pm.process_pending()
     await pm.flush_outbox()
-    assert "new JSON request" in transport.sent[0][1]
+    assert "Success criteria:" in transport.sent[0][1]
 
 
 @pytest.mark.asyncio

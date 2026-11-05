@@ -10,6 +10,7 @@ from switchcrew.graphs import build_agent_graph
 from switchcrew.organization_runtime import configured_executor
 from switchcrew.runtime import AgentConnection, AgentRuntime
 from switchcrew.settings import Settings
+from switchcrew.wire import read_message
 
 ROOM = "switch-room"
 PROJECT = "github.com/acme/service"
@@ -64,7 +65,7 @@ class SwitchMesh:
             recipient, event = self.pending.pop(0)
             runtime = self.runtimes[recipient]
             accepted = await runtime.receive(event)
-            message = json.loads(event["payload"]["body"].split("\n")[1])
+            message = read_message(event["payload"]["body"], runtime.store)
             receipt = runtime.store.get_handoff(message["handoff_id"])
             assert accepted, {
                 "recipient": recipient,
@@ -404,7 +405,7 @@ def test_notes_are_persisted_only_after_voice_and_notes_switch_handoffs_and_huma
         assert len(research_mesh.pending) == 1
         recipient, research_event = research_mesh.pending[0]
         assert recipient == "research-agent"
-        switch_handoff = json.loads(research_event["payload"]["body"].split("\n")[1])
+        switch_handoff = read_message(research_event["payload"]["body"], store)
         assert switch_handoff["type"] == "handoff"
         assert switch_handoff["task_id"] == task_id
 

@@ -338,7 +338,10 @@ def test_approval_atomic_rollback_on_handoff_failure(flow, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_pm_discord_engineering_route_and_authenticated_same_thread_decision(tmp_path):
+@pytest.mark.parametrize("natural", [False, True])
+async def test_pm_discord_engineering_route_and_authenticated_same_thread_decision(
+    tmp_path, natural
+):
     store = Store(tmp_path / "pm.db")
     pm = Worker(
         "pm",
@@ -351,6 +354,7 @@ async def test_pm_discord_engineering_route_and_authenticated_same_thread_decisi
         allowed_guilds=["guild"],
         allowed_users=["owner"],
         engineering_id="engineering",
+        engineering_job_key="fix",
         qa_id="qa",
         reviewer_id="reviewer",
         release_id="release",
@@ -366,7 +370,8 @@ async def test_pm_discord_engineering_route_and_authenticated_same_thread_decisi
         "approved": True,
         "actor": "owner",
     }
-    await pm.receive(event("human", json.dumps(request)))
+    body = "Please fix answer\nSuccess criteria:\n- Tests pass" if natural else json.dumps(request)
+    await pm.receive(event("human", body))
     await pm.process_pending()
     task = store._row(store.connection.execute("SELECT * FROM tasks").fetchone())
     assert task["status"] == "AWAITING_APPROVAL"
@@ -386,12 +391,20 @@ async def test_pm_discord_engineering_route_and_authenticated_same_thread_decisi
     await pm.receive(wrong_thread)
     await pm.process_pending()
     assert store.get_task(task["id"])["status"] == "AWAITING_APPROVAL"
-    await pm.receive(event("human", json.dumps(decision), "a3"))
+    body = (
+        f"Approve engineering for task {task['id']} version {task['version']}"
+        if natural
+        else json.dumps(decision)
+    )
+    await pm.receive(event("human", body, "a3"))
     await pm.process_pending()
     await pm.flush_outbox()
     h = store._row(store.connection.execute("SELECT * FROM handoffs").fetchone())
     assert h["recipient"] == "engineering" and h["sender"] == "pm"
     assert pm.approvals.get(task["id"])["engineering_approval"]["actor"] == "owner"
+    await pm.receive(event("human", body, "a4"))
+    await pm.process_pending()
+    assert store.connection.execute("SELECT count(*) FROM handoffs").fetchone()[0] == 1
     store.close()
 
 

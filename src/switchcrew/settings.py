@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     approval_user_ids: list[str] = Field(default_factory=list)
     engineering_agent_id: str = ""
     engineering_name: str = ""
+    engineering_job_key: str = ""
     qa_agent_id: str = ""
     reviewer_agent_id: str = ""
     max_corrections: int = Field(default=2, ge=0, le=5)
