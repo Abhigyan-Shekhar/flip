@@ -239,6 +239,13 @@ class EngineeringExecutor:
         if self.expected_source_revision is not None or review_base != checkout_base:
             spec["checkout_base_revision"] = checkout_base
         data = self.ledger.reserve(identity, spec)
+        binding = getattr(self.session, "binding", None)
+        if binding is not None:
+            if data.get("session_binding", binding) != binding:
+                raise ValueError("Managed session binding changed; use a new assignment")
+            if "session_binding" not in data:
+                data["session_binding"] = binding
+                self.ledger.put(identity, data)
         checkout = self.root / identity
         if "result" in data:
             return data["result"]
@@ -377,6 +384,8 @@ class EngineeringExecutor:
                 session_id=sid,
                 diff=git(checkout, "diff", "--binary", review_base, final),
             )
+            if binding is not None:
+                result["execution_binding"] = binding
             used_lessons = record.get("used_lesson_ids", [])
             if used_lessons:
                 import re

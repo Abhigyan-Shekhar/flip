@@ -1,5 +1,9 @@
 # Optional Company Brain context
 
+The [November 5 real indexing and grounding check](COMPANY_BRAIN_2026-11-05.md)
+passed on a dedicated registry at the recorded master SHA. Main PM integration
+and broad change-impact acceptance remain unverified.
+
 Company Brain is an opt-in, read-only evidence provider. Research results include
 bounded graph evidence, repository root, indexed revision and coverage warnings.
 For Engineering requests, the PM or API retrieves change impact for file paths
@@ -89,10 +93,13 @@ For HTTP, replace `company_brain_command` with `company_brain_url` and optionall
 ```sh
 PYTHONPATH=src .venv/bin/python -m switchcrew.company_brain_acceptance \
   --config /private/company-brain.json \
+  --query "indexed keyword or exact symbol" \
   --file src/switchcrew/orchestration.py \
   --report /private/company-brain-report.json
 ```
 
+Use `--query` for a keyword or exact indexed symbol known to exist in this
+repository; an empty broad keyword result cannot establish acceptance.
 The optional `--file` can be repeated. The report path must be new; the probe
 creates it with mode `0600` and refuses to overwrite an existing report. It exits
 zero for `PASS`, or nonzero with `BLOCKED` for absent configuration, unavailable or

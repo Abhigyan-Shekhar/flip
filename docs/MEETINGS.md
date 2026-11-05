@@ -1,5 +1,9 @@
 # Meetings and Notes
 
+November 5 acceptance status: no real recording, participant consent evidence
+or speech-provider configuration exists on this deployment. The user deferred
+this test to a human. Recorded-file and live VC acceptance remain unverified.
+
 SwitchCrew's meeting service supports a recorded-file workflow. It does not
 capture live Discord voice. The service takes a WAV file selected by an
 operator, checks a current consent grant for every registered participant,

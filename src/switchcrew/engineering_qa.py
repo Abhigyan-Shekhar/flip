@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import logging
+import stat
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -348,14 +349,41 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                     **job,
                     **config.get("console_agents", {}).get(assignment_id(state["handoff_id"]), {}),
                 }
-                session = ConsoleCodex(
-                    config["control_file"],
-                    job_for_attempt["console_agent_id"],
-                    job_for_attempt["codex_name"],
-                    client,
-                    console_database=config["console_database"],
-                    switch_agent_id=job_for_attempt["codex_switch_agent_id"],
-                )
+                waiting_for_managed_console = False
+                if job_for_attempt.get("managed_console_directory"):
+                    descriptor = Path(job_for_attempt["managed_console_directory"]) / (
+                        assignment_id(state["handoff_id"]) + ".json"
+                    )
+                    try:
+                        info = descriptor.lstat()
+                    except FileNotFoundError:
+                        waiting_for_managed_console = True
+                    else:
+                        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+                            return {
+                                "status": "blocked_configuration",
+                                "reason": "managed_descriptor_not_private",
+                            }
+                        job_for_attempt["managed_console"] = json.loads(descriptor.read_text())
+                if waiting_for_managed_console:
+                    session = None
+                elif "managed_console" in job_for_attempt:
+                    from .managed_console import ManagedConsoleCodex
+
+                    session = ManagedConsoleCodex(
+                        job_for_attempt["managed_console"],
+                        client,
+                        assignment_id(state["handoff_id"]),
+                    )
+                else:
+                    session = ConsoleCodex(
+                        config["control_file"],
+                        job_for_attempt["console_agent_id"],
+                        job_for_attempt["codex_name"],
+                        client,
+                        console_database=config["console_database"],
+                        switch_agent_id=job_for_attempt["codex_switch_agent_id"],
+                    )
             executor = EngineeringExecutor(
                 ledger,
                 checkout_root,
@@ -373,6 +401,15 @@ def configured_executor(config, connection, client, store, ledger, approvals):
                 .get("implementation", {})
                 .get("final_revision"),
             )
+            if employee_directory is None and waiting_for_managed_console:
+                preparation = await executor(state)
+                if preparation.get("reason") == "managed_codex_session_not_configured":
+                    return {
+                        **preparation,
+                        "status": "pending_execution",
+                        "reason": "awaiting_managed_console_provisioning",
+                    }
+                return preparation
         elif role == "qa":
 
             def qa_authorized(value):

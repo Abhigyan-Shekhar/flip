@@ -52,8 +52,9 @@ A review verdict represents only the configured review policy's coverage.
 
 ## Switch addressing
 
-Engineering permits PM, QA and Reviewer senders; QA permits Engineering; Reviewer
-permits QA. Their outbound target names must include their handoff peers:
+Engineering permits PM, QA and Reviewer senders; QA permits Engineering and
+Reviewer; Reviewer permits QA and Engineering. Acknowledgments require these
+reciprocal permissions as well as the forward handoffs. Their outbound target names must include their handoff peers:
 Engineering → QA/PM, QA → Engineering/Reviewer, Reviewer → Engineering/QA.
 Each mapping uses actual transport participant IDs and registration IDs; names
 are exact Switch machine names. The Release worker continues to permit PM.

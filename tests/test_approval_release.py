@@ -628,6 +628,42 @@ async def test_configured_capability_blocks_arbitrary_legacy_jobs_without_approv
     ] == "blocked"
 
 
+async def test_managed_runtime_waits_for_operator_descriptor_without_completing_assignment(
+    flow, tmp_path
+):
+    from types import SimpleNamespace
+
+    from switchcrew.engineering_qa import configured_executor
+
+    store, ledger, workflow, task_id, source, base = flow
+    approved = decide(flow)
+    state = handoff_state(store, approved["engineering_handoff"], "engineering")
+    config = {
+        "checkout_root": str(tmp_path / "engineering"),
+        "job_templates": {
+            "fix": {
+                "source": str(source),
+                "base_revision": base,
+                "managed_console_directory": str(tmp_path / "private-descriptors"),
+            }
+        },
+    }
+    execute = configured_executor(
+        config,
+        SimpleNamespace(role="engineering", agent_id="engineering"),
+        None,
+        store,
+        ledger,
+        workflow,
+    )
+    first = await execute(state)
+    assert first["status"] == "pending_execution"
+    assert first["reason"] == "awaiting_managed_console_provisioning"
+    assert ledger.get(assignment_id(state["handoff_id"]))["phase"] == "reserved"
+    assert await execute(state) == first
+    assert workflow.get(task_id)["phase"] == "engineering"
+
+
 @pytest.mark.asyncio
 async def test_pm_graph_routes_engineering_to_approval_without_execution():
     from switchcrew.graphs import build_agent_graph, invoke_agent_graph

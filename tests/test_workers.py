@@ -58,6 +58,38 @@ def worker(role, store, transport, provider=None):
 
 
 @pytest.mark.asyncio
+async def test_malformed_approval_is_not_repaired_or_created_as_a_task():
+    store = Store(":memory:")
+    transport = Transport()
+    pm = worker("pm", store, transport)
+    malformed = (
+        json.dumps(
+            {
+                "type": "approval",
+                "task_id": "untrusted-id",
+                "stage": "engineering",
+                "approved": False,
+                "expected_version": 1,
+            }
+        )
+        + "."
+    )
+    await pm.receive(event("human", malformed))
+    await pm.process_pending()
+    assert not store.connection.execute("SELECT * FROM tasks").fetchall()
+    assert not store.connection.execute("SELECT * FROM handoffs").fetchall()
+    assert transport.sent == [
+        (
+            "discord",
+            "Invalid approval JSON. Resend the exact JSON with no trailing text. "
+            "No approval was recorded and no execution was authorized.",
+            "thread",
+        )
+    ]
+    store.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["pm", "research"])
 async def test_room_role_reacquired_before_delivery_on_each_connection(role):
     class Reconnecting(Transport):

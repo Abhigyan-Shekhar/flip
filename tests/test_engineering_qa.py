@@ -92,6 +92,20 @@ async def test_missing_live_capability_is_blocked(setup, tmp_path):
     assert Path(result["checkout"]) != source
 
 
+async def test_managed_binding_survives_preparation_and_cannot_change_on_retry(setup, tmp_path):
+    source, base, ledger = setup
+    root = tmp_path / "work"
+    await EngineeringExecutor(ledger, root, source, base, None)(state())
+    session = ControlledSession()
+    session.binding = {"image_id": "original", "definition_revision": 1}
+    executor = EngineeringExecutor(ledger, root, source, base, session)
+    assert (await executor(state()))["status"] == "pending_execution"
+    assert session.creates == 1 and session.deliveries == 1
+    session.binding = {"image_id": "changed", "definition_revision": 1}
+    assert (await executor(state()))["status"] == "blocked_configuration"
+    assert session.creates == 1 and session.deliveries == 1
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fault", ["create", "deliver"])
 async def test_uncertain_external_response_reconciles_without_duplicate(setup, tmp_path, fault):

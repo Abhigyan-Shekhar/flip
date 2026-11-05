@@ -1,0 +1,179 @@
+{
+  "status": "repository_grounding_live_verified",
+  "indexed_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+  "code_index": {
+    "files": 181,
+    "symbols": 1520,
+    "calls": 2233,
+    "statically_resolved_imports": 527,
+    "unresolved_calls": 10609
+  },
+  "document_index": {
+    "files": [
+      "docs/APPROVAL_RELEASE.md",
+      "docs/ENGINEERING_ISOLATION.md",
+      "docs/DEPLOYMENT_ACCEPTANCE.md"
+    ],
+    "sections": 18,
+    "symbol_links": 1,
+    "unresolved_references": []
+  },
+  "graph_runtime": {
+    "engine": "FalkorDB Lite",
+    "graph_module": 41803,
+    "redis_version": "8.6.2",
+    "port": 6399,
+    "bind": "127.0.0.1",
+    "dedicated_acceptance_registry": true
+  },
+  "adapter_probe": {
+    "status": "PASS",
+    "observed_at": "2026-11-05T02:02:18.959533+00:00",
+    "repo_root": "/Users/abhigyanshekhar/.local/share/flip-acceptance/2026-11-04/company-brain-flip",
+    "configured_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+    "returned_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+    "identity_match": true,
+    "source_count": 1,
+    "change_source_count": null,
+    "warnings": [
+      "keyword_search_not_semantic; source_text_is_not_decision_approval"
+    ],
+    "limitations": "Read-only probe; proves this configured MCP path, not deployment-wide availability."
+  },
+  "grounding_probe": {
+    "status": "PASS",
+    "transport": "real MCP stdio, real FalkorDB Lite graph",
+    "repo_root": "/Users/abhigyanshekhar/.local/share/flip-acceptance/2026-11-04/company-brain-flip",
+    "revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+    "working_tree_dirty": false,
+    "search_code_matches": 20,
+    "byte_checked_and_reopened": [
+      {
+        "id": "d27c03149ac2eb03ae247e69",
+        "kind": "code",
+        "ref": {
+          "path": "src/switchcrew/approval.py",
+          "start": 1,
+          "end": 40
+        },
+        "revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+        "digest": "ffd50a823bebed29eaedf72743064b37bc00d5779aeefc4d8e3dab3ef0282747",
+        "uri": "https://github.com/Abhigyan-Shekhar/flip/blob/5bd88bdc803cc5d30d361923b3dfce62e93bfe65/src/switchcrew/approval.py#L1-L40",
+        "verification": "source_bytes_and_native_graph"
+      },
+      {
+        "id": "34b8ff572fce3fc01a72a6e7",
+        "kind": "code",
+        "ref": {
+          "path": "docs/APPROVAL_RELEASE.md",
+          "start": 1,
+          "end": 19
+        },
+        "revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+        "digest": "2a14bbc127d70b3faa956bb56141227ebc539f80f83bc38f0d138d795b1047d0",
+        "uri": "https://github.com/Abhigyan-Shekhar/flip/blob/5bd88bdc803cc5d30d361923b3dfce62e93bfe65/docs/APPROVAL_RELEASE.md#L1-L19",
+        "verification": "source_bytes_and_native_graph"
+      }
+    ],
+    "limitations": [
+      "Dedicated acceptance registry; main PM integration not enabled",
+      "Indexes master baseline, not uncommitted integration changes",
+      "Citation IDs are process-local; retrieve again after reconnect"
+    ]
+  },
+  "failed_probes": [
+    {
+      "status": "BLOCKED",
+      "observed_at": "2026-11-05T01:57:37.412947+00:00",
+      "reason": "retrieval_identity_or_revision_not_confirmed",
+      "warnings": [
+        "Company Brain unavailable; use local source as authoritative."
+      ],
+      "limitations": "Read-only probe; this does not refresh or write the Company Brain graph.",
+      "repo_root": "/Users/abhigyanshekhar/.local/share/flip-acceptance/2026-11-04/company-brain-flip",
+      "configured_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+      "returned_revision": null,
+      "identity_match": false,
+      "source_count": 0
+    },
+    {
+      "status": "BLOCKED",
+      "observed_at": "2026-11-05T01:58:16.287795+00:00",
+      "reason": "retrieval_identity_or_revision_not_confirmed",
+      "warnings": [
+        "Company Brain response status was missing or unknown; evidence omitted."
+      ],
+      "limitations": "Read-only probe; this does not refresh or write the Company Brain graph.",
+      "repo_root": "/Users/abhigyanshekhar/.local/share/flip-acceptance/2026-11-04/company-brain-flip",
+      "configured_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+      "returned_revision": null,
+      "identity_match": false,
+      "source_count": 0
+    },
+    {
+      "status": "BLOCKED",
+      "observed_at": "2026-11-05T02:00:03.324480+00:00",
+      "reason": "retrieval_identity_or_revision_not_confirmed",
+      "warnings": [
+        "Company Brain response status was missing or unknown; evidence omitted."
+      ],
+      "limitations": "Read-only probe; this does not refresh or write the Company Brain graph.",
+      "repo_root": "/Users/abhigyanshekhar/.local/share/flip-acceptance/2026-11-04/company-brain-flip",
+      "configured_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+      "returned_revision": null,
+      "identity_match": false,
+      "source_count": 0
+    },
+    {
+      "status": "BLOCKED",
+      "observed_at": "2026-11-05T02:00:32.185779+00:00",
+      "reason": "no_source_grounded_evidence_returned",
+      "warnings": [
+        "keyword_search_not_semantic; source_text_is_not_decision_approval"
+      ],
+      "limitations": "Read-only probe; this does not refresh or write the Company Brain graph.",
+      "repo_root": "/Users/abhigyanshekhar/.local/share/flip-acceptance/2026-11-04/company-brain-flip",
+      "configured_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+      "returned_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+      "identity_match": true,
+      "source_count": 0
+    },
+    {
+      "status": "BLOCKED",
+      "observed_at": "2026-11-05T02:01:11.908136+00:00",
+      "reason": "retrieval_identity_or_revision_not_confirmed",
+      "warnings": [
+        "Company Brain evidence omitted: sensitive content detected."
+      ],
+      "limitations": "Read-only probe; this does not refresh or write the Company Brain graph.",
+      "repo_root": "/Users/abhigyanshekhar/.local/share/flip-acceptance/2026-11-04/company-brain-flip",
+      "configured_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+      "returned_revision": null,
+      "identity_match": false,
+      "source_count": 0
+    },
+    {
+      "status": "BLOCKED",
+      "observed_at": "2026-11-05T02:01:51.101866+00:00",
+      "reason": "change_check_returned_no_source_anchors",
+      "warnings": [
+        "keyword_search_not_semantic; source_text_is_not_decision_approval",
+        "file_level_coverage; missing_call_edges_do_not_prove_no_dependencies; historical_file_links_are_not_symbol_constraints; no_recorded_historical_file_associations"
+      ],
+      "limitations": "Read-only probe; this does not refresh or write the Company Brain graph.",
+      "repo_root": "/Users/abhigyanshekhar/.local/share/flip-acceptance/2026-11-04/company-brain-flip",
+      "configured_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+      "returned_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+      "identity_match": true,
+      "source_count": 1,
+      "change_source_count": 0
+    }
+  ],
+  "limitations": [
+    "Main PM/Research pipeline not configured to use this new registry",
+    "Uncommitted integration changes are not in the indexed master baseline",
+    "No historical source anchors returned for check_change; no change-impact acceptance",
+    "Broad approval query omitted by credential-pattern filter; narrow non-sensitive query passed",
+    "Live two-task Waggle learning not run"
+  ]
+}

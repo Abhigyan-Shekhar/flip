@@ -186,9 +186,34 @@ class SwitchClient:
         newer generation. Persisted cursors resume delivery across processes.
         """
         delay = 0.25
+        probe_before_reconnect = False
         while True:
             beat = None
             try:
+                if probe_before_reconnect and self.generation is not None:
+                    # A displaced SSE stream can terminate with a transport error,
+                    # not just EOF. Resolve ownership before attempting another
+                    # open. Transient probe failures retain this gate on retry.
+                    try:
+                        await self._request(
+                            "POST",
+                            f"/agents/{self.agent_id}/connection/beat",
+                            json={
+                                "connection_id": self.connection_id,
+                                "generation": self.generation,
+                            },
+                        )
+                    except httpx.HTTPStatusError as exc:
+                        detail = (
+                            exc.response.json().get("detail")
+                            if exc.response.status_code == 409
+                            else None
+                        )
+                        if exc.response.status_code != 404 and not (
+                            isinstance(detail, dict) and detail.get("code") == "no_stream"
+                        ):
+                            raise
+                    probe_before_reconnect = False
                 params = {
                     "connection_id": self.connection_id,
                     "scope": "all",
@@ -309,6 +334,7 @@ class SwitchClient:
                     },
                 )
             except (TimeoutError, httpx.TransportError) as exc:
+                probe_before_reconnect = self.generation is not None
                 log.warning(
                     "stream_reconnecting",
                     extra={

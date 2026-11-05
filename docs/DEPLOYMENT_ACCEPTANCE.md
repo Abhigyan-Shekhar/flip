@@ -1,6 +1,8 @@
 # Verification-host deployment and acceptance
 
-**State: core local deployment verified; full privileged acceptance pending.**
+**State: disposable coding-to-draft-PR workflow live-verified November 5.**
+See the [live results, exact IDs and remaining limits](LIVE_PIPELINE_2026-11-05.md).
+Fresh-machine bootstrap and broader operational acceptance remain pending.
 The November 4 Mac run verified real Discord PM→Research, restart persistence,
 temporary signed status lookup and isolated QA/Reviewer components. Read the
 [results and remaining gates](VERIFICATION_2026-11-04.md) before interpreting

@@ -1,0 +1,10 @@
+{
+  "source": "Installed Switch Console.app/Contents/Resources/dist-sidecar",
+  "files": {
+    "agent-controller.mjs": "96f3cf5b385d9a6862ba4d449c8ebae681f191b22309904559e073d836fed03e",
+    "shared-host.mjs": "b1dd1ec4083ad764a1dadf1df79ef2015783cb22a280f53e6ec6df8a0d375107"
+  },
+  "codex_version": "0.166.0",
+  "controller_reported_version": "0.1.1",
+  "protocol": 2
+}

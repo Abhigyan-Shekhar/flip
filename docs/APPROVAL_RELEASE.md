@@ -1,5 +1,8 @@
 # Approved Engineering and Release
 
+The [November 5 live run](LIVE_PIPELINE_2026-11-05.md) created a real draft PR
+after separate human Engineering and Release approvals.
+
 The mandatory independent Reviewer and bounded correction loop are documented in
 [REVIEW_CORRECTIONS.md](REVIEW_CORRECTIONS.md). Reviewer identity/configuration is
 now required; older workflow diagrams below describe the pre-review lifecycle.
@@ -67,9 +70,10 @@ commands, credentials, source paths or publication destinations.
 
 Each process uses a chmod-600 config and its own chmod-600 `AgentConnection`
 registry. Use the same `test_room_id` as PM's configured room for this workflow.
-Engineering allows PM and QA transport participant IDs; QA allows Engineering;
-Release allows PM. Map each to its actual registration ID in `allowed_senders`.
-Configure `target_names`: Engineering → PM and QA, QA → Engineering, Release → PM.
+Engineering allows PM, QA and Reviewer transport participant IDs; QA allows
+Engineering and Reviewer; Reviewer allows QA and Engineering; Release allows PM. Map each to its actual registration ID in `allowed_senders`.
+Configure `target_names`: Engineering → PM/QA/Reviewer, QA → Engineering/Reviewer,
+Reviewer → Engineering/QA, Release → PM.
 PM's target names for Engineering and Release come from the settings above.
 The managed Codex machine must also be reachable from Engineering in this room.
 

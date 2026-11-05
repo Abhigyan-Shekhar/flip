@@ -1,0 +1,518 @@
+{
+  "observed_at": "2026-11-05T01:52:15.780419+00:00",
+  "status": "live_coding_to_draft_pr_verified",
+  "application_base_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+  "application_changes": "uncommitted codex/live-pipeline-acceptance working tree during run",
+  "task_id": "c3994e63-416a-5791-b57d-43ea5c02f80e",
+  "task_status": "PR_OPEN",
+  "task_version": 17,
+  "room_id": "1d8c9f05-5e7e-41b9-aead-bfd1b10b927d",
+  "handoffs": {
+    "engineering_handoff": "engineering-74f3c25d550e9bdacf39080c794ed5a6bc6ad61fdfd987ef2b6d05b4107142fb",
+    "qa_handoff": "qa-f1b8541f1c00583b50aa0bf7b7aa0fcef51888edfb33c3367920eea0e4c32835",
+    "review_handoff": "review-f1b8541f1c00583b50aa0bf7b7aa0fcef51888edfb33c3367920eea0e4c32835",
+    "release_handoff": "9af8cc75-3ece-5ab4-865c-e3352a89d879"
+  },
+  "initial_engineering_handoff": "e285ca4e-d105-5134-a985-4b8ee2aefaba",
+  "initial_qa_handoff": "qa-90e1691b49d0fe32cc7c0e8204771bd00aa6133e6592b0b06d18b63b4877e27b",
+  "initial_failed_revision": "b35e016579843d3a73d21a910248f2ffb346d05b",
+  "receipt": {
+    "approval": {
+      "actor": "703216309684666389",
+      "approved": true,
+      "base": "master",
+      "decided_at": "2026-11-05T01:45:35.144270+00:00",
+      "repository": "Abhigyan-Shekhar/flip-acceptance-20261104",
+      "revision": "128b821bd467bd4031a6c765cef3fb8b571cfc34",
+      "task_version": 13
+    },
+    "assigned_agents": {
+      "engineering": "2e847c37-8dae-4b4e-bbed-a99d7ca126de",
+      "pm": "4a4e4c80-d6a2-4b5b-8216-3510be946f06",
+      "qa": "f9812933-ee44-4c43-9605-b97d0ff86310",
+      "release": "5443ac94-bb3c-454a-87ee-248603f66727",
+      "reviewer": "78fb4961-dd93-439a-8beb-6e581e9fcd87"
+    },
+    "commit_sha": "128b821bd467bd4031a6c765cef3fb8b571cfc34",
+    "draft": true,
+    "engineering_approval": {
+      "actor": "703216309684666389",
+      "approved": true,
+      "decided_at": "2026-11-04T16:58:23.491562+00:00",
+      "task_version": 1
+    },
+    "files_changed": [
+      "answer.txt"
+    ],
+    "objective": "Demonstrate the QA correction gate in the disposable repository. On the initial attempt, write intentional-qa-failure followed by a newline to answer.txt and commit it. Wait for the independent QA correction request before changing it to correct followed by a newline. Preserve README.md and never push or publish.",
+    "pr_url": "https://github.com/Abhigyan-Shekhar/flip-acceptance-20261104/pull/1",
+    "remaining_risks": [
+      "Verification covers only operator-configured checks"
+    ],
+    "retry_history": [
+      {
+        "attempt": 1,
+        "findings": [
+          {
+            "command": "[\"python\", \"-c\", \"import pathlib,unittest\\nclass AnswerTests(unittest.TestCase):\\n    def test_exact_answer(self):\\n        self.assertEqual(pathlib.Path('answer.txt').read_bytes(), b'correct\\\\n')\\n    def test_regular_file(self):\\n        self.assertFalse(pathlib.Path('answer.txt').is_symlink())\\nu",
+            "exit_code": 1,
+            "output_sha256": "ae1e0c88151645953dc2b216538edc8fa33c83005d52852abf62811e0a502155",
+            "output_summary": "F.\n======================================================================\nFAIL: test_exact_answer (__main__.AnswerTests.test_exact_answer)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"<string>\", line 4, in test_exact_answer\nAssertionError: b'intentional-qa-failure\\n' != b'correct\\n'\n\n----------------------------------------------------------------------\nRan 2 tests in 0.005s\n\nFAILED (failures=1)\n",
+            "timed_out": false,
+            "type": "qa_command_failed"
+          }
+        ],
+        "implementation_assignment": "3fd02cf557ff66ac13d8cc03e15c2606",
+        "rejected_handoff": "qa-90e1691b49d0fe32cc7c0e8204771bd00aa6133e6592b0b06d18b63b4877e27b",
+        "rejecting_agent": "f9812933-ee44-4c43-9605-b97d0ff86310",
+        "revision": "b35e016579843d3a73d21a910248f2ffb346d05b"
+      }
+    ],
+    "review": {
+      "assignment_id": "review-39df0d41b5f3a29ed2e80c239e342a4d",
+      "base_revision": "1ca12f82a6c8c4df8f1f6e79467643101cceac95",
+      "command_findings": [],
+      "commands": [
+        {
+          "command": [
+            "python",
+            "-c",
+            "import hashlib,json,pathlib\nfindings=[]\np=pathlib.Path('answer.txt')\nif p.is_symlink() or p.read_bytes()!=b'correct\\n':\n    findings.append({'file':'answer.txt','line':1,'message':'Expected a regular UTF-8 file with exactly correct and a newline.'})\nif hashlib.sha256(pathlib.Path('README.md').read_bytes()).hexdigest()!='5d9ddb799410a446cfde0723e249bf4e4d780d16c6f970b88c2a6d48961a88aa':\n    findings.append({'file':'README.md','line':1,'message':'Unrelated documentation changes are outside the requested answer fix.'})\nprint(json.dumps({'accepted':not findings,'findings':findings}))\n"
+          ],
+          "exit_code": 0,
+          "output_sha256": "58f4fad53646d28e59a435688cbee951c92410c754d370849ccf96f4ec95d556",
+          "output_summary": "{\"accepted\": true, \"findings\": []}\n",
+          "revision": "128b821bd467bd4031a6c765cef3fb8b571cfc34",
+          "timed_out": false
+        }
+      ],
+      "diff_sha256": "0753099e9fb80f6d64fe795ed3567da32e8bd56479bc6debebdec84305accdee",
+      "files_changed": [
+        "answer.txt"
+      ],
+      "findings": [],
+      "implementation_assignment": "d490c7b875451e4d935dccd2e97fbf99",
+      "memory": {
+        "persisted": false,
+        "status": "disabled_or_no_write"
+      },
+      "reviewed_revision": "128b821bd467bd4031a6c765cef3fb8b571cfc34",
+      "status": "review_accepted"
+    },
+    "task_id": "c3994e63-416a-5791-b57d-43ea5c02f80e",
+    "tests": [
+      {
+        "command": [
+          "python",
+          "-c",
+          "import pathlib,unittest\nclass AnswerTests(unittest.TestCase):\n    def test_exact_answer(self):\n        self.assertEqual(pathlib.Path('answer.txt').read_bytes(), b'correct\\n')\n    def test_regular_file(self):\n        self.assertFalse(pathlib.Path('answer.txt').is_symlink())\nunittest.main()\n"
+        ],
+        "exit_code": 0,
+        "output_bytes": 100,
+        "output_sha256": "6f283ee6225d2cef4c0127d95456a6f954c45141c92b97dd89016cb1c630e8f4",
+        "output_summary": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.002s\n\nOK\n",
+        "revision": "128b821bd467bd4031a6c765cef3fb8b571cfc34",
+        "timed_out": false
+      }
+    ],
+    "unverified_claims": [
+      "Production deployment and runtime behavior"
+    ],
+    "verification": {
+      "implementation_assignment": "d490c7b875451e4d935dccd2e97fbf99",
+      "qa_handoff": "qa-f1b8541f1c00583b50aa0bf7b7aa0fcef51888edfb33c3367920eea0e4c32835",
+      "review_handoff": "review-f1b8541f1c00583b50aa0bf7b7aa0fcef51888edfb33c3367920eea0e4c32835",
+      "reviewed_revision": "128b821bd467bd4031a6c765cef3fb8b571cfc34",
+      "tested_revision": "128b821bd467bd4031a6c765cef3fb8b571cfc34"
+    }
+  },
+  "executions": [
+    {
+      "id": "3fd02cf557ff66ac13d8cc03e15c2606",
+      "phase": "finished",
+      "session_id": "64bb4f4f-1ea8-49b2-9b51-c86c4942a799",
+      "result_status": "implemented",
+      "delivery_event_id": "sw_0e88d850605b47afb94e4e897b3adbdd",
+      "session_binding": {
+        "agent_id": "61417b1c-0197-4cb7-8b94-54a4caaa413e",
+        "assignment_id": "3fd02cf557ff66ac13d8cc03e15c2606",
+        "backend": "console-controller-v2",
+        "controller_id": "8d030ed5-73b1-4cf6-95b7-88765e7adef0",
+        "definition_revision": 3,
+        "image_id": "sha256:560a0e253a6047e95c895cbded2db10220a713bf4d5547434498430bb663b79d",
+        "network_name": "flip-codex-internal"
+      }
+    },
+    {
+      "id": "d490c7b875451e4d935dccd2e97fbf99",
+      "phase": "finished",
+      "session_id": "0eef8f63-5157-4fb1-abb5-9dbbfd8a4d56",
+      "result_status": "implemented",
+      "delivery_event_id": "sw_f0fcf306ee274ec6b846c650653b5989",
+      "session_binding": {
+        "agent_id": "f27a059c-110e-46fd-b089-2fe3d6956b20",
+        "assignment_id": "d490c7b875451e4d935dccd2e97fbf99",
+        "backend": "console-controller-v2",
+        "controller_id": "ef7bd77f-95b3-4a33-9816-13457bc4d3e6",
+        "definition_revision": 2,
+        "image_id": "sha256:c4e7d32202230963d95db820eaefc88f1a69fc9a3d89dd9ba242dee49f9087a9",
+        "network_name": "flip-codex-internal"
+      }
+    },
+    {
+      "id": "qa-8381970c4e5935695648a0ef6c958fc8",
+      "phase": "finished",
+      "session_id": null,
+      "result_status": "verified_success",
+      "delivery_event_id": null,
+      "session_binding": null
+    },
+    {
+      "id": "qa-968d88034b268f97a584b6bc2c07ae50",
+      "phase": "finished",
+      "session_id": null,
+      "result_status": "qa_failed",
+      "delivery_event_id": null,
+      "session_binding": null
+    },
+    {
+      "id": "release-64eaec944e59036011b3ef6b23547b47",
+      "phase": "finished",
+      "session_id": null,
+      "result_status": null,
+      "delivery_event_id": null,
+      "session_binding": null
+    },
+    {
+      "id": "review-39df0d41b5f3a29ed2e80c239e342a4d",
+      "phase": "finished",
+      "session_id": null,
+      "result_status": "review_accepted",
+      "delivery_event_id": null,
+      "session_binding": null
+    }
+  ],
+  "restart": {
+    "before": {
+      "ledger_count": 6,
+      "ledger_sha256": "754848f487a7fe5cb52bf5d0891674a248936bd8973bc81ca883f893a4bdc1c7",
+      "tasks": [
+        [
+          "bc2b9594-1ca6-4d0b-973f-33b263e57e05",
+          "AWAITING_APPROVAL",
+          1
+        ],
+        [
+          "c3994e63-416a-5791-b57d-43ea5c02f80e",
+          "PR_OPEN",
+          17
+        ]
+      ]
+    },
+    "immediate_after": {
+      "ledger_count": 6,
+      "ledger_sha256": "754848f487a7fe5cb52bf5d0891674a248936bd8973bc81ca883f893a4bdc1c7",
+      "tasks": [
+        [
+          "bc2b9594-1ca6-4d0b-973f-33b263e57e05",
+          "AWAITING_APPROVAL",
+          1
+        ],
+        [
+          "c3994e63-416a-5791-b57d-43ea5c02f80e",
+          "PR_OPEN",
+          17
+        ]
+      ]
+    },
+    "roles_restarted": [
+      "engineering",
+      "qa",
+      "reviewer",
+      "release",
+      "pm"
+    ],
+    "settled_after": {
+      "ledger_count": 6,
+      "ledger_sha256": "754848f487a7fe5cb52bf5d0891674a248936bd8973bc81ca883f893a4bdc1c7",
+      "tasks": [
+        [
+          "bc2b9594-1ca6-4d0b-973f-33b263e57e05",
+          "AWAITING_APPROVAL",
+          1
+        ],
+        [
+          "c3994e63-416a-5791-b57d-43ea5c02f80e",
+          "PR_OPEN",
+          17
+        ]
+      ]
+    },
+    "discord_release_receipt_ids": [
+      "1567716505473261640"
+    ],
+    "github_prs": [
+      {
+        "headRefOid": "128b821bd467bd4031a6c765cef3fb8b571cfc34",
+        "isDraft": true,
+        "number": 1,
+        "url": "https://github.com/Abhigyan-Shekhar/flip-acceptance-20261104/pull/1"
+      }
+    ],
+    "workers_running": {
+      "engineering": true,
+      "qa": true,
+      "reviewer": true,
+      "release": true
+    }
+  },
+  "discord_receipt": [
+    {
+      "id": "1567716505473261640",
+      "channel_id": "1567582249719701555",
+      "author_bot": true,
+      "content": "Draft PR release receipt\nCommit: 128b821bd467bd4031a6c765cef3fb8b571cfc34\nEngineering approval: 703216309684666389\nRelease approval: 703216309684666389 at 2026-11-05T01:45:35.144270+00:00\nPR: https://github.com/Abhigyan-Shekhar/flip-acceptance-20261104/pull/1\nTests:\n[\"python\", \"-c\", \"import pathlib,unittest\\nclass AnswerTests(unittest.TestCase):\\n    def test_exact_answer(self):\\n        self.assertEqual(pathlib.Path('answer.txt').read_bytes(), b'correct\\\\n')\\n    def test_regular_file(self):\\n        self.assertFalse(pathlib.Path('answer.txt').is_symlink())\\nunittest.main()\\n\"]: exit 0, timeout=False",
+      "timestamp": "2026-11-05T01:45:41.669000+00:00"
+    }
+  ],
+  "github": {
+    "baseRefName": "master",
+    "files": [
+      {
+        "path": "answer.txt",
+        "additions": 1,
+        "deletions": 1,
+        "changeType": "MODIFIED"
+      }
+    ],
+    "headRefName": "codex/switchcrew-64eaec944e59036011b3ef6b23547b47",
+    "headRefOid": "128b821bd467bd4031a6c765cef3fb8b571cfc34",
+    "isDraft": true,
+    "state": "OPEN",
+    "url": "https://github.com/Abhigyan-Shekhar/flip-acceptance-20261104/pull/1"
+  },
+  "security": {
+    "threshold": "High",
+    "scanner": "Trivy 0.76.1 secrets only",
+    "image": "aquasec/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c",
+    "final_task_id": "49f2c868-82c7-51df-898d-2ae94191e022",
+    "final_handoff_id": "e9eafcbe-af3e-510f-af7b-daf7668214f3",
+    "result": "verified_success",
+    "publisher_signature_verified": false
+  },
+  "tests": {
+    "ordinary": {
+      "passed": 592,
+      "skipped": 3,
+      "seconds": 53.52
+    },
+    "real_switch_recovery": {
+      "passed": 3,
+      "seconds": 40.62
+    },
+    "ruff_check": "passed",
+    "ruff_format": "passed for src tests; five unrelated pre-existing repo-wide formatting issues remain",
+    "diff_check": "passed"
+  },
+  "human_rejection_probe": {
+    "task_id": "bc2b9594-1ca6-4d0b-973f-33b263e57e05",
+    "origin": "operator-created API negative fixture",
+    "evidence": {
+      "before_restart": {
+        "task": [
+          "CANCELLED",
+          2
+        ],
+        "workflow": {
+          "attempt": 0,
+          "engineering_approval": {
+            "actor": "703216309684666389",
+            "approved": false,
+            "decided_at": "2026-11-05T01:51:43.972472+00:00",
+            "task_version": 1
+          },
+          "phase": "rejected",
+          "retry_history": [],
+          "spec": {
+            "base": "master",
+            "engineering": "2e847c37-8dae-4b4e-bbed-a99d7ca126de",
+            "job_key": "fix-answer",
+            "max_corrections": 2,
+            "pm": "4a4e4c80-d6a2-4b5b-8216-3510be946f06",
+            "qa": "f9812933-ee44-4c43-9605-b97d0ff86310",
+            "release": "5443ac94-bb3c-454a-87ee-248603f66727",
+            "repository": "Abhigyan-Shekhar/flip-acceptance-20261104",
+            "reviewer": "78fb4961-dd93-439a-8beb-6e581e9fcd87"
+          }
+        },
+        "handoff_count": 0,
+        "execution_count_for_task": 0,
+        "total_execution_count": 6
+      },
+      "valid_human_rejection_message_ids": [
+        "1567718044682428559",
+        "1567718024063225897"
+      ],
+      "invalid_trailing_period_message_ids": [
+        "1567716739293388811",
+        "1567716725045334027"
+      ],
+      "after_restart": {
+        "task": [
+          "CANCELLED",
+          2
+        ],
+        "handoff_count": 0,
+        "execution_count_for_task": 0,
+        "total_execution_count": 6
+      }
+    }
+  },
+  "unverified": [
+    "process crash after GitHub accepts POST but before client records response",
+    "fresh-machine bootstrap",
+    "consented recording with configured speech provider",
+    "live Discord VC/DAVE/connectivity",
+    "two-task verified lesson learning",
+    "persistent crew slash hosting/dashboard",
+    "Company Brain PM workflow attachment and broad change-impact retrieval"
+  ],
+  "tested_source_sha256": {
+    "src/switchcrew/managed_console.py": "180d4308d247b26463f3787edad5d20a18e951b9b26384788c9933c184aa7eea",
+    "src/switchcrew/isolation.py": "ea8e62e0aebc674ebb3b4b077630a4bb15364e90b42d214ca7f80000e76fb01c",
+    "src/switchcrew/store.py": "249fc9d8f166b15033eaca804d99c0d203851243f25aebb2ee92ac1f4d6e604c",
+    "src/switchcrew/logging.py": "9942097d06860987ef6360c3d0f7bd99422c9ab011070d29d792d3c0783069fb",
+    "src/switchcrew/trace.py": "35927b4d1e08aae093e6bc9f11d38ca60067e4af7951bcdca64a99651c6dafb3",
+    "src/switchcrew/release.py": "da6c1f0301fb6ba4b6e0ca2c3d3a7d243d62cbe20e80f74b0401e14c2a804fcd",
+    "src/switchcrew/lessons.py": "9ecdc913321ef385edfba3359300ca688b8b1e2748740202a3ad90836cded56d",
+    "src/switchcrew/triggers.py": "f920ca2a0fb4c9b950d39b5b80e750f27154db8d2e35e416df720adfeae240ec",
+    "src/switchcrew/harnesses.py": "cf110e42aa14152425aaac2767d6c8d06b8c425c1012386adda132681717b306",
+    "src/switchcrew/models.py": "7c484646445b41e2937e02ffba0bad5ce979d88b3219cbedb0c8c51d5bbb5b4d",
+    "src/switchcrew/watchdog.py": "7a857bb4b113de790be46eca967ce9595806c5a63ce6f6e0f37ce4b3de65f0ec",
+    "src/switchcrew/memory.py": "e42d738f274ebfa37fa389d609b4bde4fe507a86e443a86caf119f0c0e14ac54",
+    "src/switchcrew/research.py": "0d52ec32fecff7aa88da55002de3f82cc33c2dd218acbd7f7ea73d0ea4fa0ffe",
+    "src/switchcrew/limits.py": "3087f357ba7600bcaeadc4b231a793a37bca46b5dff124d29d5862360937984c",
+    "src/switchcrew/company_brain.py": "9f5bdbf90f63875d47a4f6ec17a3e885f8909d7ab1e8028d882ddf2b2563ba8a",
+    "src/switchcrew/learning_acceptance.py": "51a7dd4dda794e546ade36c7d87f38843f4c4fdd8c5d4bb11b753a239558bf5c",
+    "src/switchcrew/organization_runtime.py": "cfdb1e7f3fa614f3d91e067ab11a104c31925acf679a40ad0705f51ad346a04b",
+    "src/switchcrew/organization.py": "67b93f8f27a9de1ab799c9f10ef5f4450387bb5c21bc66de3da678ea69a80aa2",
+    "src/switchcrew/meetings.py": "983a0de1bcaaa3381494e068bb82ae86756336b594997ebf96459f45e035cf96",
+    "src/switchcrew/company_brain_acceptance.py": "203528a214f36ec2e29fdd5d9193f15f61fcc2071b54cb0128b360c69c015322",
+    "src/switchcrew/security.py": "0f2f67bc900b414f268f0b473866f683ffa2187f14740a48adc99eadd2892c75",
+    "src/switchcrew/discord.py": "9c1d71683b9f0afca0a5c22cd336d7f2aa61086f57216d1d573f34c4a6acf42d",
+    "src/switchcrew/discord_interactions.py": "d3f2d2f5da578ef1149015f340bfc06e2aaf77f567dfcc51abde87bb2e92f1b5",
+    "src/switchcrew/specialists.py": "07f627b3212d8401c80d99d5ed6b92736071b36c4e3de4f3acc1a5cf3e7bdf41",
+    "src/switchcrew/teams.py": "41a05692bb77d6f816b0e022eaf654966edbf8e32ccdc2b9b94285322d081dfd",
+    "src/switchcrew/__init__.py": "9c5b1bd3285a66e050aecbf2a29dd40a986491288bff166725daa5d810a7043d",
+    "src/switchcrew/learning_runtime.py": "25bb5a02be0e2904a43afb23fbe30df48137f9f0444f3c149a88225edd6f51b4",
+    "src/switchcrew/change_intelligence.py": "2a8171ac9ed33259016918bf6efe0598e60062eff566ac62b9cd2da8d01c0650",
+    "src/switchcrew/runtime.py": "f8bd8b9d690f2dc78026a29b91886b3fa5018301798c8fdb6dbec686d513b587",
+    "src/switchcrew/notes.py": "479c737375da2d0922f64cd95da10e8b4899e75b30723ca8780125e6eed5bde0",
+    "src/switchcrew/switch.py": "a3003a95c1854db7e649abe48794709d8e5b70c6c834dceb5a43ae04e928a952",
+    "src/switchcrew/agents.py": "498d413deec67a48a51401195fddba4683605535f7fc4b67a561cd97b353d8f1",
+    "src/switchcrew/orchestration.py": "51bf1b8ffe6b95decebbe1b2585455f37193e3c543d643f2dcbe26920025ba06",
+    "src/switchcrew/voice.py": "7933ebf12a8e54d48b0d58944158282ca7ba71b132202344b7998121ca32a9cb",
+    "src/switchcrew/wire.py": "2ff00aa4816993c3529b8171c1f7019f85c1458ef2a139cd27998944e88ecee0",
+    "src/switchcrew/dashboard.py": "c213da53806b96cfaffb1b517eaf4aaa4982d2a174c301f3f78e468f50d30981",
+    "src/switchcrew/api.py": "e3b1e1ac309f88b186f7d8c7fc2644edb69b7b9e3a246866fed2e4dd56646ac8",
+    "src/switchcrew/oss.py": "1d89f4a01b1d5d0bef4c75ce342c93aad75e25ce1568365a5f960b6b750dfe3c",
+    "src/switchcrew/organization_api.py": "c8d88173382bcf2764390b1e31aeec21b38ca452f590210d881b7342b4707e32",
+    "src/switchcrew/reviewer.py": "0fe332b4b86bff477c76552f14b84ad372afbfd028f48332843a4b3cf804b622",
+    "src/switchcrew/crew.py": "e95d037a57c11f120eebbc36c90837f4e54b2aa689d912372775b56a1afc6591",
+    "src/switchcrew/recorded_acceptance.py": "d4dc600b72eecd4d5b1d9e4cdeafb89b5cd74fd0f348ec6c1a920ea4565e73ab",
+    "src/switchcrew/deployment_preflight.py": "a5b1db77b9c57fa480255ee75fc6d7858143d2b6c386237b87afae88b0b668dc",
+    "src/switchcrew/approval.py": "b8bcd12080d7dddcf6977b2b06ba5b86a79365d32b711958f0c3acd37989e156",
+    "src/switchcrew/settings.py": "68a1f8ccc1c7414872a2b90034fe19c34c514f94ba22595ad74c89703e772d5e",
+    "src/switchcrew/engineering.py": "5d8364bde493efbd2bca3b1b51915d822321db6bbd0ffb0b94c3116ff55b35bb",
+    "src/switchcrew/operator_dashboard.py": "1176c3850652976219209ea2aa4fd793c8457eaf0fa456b38394681317fb095e",
+    "src/switchcrew/employees.py": "49e875efe32a4c05d8f17081a3d90d8049d6602a4340e9e59f9beba6d0012472",
+    "src/switchcrew/workers.py": "7b7062f3d396d644807b4eae17ea81d976233a0cee2793874001cbbce63b4bdc",
+    "src/switchcrew/meeting_context.py": "747486c66459bfb33bde64bd26275fc0e79531c1dce11c4102b576625dd4709b",
+    "src/switchcrew/graphs.py": "fdb6a316cdc6649e5203a5889fd713e55d7d6ea164ebdc572eb59788b4e3993f",
+    "src/switchcrew/incidents.py": "0d293a3722d5ff1e1f35d346eb42b8aaab29cd94b6a0c91c2be5fce743c0c3f4",
+    "src/switchcrew/knowledge.py": "9d4fafb0c97feb97c5f6ca54227ba43a2c9acd35a156de6b65605fd1766f9f12",
+    "src/switchcrew/qa.py": "97f51226944e55be31e25dbd3e2dd26e3641d9813efa2ed7ba78235790c3d2fd",
+    "src/switchcrew/engineering_qa.py": "f13fa85af411031da47a68c5b27202b36419c87faf8a0300ac0a8e509d69285a",
+    "src/switchcrew/memory_acceptance.py": "7ccd548fea4fd04aabc06fcdd770312bf534b6608ae326368c67ec73032a8a2b",
+    "src/switchcrew/combined_acceptance.py": "35060fee6195fbba10bca1ea51be5fe2aeb5215b9d88c849778dee5fba24710a",
+    "src/switchcrew/security_gate.py": "22e7f803022119bc889231b59ba0c359574c884fac558bd3d71758a0a045b964"
+  },
+  "company_brain_report": "company-brain-2026-11-05.json",
+  "recorded_audio": "deferred by user; no recording, consent evidence or provider configured",
+  "final_after_pm_reload": {
+    "ledger_count": 6,
+    "ledger_sha256": "754848f487a7fe5cb52bf5d0891674a248936bd8973bc81ca883f893a4bdc1c7",
+    "main": [
+      "PR_OPEN",
+      17
+    ],
+    "rejection_probe": [
+      "CANCELLED",
+      2
+    ],
+    "api_health": 200
+  },
+  "additional_controlled_checks": {
+    "company_brain_probe_query_and_approval_json_feedback": "47 passed (focused)"
+  },
+  "final_source_sha256": {
+    "src/switchcrew/managed_console.py": "180d4308d247b26463f3787edad5d20a18e951b9b26384788c9933c184aa7eea",
+    "src/switchcrew/isolation.py": "ea8e62e0aebc674ebb3b4b077630a4bb15364e90b42d214ca7f80000e76fb01c",
+    "src/switchcrew/store.py": "249fc9d8f166b15033eaca804d99c0d203851243f25aebb2ee92ac1f4d6e604c",
+    "src/switchcrew/logging.py": "9942097d06860987ef6360c3d0f7bd99422c9ab011070d29d792d3c0783069fb",
+    "src/switchcrew/trace.py": "35927b4d1e08aae093e6bc9f11d38ca60067e4af7951bcdca64a99651c6dafb3",
+    "src/switchcrew/release.py": "da6c1f0301fb6ba4b6e0ca2c3d3a7d243d62cbe20e80f74b0401e14c2a804fcd",
+    "src/switchcrew/lessons.py": "9ecdc913321ef385edfba3359300ca688b8b1e2748740202a3ad90836cded56d",
+    "src/switchcrew/triggers.py": "f920ca2a0fb4c9b950d39b5b80e750f27154db8d2e35e416df720adfeae240ec",
+    "src/switchcrew/harnesses.py": "cf110e42aa14152425aaac2767d6c8d06b8c425c1012386adda132681717b306",
+    "src/switchcrew/models.py": "7c484646445b41e2937e02ffba0bad5ce979d88b3219cbedb0c8c51d5bbb5b4d",
+    "src/switchcrew/watchdog.py": "7a857bb4b113de790be46eca967ce9595806c5a63ce6f6e0f37ce4b3de65f0ec",
+    "src/switchcrew/memory.py": "e42d738f274ebfa37fa389d609b4bde4fe507a86e443a86caf119f0c0e14ac54",
+    "src/switchcrew/research.py": "0d52ec32fecff7aa88da55002de3f82cc33c2dd218acbd7f7ea73d0ea4fa0ffe",
+    "src/switchcrew/limits.py": "3087f357ba7600bcaeadc4b231a793a37bca46b5dff124d29d5862360937984c",
+    "src/switchcrew/company_brain.py": "9f5bdbf90f63875d47a4f6ec17a3e885f8909d7ab1e8028d882ddf2b2563ba8a",
+    "src/switchcrew/learning_acceptance.py": "51a7dd4dda794e546ade36c7d87f38843f4c4fdd8c5d4bb11b753a239558bf5c",
+    "src/switchcrew/organization_runtime.py": "cfdb1e7f3fa614f3d91e067ab11a104c31925acf679a40ad0705f51ad346a04b",
+    "src/switchcrew/organization.py": "67b93f8f27a9de1ab799c9f10ef5f4450387bb5c21bc66de3da678ea69a80aa2",
+    "src/switchcrew/meetings.py": "983a0de1bcaaa3381494e068bb82ae86756336b594997ebf96459f45e035cf96",
+    "src/switchcrew/company_brain_acceptance.py": "dfac515b049586bb05c61304e88d3c319445eda66f1475ee3bc7d0f9ffede080",
+    "src/switchcrew/security.py": "0f2f67bc900b414f268f0b473866f683ffa2187f14740a48adc99eadd2892c75",
+    "src/switchcrew/discord.py": "9c1d71683b9f0afca0a5c22cd336d7f2aa61086f57216d1d573f34c4a6acf42d",
+    "src/switchcrew/discord_interactions.py": "d3f2d2f5da578ef1149015f340bfc06e2aaf77f567dfcc51abde87bb2e92f1b5",
+    "src/switchcrew/specialists.py": "07f627b3212d8401c80d99d5ed6b92736071b36c4e3de4f3acc1a5cf3e7bdf41",
+    "src/switchcrew/teams.py": "41a05692bb77d6f816b0e022eaf654966edbf8e32ccdc2b9b94285322d081dfd",
+    "src/switchcrew/__init__.py": "9c5b1bd3285a66e050aecbf2a29dd40a986491288bff166725daa5d810a7043d",
+    "src/switchcrew/learning_runtime.py": "25bb5a02be0e2904a43afb23fbe30df48137f9f0444f3c149a88225edd6f51b4",
+    "src/switchcrew/change_intelligence.py": "2a8171ac9ed33259016918bf6efe0598e60062eff566ac62b9cd2da8d01c0650",
+    "src/switchcrew/runtime.py": "f8bd8b9d690f2dc78026a29b91886b3fa5018301798c8fdb6dbec686d513b587",
+    "src/switchcrew/notes.py": "479c737375da2d0922f64cd95da10e8b4899e75b30723ca8780125e6eed5bde0",
+    "src/switchcrew/switch.py": "a3003a95c1854db7e649abe48794709d8e5b70c6c834dceb5a43ae04e928a952",
+    "src/switchcrew/agents.py": "498d413deec67a48a51401195fddba4683605535f7fc4b67a561cd97b353d8f1",
+    "src/switchcrew/orchestration.py": "51bf1b8ffe6b95decebbe1b2585455f37193e3c543d643f2dcbe26920025ba06",
+    "src/switchcrew/voice.py": "7933ebf12a8e54d48b0d58944158282ca7ba71b132202344b7998121ca32a9cb",
+    "src/switchcrew/wire.py": "2ff00aa4816993c3529b8171c1f7019f85c1458ef2a139cd27998944e88ecee0",
+    "src/switchcrew/dashboard.py": "c213da53806b96cfaffb1b517eaf4aaa4982d2a174c301f3f78e468f50d30981",
+    "src/switchcrew/api.py": "e3b1e1ac309f88b186f7d8c7fc2644edb69b7b9e3a246866fed2e4dd56646ac8",
+    "src/switchcrew/oss.py": "1d89f4a01b1d5d0bef4c75ce342c93aad75e25ce1568365a5f960b6b750dfe3c",
+    "src/switchcrew/organization_api.py": "c8d88173382bcf2764390b1e31aeec21b38ca452f590210d881b7342b4707e32",
+    "src/switchcrew/reviewer.py": "0fe332b4b86bff477c76552f14b84ad372afbfd028f48332843a4b3cf804b622",
+    "src/switchcrew/crew.py": "e95d037a57c11f120eebbc36c90837f4e54b2aa689d912372775b56a1afc6591",
+    "src/switchcrew/recorded_acceptance.py": "d4dc600b72eecd4d5b1d9e4cdeafb89b5cd74fd0f348ec6c1a920ea4565e73ab",
+    "src/switchcrew/deployment_preflight.py": "a5b1db77b9c57fa480255ee75fc6d7858143d2b6c386237b87afae88b0b668dc",
+    "src/switchcrew/approval.py": "b8bcd12080d7dddcf6977b2b06ba5b86a79365d32b711958f0c3acd37989e156",
+    "src/switchcrew/settings.py": "68a1f8ccc1c7414872a2b90034fe19c34c514f94ba22595ad74c89703e772d5e",
+    "src/switchcrew/engineering.py": "5d8364bde493efbd2bca3b1b51915d822321db6bbd0ffb0b94c3116ff55b35bb",
+    "src/switchcrew/operator_dashboard.py": "1176c3850652976219209ea2aa4fd793c8457eaf0fa456b38394681317fb095e",
+    "src/switchcrew/employees.py": "49e875efe32a4c05d8f17081a3d90d8049d6602a4340e9e59f9beba6d0012472",
+    "src/switchcrew/workers.py": "b041c5c9f558d68fa85852903c3869d038177bf1a5debab28692b9c0cc94b7ce",
+    "src/switchcrew/meeting_context.py": "747486c66459bfb33bde64bd26275fc0e79531c1dce11c4102b576625dd4709b",
+    "src/switchcrew/graphs.py": "fdb6a316cdc6649e5203a5889fd713e55d7d6ea164ebdc572eb59788b4e3993f",
+    "src/switchcrew/incidents.py": "0d293a3722d5ff1e1f35d346eb42b8aaab29cd94b6a0c91c2be5fce743c0c3f4",
+    "src/switchcrew/knowledge.py": "9d4fafb0c97feb97c5f6ca54227ba43a2c9acd35a156de6b65605fd1766f9f12",
+    "src/switchcrew/qa.py": "97f51226944e55be31e25dbd3e2dd26e3641d9813efa2ed7ba78235790c3d2fd",
+    "src/switchcrew/engineering_qa.py": "f13fa85af411031da47a68c5b27202b36419c87faf8a0300ac0a8e509d69285a",
+    "src/switchcrew/memory_acceptance.py": "7ccd548fea4fd04aabc06fcdd770312bf534b6608ae326368c67ec73032a8a2b",
+    "src/switchcrew/combined_acceptance.py": "35060fee6195fbba10bca1ea51be5fe2aeb5215b9d88c849778dee5fba24710a",
+    "src/switchcrew/security_gate.py": "22e7f803022119bc889231b59ba0c359574c884fac558bd3d71758a0a045b964"
+  }
+}

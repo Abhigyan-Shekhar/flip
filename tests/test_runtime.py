@@ -175,6 +175,26 @@ async def test_history_recovery_deduplicates_live_delivery(tmp_path):
     assert runtime.store.get_cursor("research") == "4"
 
 
+async def test_startup_recovers_offline_handoff_once_even_with_saved_cursor(tmp_path):
+    runtime, event, handoff, calls = setup_runtime(tmp_path)
+    entry = {**event["payload"], "id": "history-id"}
+    reads = []
+
+    async def recover_history():
+        reads.append(True)
+        return {"room": [{"threads": [{"root": entry, "replies": []}]}]}
+
+    runtime.switch._recover_history = recover_history
+    runtime.switch.stream = [{"type": "connection_state"}, event]
+    runtime.store.set_cursor("research", 3)
+    await runtime.run()
+    assert len(calls) == 1 and len(reads) == 1
+    assert runtime.store.get_handoff(handoff["id"])["status"] == "completed"
+    restarted = AgentRuntime(runtime.connection, runtime.store, runtime.switch, runtime.graph)
+    await restarted.run()
+    assert len(calls) == 1 and len(reads) == 2
+
+
 async def test_ack_delivery_failure_prevents_execution(tmp_path):
     runtime, event, h, calls = setup_runtime(tmp_path)
 

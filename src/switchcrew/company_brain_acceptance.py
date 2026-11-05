@@ -177,13 +177,16 @@ async def verify_company_brain(
 
 
 async def main(
-    config_file: str, report_file: str | None = None, files: list[str] | None = None
+    config_file: str,
+    report_file: str | None = None,
+    files: list[str] | None = None,
+    query: str = "repository architecture and decisions",
 ) -> int:
     config_path = Path(config_file)
     if config_path.stat().st_mode & 0o077:
         raise ValueError("Company Brain acceptance config must be private")
     settings = Settings(_env_file=None, **json.loads(config_path.read_text()))
-    result = await verify_company_brain(settings, files=files)
+    result = await verify_company_brain(settings, files=files, query=query)
     encoded = json.dumps(result, indent=2)
     if report_file:
         descriptor = os.open(report_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -198,11 +201,14 @@ if __name__ == "__main__":
     parser.add_argument("--config", required=True)
     parser.add_argument("--report")
     parser.add_argument(
+        "--query", default="repository architecture and decisions", help="Indexed keyword or symbol"
+    )
+    parser.add_argument(
         "--file", action="append", default=[], help="Repository-relative file for check_change"
     )
     args = parser.parse_args()
     try:
-        raise SystemExit(asyncio.run(main(args.config, args.report, args.file)))
+        raise SystemExit(asyncio.run(main(args.config, args.report, args.file, args.query)))
     except (OSError, ValueError, TypeError):
         print(json.dumps(_blocked("invalid_or_unavailable_private_config")))
         raise SystemExit(1) from None

@@ -1,0 +1,132 @@
+{
+  "observed_at": "2026-11-04T21:37:04.021364+05:30",
+  "status": "incomplete_live_pipeline",
+  "baseline_revision": "5bd88bdc803cc5d30d361923b3dfce62e93bfe65",
+  "branch": "codex/live-pipeline-acceptance",
+  "working_tree_source_changes": true,
+  "tested_source_sha256": {
+    "src/switchcrew/security.py": "0f2f67bc900b414f268f0b473866f683ffa2187f14740a48adc99eadd2892c75",
+    "src/switchcrew/switch.py": "a3003a95c1854db7e649abe48794709d8e5b70c6c834dceb5a43ae04e928a952",
+    "tests/test_security.py": "85d0868a040ad9798e1a328d21d7d5e41efdaeeffd79b0986587f407f3aa8045",
+    "tests/test_switch.py": "1706d3d681bd91ef0ff9afbe4970fa9fb265616434589716120767e2846b3561"
+  },
+  "switch": {
+    "room_id": "1d8c9f05-5e7e-41b9-aead-bfd1b10b927d",
+    "identities": {
+      "engineering": "2e847c37-8dae-4b4e-bbed-a99d7ca126de",
+      "qa": "f9812933-ee44-4c43-9605-b97d0ff86310",
+      "reviewer": "78fb4961-dd93-439a-8beb-6e581e9fcd87",
+      "release": "5443ac94-bb3c-454a-87ee-248603f66727"
+    },
+    "authenticated_connections_observed": true,
+    "console_managed_agent_count": 0
+  },
+  "github": {
+    "repository": "Abhigyan-Shekhar/flip-acceptance-20261104",
+    "url": "https://github.com/Abhigyan-Shekhar/flip-acceptance-20261104",
+    "private": true,
+    "base": "master",
+    "operator_prepared_base_revision": "1ca12f82a6c8c4df8f1f6e79467643101cceac95",
+    "branch_protection_read_back": true,
+    "required_checks": [
+      "flip/qa",
+      "flip/security"
+    ],
+    "approving_reviews_required": 1,
+    "dismiss_stale_reviews": true,
+    "enforce_admins": true,
+    "scoped_release_credential_configured": false,
+    "draft_pr_url": null
+  },
+  "scanner": {
+    "coverage": "secret_scanning_only",
+    "image": "aquasec/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c",
+    "binary_version": "Version: 0.76.1",
+    "publisher_signature_verified": false,
+    "intentional_revision": "29a2e7def1d6da2076243762c02c3a8f1df58eca",
+    "intentional_result": "findings",
+    "findings": [
+      {
+        "severity": "Critical",
+        "file": "intentional.txt",
+        "component": "github-pat"
+      }
+    ],
+    "clean_revision": "415f318c7e096032c9cd9c98991f50cfccddcffb",
+    "clean_result": "verified_success",
+    "deployed_security_policy_verified": false
+  },
+  "container_boundary_checks": {
+    "readonly_root": true,
+    "readonly_workspace": true,
+    "network_denied": true,
+    "credentials_absent": true,
+    "socket_absent": true,
+    "host_home_absent": true,
+    "tmp_writable": true,
+    "timeout_raised": true,
+    "timeout_cleanup_no_containers": true
+  },
+  "api_denial_probe": {
+    "task_id": "ff35ca0c-d58f-46b2-9c87-d897ad8df426",
+    "denials": [
+      {
+        "stage": "engineering",
+        "status": 403
+      },
+      {
+        "stage": "release",
+        "status": 403
+      }
+    ],
+    "after_restart": {
+      "task_status": "CANCELLED",
+      "task_version": 2,
+      "engineering_handoff": null,
+      "task_count": 1,
+      "handoff_count": 0
+    },
+    "human_approvals_submitted": false
+  },
+  "tests": {
+    "full_suite": {
+      "passed": 564,
+      "skipped": 3,
+      "seconds": 53.97
+    },
+    "real_switch_recovery_before_fix": {
+      "passed": 2,
+      "failed": 1,
+      "seconds": 41.04
+    },
+    "real_switch_recovery_after_fix": {
+      "passed": 3,
+      "failed": 0,
+      "deselected": 17,
+      "seconds": 30.93
+    },
+    "ruff_check": "passed",
+    "ruff_format": "passed",
+    "git_diff_check": "passed",
+    "switch_controlled": {
+      "passed": 17,
+      "deselected": 3
+    },
+    "full_suite_skips": "Opt-in real recovery tests; separately executed against real Switch."
+  },
+  "unverified": [
+    "managed_engineering_execution",
+    "console_host_isolation",
+    "independent_security_handoff_and_policy",
+    "human_rejected_approval_cases",
+    "managed_job_failure_correction_and_retry",
+    "exact_revision_workflow_qa_and_review",
+    "human_release_approval",
+    "real_draft_pr_and_discord_receipt",
+    "uncertain_publication_restart_reconciliation",
+    "recorded_audio_provider_consent",
+    "live_two_task_learning",
+    "flip_company_brain_index"
+  ],
+  "application_healthy_after_final_reload": true
+}

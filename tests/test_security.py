@@ -94,6 +94,72 @@ async def test_operator_can_configure_scanner_finding_exit_code(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_trivy_native_finding_preserves_severity_file_and_redaction(tmp_path):
+    root, revision = committed_repo(tmp_path / "repo")
+    payload = {
+        "Results": [
+            {
+                "Target": "app.py",
+                "Secrets": [
+                    {
+                        "RuleID": "github-pat",
+                        "Severity": "CRITICAL",
+                        "Title": "GitHub Personal Access Token",
+                        "Match": "ghp_" + "a" * 36,
+                    }
+                ],
+            }
+        ],
+    }
+    code = "print(" + repr(json.dumps(payload)) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    assert report.status == "findings"
+    finding = report.findings[0]
+    assert finding.severity == "Critical"
+    assert finding.file == "app.py"
+    assert finding.component == "github-pat"
+    assert finding.explanation == "GitHub Personal Access Token"
+    assert "a" * 36 not in str(report.to_dict())
+    assert "REDACTED" in finding.evidence
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("result", [None, {"Secrets": {}}, {"Secrets": [None]}])
+async def test_malformed_trivy_results_fail_closed(tmp_path, result):
+    root, revision = committed_repo(tmp_path / "repo")
+    code = "print(" + repr(json.dumps({"Results": [result]})) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    assert report.status == "scanner_failed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("native_envelope", [True, False])
+async def test_clean_trivy_report_requires_native_envelope_when_results_omitted(
+    tmp_path, native_envelope
+):
+    root, revision = committed_repo(tmp_path / "repo")
+    payload = (
+        {
+            "SchemaVersion": 2,
+            "ArtifactName": "/workspace",
+            "ArtifactType": "filesystem",
+            "Trivy": {"Version": "0.76.1"},
+        }
+        if native_envelope
+        else {}
+    )
+    code = "print(" + repr(json.dumps(payload)) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    assert report.status == ("verified_success" if native_envelope else "scanner_failed")
+
+
+@pytest.mark.asyncio
 async def test_missing_scanner_and_unconfigured_scanners_are_blocked(tmp_path):
     root, revision = committed_repo(tmp_path / "repo")
     no_scanners = await SecurityRunner([]).run(root, revision)

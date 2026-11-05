@@ -1,0 +1,4 @@
+FROM node@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da
+COPY egress.mjs /opt/egress.mjs
+USER node
+ENTRYPOINT ["node","/opt/egress.mjs"]

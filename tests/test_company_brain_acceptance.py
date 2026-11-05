@@ -205,3 +205,23 @@ async def test_cli_requires_private_config_and_never_overwrites_report(tmp_path,
         await main(str(config), str(report))
     assert report.read_text() == original
     assert json.loads(capsys.readouterr().out)["reason"] == "company_brain_disabled"
+
+
+async def test_operator_probe_forwards_explicit_indexed_query(tmp_path, monkeypatch, capsys):
+    import json
+
+    from switchcrew import company_brain_acceptance as probe
+
+    config = tmp_path / "config.json"
+    config.write_text("{}")
+    config.chmod(0o600)
+    calls = []
+
+    async def verify(settings, **kwargs):
+        calls.append(kwargs)
+        return {"status": "PASS"}
+
+    monkeypatch.setattr(probe, "verify_company_brain", verify)
+    assert await probe.main(str(config), files=["module.py"], query="exact indexed symbol") == 0
+    assert calls == [{"files": ["module.py"], "query": "exact indexed symbol"}]
+    assert json.loads(capsys.readouterr().out)["status"] == "PASS"

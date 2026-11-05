@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!Dockerfile.egress
+!start.mjs
+!egress.mjs
+!agent-controller.mjs
+!shared-host.mjs

@@ -62,6 +62,7 @@ class AgentRuntime:
 
     def __init__(self, connection, store, switch, graph):
         self.connection, self.store, self.switch, self.graph = connection, store, switch, graph
+        self._initial_history_recovered = False
         if getattr(switch, "agent_id", connection.agent_id) != connection.agent_id:
             raise ValueError("Switch client identity differs from runtime identity")
         self.switch.on_disconnect = self.on_disconnected
@@ -229,6 +230,14 @@ class AgentRuntime:
 
     async def on_connected(self):
         await self.switch.connect_to_room(self.connection.room_id)
+        # A first connection has no SSE cursor for handoffs delivered while the
+        # worker was offline. Also recover formerly rejected messages after an
+        # operator fixes identity mappings. Read real authenticated room history;
+        # receive() applies the same sender/assignment checks and durable IDs.
+        recover_history = getattr(self.switch, "_recover_history", None)
+        if not self._initial_history_recovered and callable(recover_history):
+            await self._recover({"history": await recover_history()})
+            self._initial_history_recovered = True
 
     async def run(self):
         identity = self.connection.agent_id

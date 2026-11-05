@@ -78,7 +78,7 @@ class SecurityReport:
 def _finding(raw: Any) -> SecurityFinding | None:
     if not isinstance(raw, dict):
         return None
-    severity = _SEVERITIES.get(str(raw.get("severity", "")).lower())
+    severity = _SEVERITIES.get(str(raw.get("severity", raw.get("Severity", ""))).lower())
     if severity is None:
         return None
     file = str(raw.get("file", raw.get("path", raw.get("Target", ""))))
@@ -102,7 +102,10 @@ def _finding(raw: Any) -> SecurityFinding | None:
             1000,
         ),
         explanation=_redact(
-            raw.get("explanation", raw.get("message", raw.get("Description", ""))), 1000
+            raw.get(
+                "explanation", raw.get("message", raw.get("Description", raw.get("Title", "")))
+            ),
+            1000,
         ),
         remediation=_redact(
             raw.get("remediation", raw.get("recommendation", raw.get("FixedVersion", ""))),
@@ -122,14 +125,33 @@ def _extract_findings(data: Any) -> list[Any] | None:
         return data["findings"]
     if isinstance(data.get("issues"), list):
         return data["issues"]
+    # Trivy omits Results entirely when a successful scan has no findings.
+    # Require its native report envelope so arbitrary empty JSON stays blocked.
+    if (
+        "Results" not in data
+        and data.get("SchemaVersion") == 2
+        and data.get("ArtifactType") in {"filesystem", "repository", "container_image"}
+        and isinstance(data.get("ArtifactName"), str)
+        and bool(data["ArtifactName"])
+        and isinstance(data.get("Trivy"), dict)
+        and isinstance(data["Trivy"].get("Version"), str)
+        and bool(data["Trivy"]["Version"])
+    ):
+        return []
     results = data.get("Results")
     if isinstance(results, list):
         items = []
         for result in results:
-            if isinstance(result, dict):
-                items.extend(result.get("Misconfigurations", []))
-                items.extend(result.get("Vulnerabilities", []))
-                items.extend(result.get("Secrets", []))
+            if not isinstance(result, dict):
+                return None
+            for key in ("Misconfigurations", "Vulnerabilities", "Secrets"):
+                entries = result.get(key, [])
+                if not isinstance(entries, list):
+                    return None
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        return None
+                    items.append({"file": result.get("Target", ""), **entry})
         return items
     return None
 

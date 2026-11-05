@@ -1,5 +1,9 @@
 # Verification checkpoint — November 4, 2026 IST
 
+Update: the [November 5 live pipeline](LIVE_PIPELINE_2026-11-05.md) completed
+real Console-managed execution, QA correction, independent review and an
+explicitly approved GitHub draft PR. Earlier observations below retain their dates.
+
 The local Discord research workflow is deployed and verified. The complete
 coding-to-release and live voice workflows are **not yet accepted**.
 This checkpoint supersedes earlier statements that Docker or Switch were
@@ -26,6 +30,12 @@ reports; employee bindings; watchdog monitoring; and the operator dashboard.
 All 17 roles have graph implementations. This checkpoint deploys **PM and
 Research**, not a fully provisioned 17-agent organization. Implemented code,
 controlled tests, component acceptance and complete live workflows are distinct.
+
+The later [live pipeline preparation run](LIVE_PIPELINE_2026-11-04.md) restores
+services, provisions four privileged Switch identities, prepares a protected
+disposable GitHub target and fixes real Trivy interoperability. Console-managed
+Engineering and approved draft-PR acceptance remain blocked; the later report
+does not replace the historical results below.
 
 ## Results and boundaries
 

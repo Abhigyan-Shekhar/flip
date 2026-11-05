@@ -280,6 +280,45 @@ async def test_clean_eof_no_stream_refusal_reconnects_with_cursor_and_fence():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("probe_outage", [False, True])
+async def test_transport_error_probes_ownership_without_reopening_displaced_stream(probe_outage):
+    opens, beats = [], []
+
+    class Displaced(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            state = {
+                "connection_id": "c",
+                "agent_id": "a",
+                "rooms": [],
+                "generation": 7,
+                "heartbeat_interval_seconds": 10,
+            }
+            yield f"event: connection_state\ndata: {json.dumps(state)}\n\n".encode()
+            raise httpx.RemoteProtocolError("displaced stream ended without complete chunk")
+
+    def handle(request):
+        if request.url.path.endswith("/beat"):
+            beats.append(json.loads(request.content))
+            if probe_outage and len(beats) == 1:
+                return httpx.Response(503)
+            return httpx.Response(409, json={"detail": {"code": "taken_over"}})
+        opens.append(request)
+        return httpx.Response(200, stream=Displaced())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        client = SwitchClient("https://s.test", "a", "key", "c", client=http)
+        stream = client.events()
+        await anext(stream)
+        with pytest.raises(SwitchOwnershipLost):
+            await asyncio.wait_for(anext(stream), 2)
+        assert len(opens) == 1
+        assert len(beats) == (2 if probe_outage else 1)
+        assert all(beat == {"connection_id": "c", "generation": 7} for beat in beats)
+        assert not client.connected
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
 async def test_eviction_is_terminal_and_does_not_echo_server_prose():
     opens = []
 

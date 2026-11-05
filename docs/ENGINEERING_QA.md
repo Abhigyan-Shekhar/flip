@@ -1,5 +1,9 @@
 # Engineering → independent QA
 
+Update: the [November 5 live pipeline](LIVE_PIPELINE_2026-11-05.md) completed
+real Console-managed execution, QA correction, independent review and an
+explicitly approved GitHub draft PR. Earlier observations below retain their dates.
+
 The mandatory independent Reviewer and bounded correction loop are documented in
 [REVIEW_CORRECTIONS.md](REVIEW_CORRECTIONS.md). Reviewer identity/configuration is
 now required; older workflow diagrams below describe the pre-review lifecycle.

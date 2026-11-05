@@ -577,6 +577,15 @@ class Worker:
             if not isinstance(request, dict):
                 request = {}
         except ValueError:
+            if re.search(r'"type"\s*:\s*"approval"', source.body):
+                # Recognize only the intent to give useful feedback. Never repair
+                # malformed decisions or pass them through ordinary task intake.
+                await self.switch.post_message(
+                    "Invalid approval JSON. Resend the exact JSON with no trailing text. "
+                    "No approval was recorded and no execution was authorized.",
+                    thread_id=source.thread_id or source.message_id,
+                )
+                return
             request = {}
         if request.get("type") == "meeting":
             await self._meeting_request(source, request)
