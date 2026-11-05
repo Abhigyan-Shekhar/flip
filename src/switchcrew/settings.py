@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     # Optional, read-only Company Brain adapter. Enabling it requires an
     # operator-provisioned registry rooted at the exact checkout and revision.
     company_brain_enabled: bool = False
+    company_brain_timeout: float = Field(default=45, ge=1, le=120)
     company_brain_command: list[str] = Field(default_factory=list)
     company_brain_url: str | None = None
     company_brain_token: SecretStr | None = None

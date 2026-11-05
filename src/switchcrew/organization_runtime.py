@@ -128,6 +128,43 @@ class ChangeIntelligenceExecutor:
 
 def configured_executor(role, capability, store, connection, settings):
     mode = capability.get("mode")
+    if (role == "security" and mode == "green_check_security") or (
+        role == "knowledge" and mode == "green_check_knowledge"
+    ):
+        from .company_brain import company_brain_from_settings
+        from .green_check import InvestigationExecutor
+
+        investigation = InvestigationExecutor(
+            store,
+            connection.agent_id,
+            capability,
+            company_brain_from_settings(settings) if role == "knowledge" else None,
+        )
+        if role == "knowledge":
+            return investigation
+        gate_config = capability.get("gate")
+        gate = (
+            configured_executor(
+                role,
+                {**gate_config, "mode": "engineering_security_gate"},
+                store,
+                connection,
+                settings,
+            )
+            if gate_config
+            else None
+        )
+
+        async def security_assignment(state):
+            task = store.get_task(state.get("task_id"))
+            source = (task or {}).get("source", {})
+            if source.get("kind") == "green_check":
+                return await investigation(state)
+            if source.get("security_gate") and gate is not None:
+                return await gate(state)
+            return {"status": "blocked_configuration", "reason": "security_gate_not_configured"}
+
+        return security_assignment
     if mode == "harness":
         from .harnesses import HarnessExecutor, load_harness_config
 

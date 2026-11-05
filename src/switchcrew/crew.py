@@ -322,7 +322,7 @@ def _context_control(store, source):
             or origin.get("security_gate")
         ):
             continue
-        if not _task_scope(task, source):
+        if not _task_scope(task, source) or origin.get("user_id") != source.user_id:
             continue
         if action == "cancel" and task["status"] in {
             "COMPLETED",
@@ -333,6 +333,17 @@ def _context_control(store, source):
         }:
             continue
         candidates.append(task)
+    if len(candidates) == 2:
+        # A recorded investigation→proposal relationship is explicit context,
+        # unlike choosing whichever unrelated task happened to be newest.
+        children = [
+            t
+            for t in candidates
+            if t["source"].get("investigation_task_id")
+            in {other["id"] for other in candidates if other["id"] != t["id"]}
+        ]
+        if len(children) == 1:
+            candidates = children
     if len(candidates) != 1 or len(rows) > 1000:
         return {
             "handled": True,
@@ -345,7 +356,7 @@ def _context_control(store, source):
             + (
                 "Multiple tasks match this thread."
                 if candidates
-                else "No task matches this thread."
+                else "No task matches this thread, or you are not authorized for its context."
             ),
         }
     return replace(source, body=f"/flip {action} {candidates[0]['id']}")

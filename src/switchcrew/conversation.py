@@ -99,4 +99,6 @@ def conversation_control(text):
     """Recognize bounded controls; never infer approvals or shell commands."""
     if not isinstance(text, str) or len(text) > 300:
         return None
-    return _CONTROL_PHRASES.get(re.sub(r"[.!?]+$", "", text.strip()).strip().lower())
+    return _CONTROL_PHRASES.get(
+        re.sub(r"[.!?]+$", "", text.strip()).strip().replace("’", "'").lower()
+    )

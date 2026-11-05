@@ -100,6 +100,7 @@ class Worker:
         self.meetings = None
         self.security_gate = None
         self.security_scans = {}
+        self.green_check_routes = {}
         self.documentation_id = (specialist_targets or {}).get("documentation", {}).get("agent_id")
         self.engineering_id, self.qa_id, self.release_id = engineering_id, qa_id, release_id
         self.reviewer_id, self.max_corrections = reviewer_id, max_corrections
@@ -345,7 +346,12 @@ class Worker:
                             "Engineering's changes passed QA and independent review. "
                             f"Revision: {data.get('revision', 'unavailable')}.\n"
                             "Review the evidence, then authorize the draft PR by replying:\n"
-                            + decision_phrase(task_id, "release", task["version"])
+                            + (
+                                f"/flip approve-release task_id:{task_id} "
+                                f"version:{task['version']} revision:{data['revision']}"
+                                if task["source"].get("investigation_task_id")
+                                else decision_phrase(task_id, "release", task["version"])
+                            )
                             if data["phase"] == "human_review"
                             else "The checks haven't passed. This needs attention before release."
                         ),
@@ -476,6 +482,9 @@ class Worker:
         self._reply(receipt_id, "meeting_command", text, freeze=True)
 
     def _reconcile_auxiliary(self):
+        from .green_check import reconcile_investigations
+
+        reconcile_investigations(self)
         """Report independently executed Notes/docs/trigger work in its original thread."""
         rows = self.store.connection.execute(
             "SELECT * FROM tasks WHERE status='IN_PROGRESS' AND "
@@ -555,6 +564,10 @@ class Worker:
             allowed_guilds=self.allowed_guilds,
             allowed_users=self.allowed_users,
         )
+        from .green_check import handle_investigation, investigation_followup
+
+        if await handle_investigation(self, source):
+            return
         from .security_intake import handle_scan_request
 
         if await handle_scan_request(self, source):
@@ -562,13 +575,15 @@ class Worker:
         from .crew import handle_crew_command
         from .finding_selection import resolve_finding_request
 
-        command = resolve_finding_request(
-            self.store,
-            source,
-            pm_id=self.pm_id,
-            engineering_job_key=self.engineering_job_key,
-            engineering_repository=self.release_repository,
-        )
+        command = investigation_followup(self, source)
+        if command is None:
+            command = resolve_finding_request(
+                self.store,
+                source,
+                pm_id=self.pm_id,
+                engineering_job_key=self.engineering_job_key,
+                engineering_repository=self.release_repository,
+            )
         if command is None:
             command = handle_crew_command(
                 self.store, source, can_cancel=source.user_id in self.approvals.approvers
@@ -666,6 +681,16 @@ class Worker:
                     source.thread_id or source.message_id
                 ):
                     return
+                if task["source"].get("investigation_task_id") and request["type"] == "approval":
+                    self._reply(
+                        task["id"],
+                        "signed_approval_required_" + source.message_id,
+                        "Use the signed /flip approve-engineering or approve-release control "
+                        "with the exact task version. "
+                        "Chat messages cannot authorize this workflow.",
+                        freeze=True,
+                    )
+                    return
                 if request["type"] == "plan_review":
                     self.orchestrator.review_step(
                         task["id"],
@@ -707,6 +732,11 @@ class Worker:
                 "channel_id": source.channel_id,
                 "guild_id": source.guild_id,
                 "project_id": self.project_id,
+                **(
+                    {"investigation_task_id": command["investigation_task_id"]}
+                    if command and command.get("kind") == "investigation_fix"
+                    else {}
+                ),
                 **(
                     {"selected_finding": command["trusted_selection"]}
                     if command is not None and "trusted_selection" in command
@@ -795,7 +825,9 @@ class Worker:
                 if existing_approval
                 else None
             )
-            if self.company_brain is not None and existing_approval is None:
+            if command and command.get("kind") == "investigation_fix":
+                brain_metadata = command["company_brain"]
+            elif self.company_brain is not None and existing_approval is None:
                 from .company_brain import capture_engineering_context
 
                 query = question + "\nAcceptance criteria:\n" + "\n".join(criteria)
@@ -879,7 +911,11 @@ class Worker:
                 f"Engineering request {task_id} awaits human approval. "
                 f"Task version: {version}. No Engineering action has started.\n\n"
                 "To authorize the work, reply in this thread:\n"
-                + decision_phrase(task_id, "engineering", version)
+                + (
+                    f"/flip approve-engineering task_id:{task_id} version:{version}"
+                    if task["source"].get("investigation_task_id")
+                    else decision_phrase(task_id, "engineering", version)
+                )
                 + "\n\nRelease will require a separate approval after QA and review.",
                 freeze=True,
             )
@@ -1257,6 +1293,7 @@ async def _main(role):
             from .organization import configure_security
 
             worker.security_gate = configure_security(store, settings, organization)
+            worker.green_check_routes = organization.get("green_check", {})
             worker.security_scans = organization.get("security_scans", {})
             if not isinstance(worker.security_scans, dict):
                 raise ValueError("Security scan routes must be an operator-owned mapping")

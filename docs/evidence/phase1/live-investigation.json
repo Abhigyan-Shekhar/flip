@@ -1,0 +1,89 @@
+{
+  "acceptance_level": "partial_live_investigation",
+  "baseline": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+  "local_patch": "89c103fa25a9fb796b959ca00b88113094352912",
+  "discord_thread": "https://discord.com/channels/1565566745622872115/1567863110310559786",
+  "investigation_task": "3dc20e53-2fc3-51b0-9660-a358b7a44592",
+  "investigation_status": "COMPLETED",
+  "engineering_proposal": "e9f51d66-3f50-5203-9cd8-c27befe4214c",
+  "engineering_status": "AWAITING_APPROVAL",
+  "engineering_phase": "awaiting_engineering_approval",
+  "human_engineering_approval": null,
+  "engineering_handoffs": 0,
+  "handoffs": [
+    {
+      "id": "2db43b5f-0370-596c-9c3d-d26959f4bd23",
+      "sender": "4a4e4c80-d6a2-4b5b-8216-3510be946f06",
+      "recipient": "f51db803-98f6-4ca4-b50d-1e183848b87e",
+      "status": "completed",
+      "result_status": "bug_reproduced",
+      "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+      "commands": [
+        {
+          "exit_code": 1,
+          "timed_out": false,
+          "output_limit_exceeded": false,
+          "duration_seconds": 0.4534,
+          "output_sha256": "7c0caf969b02547c69f2a47383f79c7ba1a11a5c4e1f2eb8ee111203197167bd",
+          "isolation": "docker",
+          "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3"
+        }
+      ],
+      "source_citations": [],
+      "graph_callers": []
+    },
+    {
+      "id": "dc211cc2-c32b-5d08-96b8-77ddc223bb6b",
+      "sender": "4a4e4c80-d6a2-4b5b-8216-3510be946f06",
+      "recipient": "bb6f3943-e558-4dc3-bd42-c73a31764e05",
+      "status": "completed",
+      "result_status": "evidence_found",
+      "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+      "engineering_decision": "Run tests/test_security.py and tests/test_security_gate.py: graph evidence connects SecurityRunner to the release security gate.",
+      "commands": [],
+      "source_citations": [
+        {
+          "ref": {
+            "end": 253,
+            "path": "src/switchcrew/security.py",
+            "start": 210
+          },
+          "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+          "sha256": "6879ba3f489063144a3d5a715019609c3b0e5b7c8334b74dee9da621687fb1fc"
+        },
+        {
+          "ref": {
+            "end": 365,
+            "path": "src/switchcrew/security_gate.py",
+            "start": 314
+          },
+          "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+          "sha256": "a935c3f5d6ee0ecbebe144c337c2ef8172670133cec2446186158e04805cdd5b"
+        }
+      ],
+      "graph_callers": [
+        {
+          "confidence": [
+            "exact"
+          ],
+          "graph_revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+          "path": [
+            "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py::SecurityRunner.run",
+            "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py::_extract_findings"
+          ],
+          "resolution": [
+            "statically_resolved_lexical"
+          ],
+          "target_uid": "github.com/Abhigyan-Shekhar/flip@c26948e4d4205b45d54a2faad86fb486d78576f3:src/switchcrew/security.py::_extract_findings"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "No managed Engineering session for this story.",
+    "No independent post-Engineering QA/Reviewer/Security gates for this story.",
+    "No workflow PR or merge.",
+    "Signed /flip commands not hosted/registered in the live Discord app.",
+    "Draft-to-ready through Discord is not implemented."
+  ]
+}

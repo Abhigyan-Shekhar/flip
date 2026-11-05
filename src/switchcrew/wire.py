@@ -124,6 +124,10 @@ def render_message(item, task, handoff, *, role="", target=""):
         text = "I've accepted the assignment. I'll check the requirements and report back here."
     elif status == "implemented":
         text = "I've committed the implementation. QA can now check the exact revision."
+    elif status == "bug_reproduced":
+        text = "Bug reproduced: incomplete native Trivy output was accepted as clean."
+    elif status == "not_reproduced":
+        text = "The configured reproduction did not confirm the suspected defect."
     elif status == "qa_failed":
         text = "The tests failed. I'm sending the findings back to Engineering for correction."
         commands = result.get("commands", [])
@@ -164,7 +168,9 @@ def render_message(item, task, handoff, *, role="", target=""):
     else:
         text = "I couldn't complete the assignment. PM can review the findings and next steps."
     if isinstance(result, dict):
-        revision = result.get("final_revision") or result.get("tested_revision")
+        revision = (
+            result.get("final_revision") or result.get("tested_revision") or result.get("revision")
+        )
         if isinstance(revision, str) and re.fullmatch(r"[0-9a-f]{40}", revision):
             text += "\nRevision: " + revision[:12] + "."
     return text + "\n\nReference: `" + item["id"] + "`"

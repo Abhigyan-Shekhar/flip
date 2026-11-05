@@ -230,6 +230,23 @@ def configured_executor(config, connection, client, store, ledger, approvals):
         job = config.get("job_templates", {}).get(managed["spec"]["job_key"])
         if job is None:
             return {"status": "blocked_configuration", "reason": "operator_job_not_configured"}
+        task = store.get_task(state["task_id"])
+        investigation_id = task["source"].get("investigation_task_id") if task else None
+        if role == "engineering" and investigation_id:
+            origin = store.get_task(investigation_id)
+            source = origin["source"] if origin else {}
+            if (
+                not origin
+                or origin["status"] != "COMPLETED"
+                or job.get("base_revision") != source.get("revision")
+                or Path(job.get("source", "")).resolve()
+                != Path(source.get("repo_root", "")).resolve()
+                or managed["spec"].get("repository") != source.get("repository")
+            ):
+                return {
+                    "status": "blocked_configuration",
+                    "reason": "engineering_job_must_match_investigated_repository_and_revision",
+                }
         from .isolation import DockerIsolation
 
         isolation = (

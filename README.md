@@ -6,6 +6,15 @@ and Python 3.12/FastAPI with SQLite preserves tasks, handoffs and approvals.
 Engineering changes require independent QA/Reviewer checks and human approval
 before Release can publish a draft PR.
 
+## Phase 1 — The Green Check That Lied
+
+The scanner false-clean defect is reproduced and locally patched. Live Discord,
+independent Switch investigation, isolated reproduction, Company Brain evidence
+and an approval-gated Engineering proposal are verified. The full scanner-to-merge
+story remains pending live configuration and actual human approvals. See the
+[implementation](docs/PHASE1_GREEN_CHECK.md), [demo runbook](docs/PHASE1_DEMO_RUNBOOK.md)
+and [acceptance report](docs/PHASE1_ACCEPTANCE.md).
+
 ## Implementation checkpoint — November 5, 2026
 
 The `ria-kayy/Discord-server` checkout now adds configured natural-language

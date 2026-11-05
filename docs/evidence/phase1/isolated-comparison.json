@@ -1,0 +1,73 @@
+[
+  {
+    "label": "vulnerable",
+    "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+    "commands": [
+      {
+        "exit_code": 1,
+        "timed_out": false,
+        "output_limit_exceeded": false,
+        "output_summary": "Traceback (most recent call last):\n  File \"<string>\", line 12, in <module>\n  File \"/usr/local/lib/python3.12/asyncio/runners.py\", line 195, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/asyncio/base_events.py\", line 691, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"<string>\", line 11, in main\nAssertionError: Incomplete native Trivy output was accepted as verified_success\n{\"status\": \"verified_success\", \"revision\": \"c26948e4d4205b45d54a2faad86fb486d78576f3\", \"findings\": [], \"scanners\": [{\"name\": \"incomplete-native-contract\", \"status\": \"completed\", \"version\": \"unknown\", \"category\": \"unspecified\", \"revision\": \"c26948e4d4205b45d54a2faad86fb486d78576f3\", \"repository\": \"/workspace\", \"argv\": [\"/usr/local/bin/python\", \"-c\", \"import json;print(json.dumps(dict(Results=[])))\"], \"started_at\": \"2026-11-05T11:27:54.629998+00:00\", \"database_updated_at\": null, \"isolation\": \"host\", \"exit_code\": 0, \"output_exceeded\": false, \"display_logs\": \"\", \"output_sha256\": \"91d4bcb3486f4ab270d3998dd1819e51c86015180fa1eb7480fecf6d6120c560\", \"finished_at\": \"2026-11-05T11:27:54.638644+00:00\", \"duration_seconds\": 0.009}], \"warnings\": []}\n",
+        "output_bytes": 1376,
+        "output_sha256": "f266e1cff03d8dd4b10493e482064f5143325b67995515cff517c953f3d7b215",
+        "started_at": "2026-11-05T11:27:54.190259+00:00",
+        "finished_at": "2026-11-05T11:27:54.614842+00:00",
+        "duration_seconds": 0.4245,
+        "command": [
+          "python",
+          "-c",
+          "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list))\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+        ],
+        "revision": "c26948e4d4205b45d54a2faad86fb486d78576f3",
+        "isolation": "docker"
+      }
+    ]
+  },
+  {
+    "label": "patched",
+    "revision": "89c103fa25a9fb796b959ca00b88113094352912",
+    "commands": [
+      {
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limit_exceeded": false,
+        "output_summary": "{\"status\": \"scanner_failed\", \"revision\": \"89c103fa25a9fb796b959ca00b88113094352912\", \"findings\": [], \"scanners\": [{\"name\": \"incomplete-native-contract\", \"status\": \"completed\", \"version\": \"unknown\", \"category\": \"unspecified\", \"revision\": \"89c103fa25a9fb796b959ca00b88113094352912\", \"repository\": \"/workspace\", \"argv\": [\"/usr/local/bin/python\", \"-c\", \"import json;print(json.dumps(dict(Results=[])))\"], \"started_at\": \"2026-11-05T11:27:55.048901+00:00\", \"database_updated_at\": null, \"isolation\": \"host\", \"exit_code\": 0, \"output_exceeded\": false, \"display_logs\": \"\", \"output_sha256\": \"91d4bcb3486f4ab270d3998dd1819e51c86015180fa1eb7480fecf6d6120c560\", \"finished_at\": \"2026-11-05T11:27:55.057734+00:00\", \"duration_seconds\": 0.009}], \"warnings\": [\"Scanner output did not match the supported findings schema.\"]}\n",
+        "output_bytes": 805,
+        "output_sha256": "e290a4f2acbfd1df37e8db294a2b56afcf270dbb57cd61371403d023bc841b32",
+        "started_at": "2026-11-05T11:27:54.769961+00:00",
+        "finished_at": "2026-11-05T11:27:55.025995+00:00",
+        "duration_seconds": 0.256,
+        "command": [
+          "python",
+          "-c",
+          "import asyncio,json,sys\nsys.path.insert(0,'src')\nfrom switchcrew.security import ScannerConfig,SecurityRunner\nasync def main():\n    import subprocess\n    revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\n    report=await SecurityRunner([ScannerConfig('incomplete-native-contract',\n        (sys.executable,'-c','import json;print(json.dumps(dict(Results=[])))'))]).run('.',revision)\n    print(json.dumps(report.to_dict(),default=list))\n    message='Incomplete native Trivy output was accepted as '+report.status\n    assert report.status=='scanner_failed', message\nasyncio.run(main())\n"
+        ],
+        "revision": "89c103fa25a9fb796b959ca00b88113094352912",
+        "isolation": "docker"
+      },
+      {
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limit_exceeded": false,
+        "output_summary": "..................................                                       [100%]\n34 passed in 0.35s\n",
+        "output_bytes": 99,
+        "output_sha256": "75cf7bb192b9dd93d97ff1d5855cfd297bf3e6fc2907b0048c0d396c971a99e9",
+        "started_at": "2026-11-05T11:27:55.038358+00:00",
+        "finished_at": "2026-11-05T11:27:56.105445+00:00",
+        "duration_seconds": 1.0671,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "-p",
+          "no:cacheprovider",
+          "tests/test_phase1_trivy.py",
+          "tests/test_security.py"
+        ],
+        "revision": "89c103fa25a9fb796b959ca00b88113094352912",
+        "isolation": "docker"
+      }
+    ]
+  }
+]

@@ -15,6 +15,12 @@ from .discord import DiscordBinding, DiscordSource, DiscordThreadBinding
 _COMMANDS = ("status", "team", "why", "dependencies", "trace", "evidence")
 _FLIP_COMMANDS = ("status", "logs", "findings", "tasks", "help")
 _MERGE_COMMANDS = ("merge-status", "approve-merge", "merge")
+_APPROVAL_COMMANDS = (
+    "approve-engineering",
+    "reject-engineering",
+    "approve-release",
+    "reject-release",
+)
 _HEX = re.compile(r"^[0-9a-fA-F]+$")
 
 
@@ -70,6 +76,29 @@ def slash_manifest() -> list[dict]:
             for command in _FLIP_COMMANDS
         ],
     }
+    for name in _APPROVAL_COMMANDS:
+        args = [
+            {"name": "task_id", "description": "Exact task UUID", "type": 3, "required": True},
+            {
+                "name": "version",
+                "description": "Current task version",
+                "type": 4,
+                "min_value": 1,
+                "required": True,
+            },
+        ]
+        if name.endswith("release"):
+            args.append(
+                {
+                    "name": "revision",
+                    "description": "Verified full head SHA",
+                    "type": 3,
+                    "required": True,
+                }
+            )
+        flip["options"].append(
+            {"name": name, "description": "Explicit human " + name, "type": 1, "options": args}
+        )
     for name in _MERGE_COMMANDS:
         args = [{"name": "task_id", "description": "Exact task UUID", "type": 3, "required": True}]
         if name != "merge-status":
@@ -140,6 +169,8 @@ def _resolve(settings, payload: bytes, headers, *, now=None):
     member = document.get("member") or {}
     if not isinstance(member, dict) or not isinstance(member.get("user"), dict):
         raise ValueError("Discord member must contain a user object")
+    if member["user"].get("bot") or member["user"].get("system"):
+        raise PermissionError("Human Discord identity required")
     user = member["user"].get("id")
     if guild not in settings.discord_guild_ids or user not in settings.discord_user_ids:
         raise PermissionError("Discord user/guild not authorized")
@@ -188,7 +219,11 @@ def _resolve(settings, payload: bytes, headers, *, now=None):
         raise ValueError("Unknown slash command")
     selected = options[0]
     args = selected.get("options", []) if isinstance(selected, dict) else []
-    commands = _COMMANDS if data["name"] == "crew" else (*_FLIP_COMMANDS, *_MERGE_COMMANDS)
+    commands = (
+        _COMMANDS
+        if data["name"] == "crew"
+        else (*_FLIP_COMMANDS, *_MERGE_COMMANDS, *_APPROVAL_COMMANDS)
+    )
     no_task = isinstance(selected, dict) and selected.get("name") in {"tasks", "help"}
     if (
         not isinstance(selected, dict)
@@ -200,8 +235,10 @@ def _resolve(settings, payload: bytes, headers, *, now=None):
     expected = set() if no_task else {"task_id"}
     if name in {"approve-merge", "merge"}:
         expected.add("revision")
-    if name == "approve-merge":
+    if name == "approve-merge" or name in _APPROVAL_COMMANDS:
         expected.add("version")
+    if name in _APPROVAL_COMMANDS and name.endswith("release"):
+        expected.add("revision")
     if any(not isinstance(arg, dict) or not isinstance(arg.get("name"), str) for arg in args):
         raise ValueError("Unsupported slash arguments")
     values = {arg["name"]: arg.get("value") for arg in args}
@@ -234,6 +271,25 @@ def respond_to_interaction(store, settings, payload: bytes, headers, *, now=None
         return {"type": 1}
     if name in _MERGE_COMMANDS:
         raise ValueError("Merge commands require the configured asynchronous release service")
+    if name in _APPROVAL_COMMANDS:
+        from .approval import ApprovalWorkflow
+        from .crew import _task_scope
+
+        task = store.get_task(values["task_id"])
+        if not task or not _task_scope(task, source):
+            raise PermissionError("Approval task is unavailable in this thread")
+        stage = name.split("-", 1)[1]
+        approvals = ApprovalWorkflow(store, settings.approval_user_ids)
+        data = approvals.get(task["id"])
+        if stage == "release" and (not data or data.get("revision") != values["revision"]):
+            raise PermissionError("Release approval requires the exact verified revision")
+        approvals.decide(
+            task["id"], stage, name.startswith("approve-"), source.user_id, values["version"]
+        )
+        return {
+            "type": 4,
+            "data": {"content": "Explicit human " + stage + " decision recorded.", "flags": 64},
+        }
     response = handle_crew_command(store, source, can_cancel=False)
     message = (response or {}).get("text") or "Task is unavailable in this thread."
     return {"type": 4, "data": {"content": message[:1900], "flags": 64}}

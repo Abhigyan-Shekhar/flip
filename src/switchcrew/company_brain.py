@@ -415,6 +415,12 @@ class CompanyBrain:
             "get_context", {"query": query[:2000]}, evidence_limit=evidence_limit
         )
 
+    async def read_code(self, path: str, start: int, end: int) -> BrainResult:
+        """Request a bounded, byte-checked citation at the validated index revision."""
+        if not path or not 1 <= start <= end or end - start >= 120:
+            return BrainResult(warning="Invalid bounded code citation request.")
+        return await self._retrieve("read_code", {"path": path, "start": start, "end": end})
+
     async def check_change(self, files: list[str], symbols: list[str] | None = None) -> BrainResult:
         if not files:
             return BrainResult()
@@ -437,6 +443,7 @@ def company_brain_from_settings(settings: Settings) -> Brain:
             repo_root=str(root),
             revision=revision,
             max_results=getattr(settings, "company_brain_max_results", 5),
+            timeout=getattr(settings, "company_brain_timeout", 45),
             command=getattr(settings, "company_brain_command", None),
             url=getattr(settings, "company_brain_url", None),
             token=(
