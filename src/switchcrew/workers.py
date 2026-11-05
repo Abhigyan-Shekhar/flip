@@ -157,6 +157,7 @@ class Worker:
             },
             company_brain=company_brain,
             planner=planner,
+            reviewers=approval_users,
         )
         self.identity = pm_id if role == "pm" else research_id
         self.bindings = list(bindings)
@@ -261,6 +262,23 @@ class Worker:
         if self.role == "pm":
             for row in self.store.connection.execute("SELECT task_id FROM plans").fetchall():
                 data = await self.orchestrator.reconcile_with_context(row[0])
+                if data and data["phase"] == "running":
+                    parent = self.store.get_task(row[0])
+                    for step_id, step in data["steps"].items():
+                        if step.get("status") != "awaiting_review":
+                            continue
+                        summary = research_summary(step.get("result", {}))
+                        self._reply(
+                            row[0],
+                            f"draft_review_{step_id}_v{parent['version']}",
+                            f"{step['role'].capitalize()} finished {step_id}. "
+                            "Please review this draft before it is used by the next specialist.\n\n"
+                            + summary[:1200]
+                            + f"\n\nTo accept this draft, reply:\nApprove draft for task {row[0]} "
+                            + f"step {step_id} version {parent['version']}\n"
+                            + "This does not authorize Engineering execution or publication.",
+                            freeze=True,
+                        )
                 if data and data["phase"] in {"completed", "blocked"}:
                     self._reply(
                         row[0],
@@ -617,7 +635,7 @@ class Worker:
             # Chatter, rejected reports, and exhausted intake budgets must not
             # fall through into task creation in proactively monitored channels.
             return
-        if request.get("type") == "approval":
+        if request.get("type") in {"approval", "plan_review"}:
             try:
                 if (
                     not isinstance(request.get("approved"), bool)
@@ -632,13 +650,22 @@ class Worker:
                     source.thread_id or source.message_id
                 ):
                     return
-                self.approvals.decide(
-                    task["id"],
-                    request.get("stage"),
-                    request["approved"],
-                    source.user_id,
-                    request.get("expected_version"),
-                )
+                if request["type"] == "plan_review":
+                    self.orchestrator.review_step(
+                        task["id"],
+                        request.get("step_id"),
+                        request["approved"],
+                        source.user_id,
+                        request["expected_version"],
+                    )
+                else:
+                    self.approvals.decide(
+                        task["id"],
+                        request.get("stage"),
+                        request["approved"],
+                        source.user_id,
+                        request["expected_version"],
+                    )
             except (PermissionError, ConflictError, ValueError, TypeError):
                 return
             self._reply(task["id"], "decision_" + source.message_id, "Human decision recorded.")
@@ -937,7 +964,7 @@ class Worker:
                 )
             elif message.get("type") == "handoff.completed" and handoff["status"] == "completed":
                 task = self.store.get_task(handoff["task_id"])
-                if task["status"] == "IN_PROGRESS":
+                if task["status"] == "IN_PROGRESS" and not task["source"].get("parent_task_id"):
                     self.store.transition_task(
                         task["id"],
                         "COMPLETED"

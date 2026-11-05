@@ -8,11 +8,29 @@ _DECISION = re.compile(
     r"([0-9a-f-]{36})\s+version\s+([1-9][0-9]{0,8})\.?",
     re.I,
 )
+_DRAFT_DECISION = re.compile(
+    r"(?:I\s+)?(approve|reject)\s+draft\s+for\s+task\s+([0-9a-f-]{36})"
+    r"\s+step\s+(step-[1-9][0-9]?)\s+version\s+([1-9][0-9]{0,8})\.?",
+    re.I,
+)
 
 
 def human_request(text, engineering_job_key=""):
     if text.lstrip().startswith(("{", "[")):
         return None
+    draft = _DRAFT_DECISION.fullmatch(text.strip())
+    if draft:
+        try:
+            task_id = str(UUID(draft[2]))
+        except ValueError:
+            return None
+        return {
+            "type": "plan_review",
+            "task_id": task_id,
+            "step_id": draft[3].lower(),
+            "approved": draft[1].lower() == "approve",
+            "expected_version": int(draft[4]),
+        }
     decision = _DECISION.fullmatch(text.strip())
     if decision:
         try:
@@ -47,10 +65,14 @@ def human_request(text, engineering_job_key=""):
     coding = bool(
         re.match(r"(?:Please\s+)?(?:fix|build|implement|change|add|update)\b", question, re.I)
     )
+    coordination = bool(
+        re.match(r"(?:Hey\s+)?(?:team|PM)\b", question, re.I)
+        and re.search(r"\b(coordinate|delegate|orchestrate)\b", question, re.I)
+    )
     return {
         "question": question,
         "acceptance_criteria": criteria,
-        "kind": "engineering" if coding else "research",
+        "kind": "orchestrate" if coordination else ("engineering" if coding else "research"),
         **({"job_key": engineering_job_key} if coding else {}),
     }
 

@@ -44,20 +44,20 @@ def _text(value, limit=600):
 
 def research_summary(result):
     lines = ["Research result:"]
-    artifact = result.get("artifact") or result.get("summary")
+    artifact = result.get("summary") or result.get("artifact")
     if isinstance(artifact, str) and artifact.strip():
-        lines.append(_text(artifact, 6000))
-    for source in result.get("evidence", [])[:5]:
+        lines.append(_text(artifact, 650))
+    for source in result.get("evidence", [])[:3]:
         if isinstance(source, dict):
             lines.extend(_text(excerpt, 700) for excerpt in source.get("excerpts", [])[:2])
             lines.append(_text(source.get("url", ""), 300))
         elif isinstance(source, str):
-            lines.append(_text(source, 700))
+            lines.append(_text(source, 220))
     if len(lines) == 1:
         lines.append("I couldn't find supporting evidence in the configured sources.")
     limits = result.get("limitations")
     if isinstance(limits, list):
-        lines.append("Limitations:\n" + "\n".join("- " + _text(item, 400) for item in limits[:5]))
+        lines.append("Limitations:\n" + "\n".join("- " + _text(item, 180) for item in limits[:2]))
     elif isinstance(limits, str) and limits:
         lines.append(_text(limits, 400))
     return "\n\n".join(lines)
@@ -70,6 +70,31 @@ def plan_summary(data):
         status = _text(step.get("status", "unknown"), 80).replace("_", " ")
         text += f"\n- {role}: {status}."
     return text
+
+
+def artifact_preview(result, role):
+    """Summarize real specialist output without serializing its data structure."""
+    if role == "analytics" and isinstance(result.get("metrics"), dict):
+        metrics = result["metrics"]
+        counts = ", ".join(
+            f"{_text(status, 40)}: {count}"
+            for status, count in metrics.get("status_counts", {}).items()
+        )
+        return f"Snapshot analysis: {metrics.get('record_count', 0)} records. {counts}."
+    if role == "scheduling" and isinstance(result.get("proposal"), dict):
+        proposal = result["proposal"]
+        return (
+            f"Draft: {_text(proposal.get('title', 'Meeting'), 100)}. "
+            f"{len(proposal.get('conflicts', []))} conflicts in the supplied calendar snapshot."
+        )
+    summary = result.get("summary")
+    if isinstance(summary, str):
+        return _text(summary, 700)
+    artifact = result.get("artifact")
+    if isinstance(artifact, dict) and isinstance(artifact.get("content"), str):
+        content = re.sub(r"```json\n.*?\n```", "", artifact["content"], flags=re.S)
+        return _text(content, 700)
+    return ""
 
 
 def render_message(item, task, handoff, *, role="", target=""):
@@ -117,6 +142,9 @@ def render_message(item, task, handoff, *, role="", target=""):
             text += " I'm sending the tested revision to the independent Reviewer."
     elif status == "completed":
         text = "I've completed the assignment. The verified result is ready for PM."
+        preview = artifact_preview(result, role)
+        if preview:
+            text += "\n\n" + preview
     elif status == "evidence_found":
         text = "I've finished the investigation and sent the supporting evidence to PM."
     elif status == "findings":

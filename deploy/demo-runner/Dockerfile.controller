@@ -1,0 +1,16 @@
+ARG CONTROLLER_IMAGE=flip-console-codex:acceptance
+ARG QA_IMAGE=flip-urllib3-qa:demo-20261105
+FROM ${CONTROLLER_IMAGE} AS controller
+FROM ${QA_IMAGE}
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 501 --create-home --shell /bin/sh agent
+COPY --from=controller /usr/local/bin/node /usr/local/bin/node
+COPY --from=controller /usr/local/lib/node_modules/@openai /usr/local/lib/node_modules/@openai
+COPY --from=controller /opt/switch /opt/switch
+RUN ln -s ../lib/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex \
+    && node --version && python --version && codex --version
+ENV HOME=/home/agent SHELL=/bin/sh LANG=C.UTF-8
+USER 501:501
+ENTRYPOINT ["node", "/opt/switch/start.mjs"]

@@ -53,6 +53,89 @@ def test_natural_coding_request_uses_operator_job_and_stated_criteria():
     assert human_request("Please fix answer.txt.") is None
 
 
+def test_natural_coordination_and_versioned_draft_review_are_explicit():
+    request = human_request("Hey team, coordinate this review.\nSuccess criteria:\n- Cite sources")
+    assert request["kind"] == "orchestrate"
+    decision = human_request(f"Approve draft for task {TASK} step step-1 version 2")
+    assert decision == {
+        "type": "plan_review",
+        "task_id": TASK,
+        "step_id": "step-1",
+        "approved": True,
+        "expected_version": 2,
+    }
+    assert human_request(f"Approve draft for task {TASK} step step-1") is None
+
+
+async def test_model_research_child_waits_for_authenticated_discord_draft_review(tmp_path):
+
+    from test_workers import Transport, event
+
+    from switchcrew.discord import DiscordBinding
+    from switchcrew.orchestration import validate_harness_plan
+    from switchcrew.workers import Worker
+
+    store = Store(tmp_path / "draft.db")
+    pm = Worker(
+        "pm",
+        store,
+        Transport(),
+        pm_id="pm",
+        research_id="research",
+        room_id="room",
+        bindings=[DiscordBinding("room", "bridge", "guild", "channel", "human", "owner")],
+        allowed_guilds=["guild"],
+        allowed_users=["owner"],
+        approval_users=["owner"],
+    )
+    task = store.create_task(
+        "Research the release", {"room_id": "room", "thread_id": "thread"}, ["Cite"]
+    )
+    spec = validate_harness_plan(
+        "Research the release",
+        ["Cite"],
+        {"steps": [{"role": "research", "criterion": "Cite the supplied code"}]},
+        {"research"},
+    )
+    pm.orchestrator.start(task["id"], spec=spec)
+    plan = pm.orchestrator.reconcile(task["id"])
+    step = plan["steps"]["step-1"]
+    store.accept_handoff(step["handoff_id"], "research")
+    store.complete_handoff(
+        step["handoff_id"],
+        "research",
+        {
+            "status": "evidence_found",
+            "summary": "Source-backed controlled draft",
+            "trust": "model_generated_requires_human_review",
+        },
+    )
+    handoff = store.get_handoff(step["handoff_id"])
+    completion = next(
+        row for row in store.pending_outbox() if row["payload"].get("type") == "handoff.completed"
+    )
+    body = render_message(completion, store.get_task(step["task_id"]), handoff)
+    await pm.receive(event("research", body, "r1"))
+    await pm.process_pending()
+    assert store.get_task(step["task_id"])["status"] == "IN_PROGRESS"
+    assert pm.orchestrator.get(task["id"])["steps"]["step-1"]["status"] == "awaiting_review"
+    version = store.get_task(task["id"])["version"]
+    approval = f"Approve draft for task {task['id']} step step-1 version {version}"
+    wrong_thread = event("human", approval, "wrong-thread")
+    wrong_thread["payload"]["thread_id"] = "elsewhere"
+    await pm.receive(wrong_thread)
+    await pm.receive(event("attacker", approval, "forged"))
+    await pm.receive(event("human", approval + "0", "stale"))
+    await pm.process_pending()
+    assert pm.orchestrator.get(task["id"])["steps"]["step-1"]["status"] == "awaiting_review"
+    await pm.receive(event("human", approval, "approved"))
+    await pm.process_pending()
+    assert pm.orchestrator.get(task["id"])["steps"]["step-1"]["review"]["actor"] == "owner"
+    assert store.get_task(step["task_id"])["status"] == "COMPLETED"
+    assert not store.connection.execute("SELECT * FROM approval_workflows").fetchall()
+    store.close()
+
+
 def test_research_renders_model_artifact_and_string_evidence_without_json():
     result = research_summary(
         {
