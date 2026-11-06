@@ -34,6 +34,7 @@ class MergeGitHub(GitHubDouble):
         self.check_status = "success"
         self.check_revision = None
         self.count = 1
+        self.extra_checks = []
 
     def handle(self, request):
         if "/statuses/" in request.url.path:
@@ -58,14 +59,15 @@ class MergeGitHub(GitHubDouble):
             return httpx.Response(
                 200,
                 json={
-                    "total_count": self.count,
+                    "total_count": self.count + len(self.extra_checks),
                     "check_runs": [
                         {
                             "name": "test",
                             "head_sha": self.check_revision or self.branch,
                             "status": "completed",
                             "conclusion": self.check_status,
-                        }
+                        },
+                        *self.extra_checks,
                     ],
                 },
             )
@@ -352,3 +354,14 @@ async def test_merge_requires_passing_independent_security_even_without_project_
     with pytest.raises(PermissionError):
         await service.execute(task, "owner", revision)
     assert not publisher.puts
+
+
+async def test_skipped_optional_check_does_not_block_required_success(ready):
+    service, publisher, task, revision = ready
+    publisher.extra_checks = [
+        {"name": "optional", "head_sha": revision, "status": "completed", "conclusion": "skipped"}
+    ]
+    assert (await service.inspect(task))["checks"] == ["test"]
+    publisher.check_status = "skipped"
+    with pytest.raises(PermissionError, match="unsuccessful"):
+        await service.inspect(task)

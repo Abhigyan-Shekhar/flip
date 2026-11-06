@@ -183,10 +183,15 @@ class GuardedMerge:
                 or not check["name"]
                 or check.get("head_sha") != revision
                 or check.get("status") != "completed"
-                or check.get("conclusion") != "success"
             ):
                 raise PermissionError("GitHub check is stale, pending or unsuccessful")
-            passed.add(check.get("name"))
+            name = check["name"]
+            conclusion = check.get("conclusion")
+            if conclusion == "skipped" and name not in self.required_checks:
+                continue
+            if conclusion != "success":
+                raise PermissionError("GitHub check is stale, pending or unsuccessful")
+            passed.add(name)
         for status in statuses["statuses"]:
             if (
                 not isinstance(status, dict)
