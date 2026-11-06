@@ -242,7 +242,7 @@ async def test_offline_handoff_posts_once_across_disconnect_and_restart(tmp_path
     )
     await pm.process_pending()
     await pm.flush_outbox()
-    assert not transport.sent
+    assert len(transport.sent) == 1  # PM’s separate status reply.
 
     transport.status = "live"
     await pm.flush_outbox()
@@ -252,10 +252,10 @@ async def test_offline_handoff_posts_once_across_disconnect_and_restart(tmp_path
     restarted = worker("pm", Store(database), transport)
     transport.status = "offline"
     await restarted.flush_outbox()
-    assert len(transport.sent) == 1
+    assert len(transport.sent) == 2
     transport.status = "live"
     await restarted.flush_outbox()
-    assert len(transport.sent) == 1
+    assert len(transport.sent) == 2
     assert restarted.store.get_outbox(handoff["id"])["status"] == "sent"
 
 
