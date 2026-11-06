@@ -222,19 +222,41 @@ def test_markdown_source_keeps_size_limit(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_disconnected_handoff_remains_pending():
-    class Disconnected(Transport):
+async def test_offline_handoff_posts_once_across_disconnect_and_restart(tmp_path):
+    class TransportWithPresence(Transport):
+        status = "offline"
+
+        async def target_status(self, target):
+            return self.status
+
         async def send_targeted_message(self, body, target_names, thread_id=None):
+            self.sent.append((target_names[0], body, thread_id))
             return {"event_id": "queued", "target_statuses": {target_names[0]: "disconnected"}}
 
-    store = Store(":memory:")
-    pm = worker("pm", store, Disconnected())
+    database = tmp_path / "pm.sqlite3"
+    store = Store(database)
+    transport = TransportWithPresence()
+    pm = worker("pm", store, transport)
     await pm.receive(
         event("human", json.dumps({"question": "SSE", "acceptance_criteria": ["Find evidence"]}))
     )
     await pm.process_pending()
     await pm.flush_outbox()
-    assert any(item["recipient"] == "research" for item in store.pending_outbox())
+    assert not transport.sent
+
+    transport.status = "live"
+    await pm.flush_outbox()
+    handoff = next(item for item in store.pending_outbox() if item["recipient"] == "research")
+    assert handoff["external_id"] == "queued"
+
+    restarted = worker("pm", Store(database), transport)
+    transport.status = "offline"
+    await restarted.flush_outbox()
+    assert len(transport.sent) == 1
+    transport.status = "live"
+    await restarted.flush_outbox()
+    assert len(transport.sent) == 1
+    assert restarted.store.get_outbox(handoff["id"])["status"] == "sent"
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,7 @@ from uuid import NAMESPACE_URL, uuid5
 from .agents import AGENT_ROLES
 from .graphs import graph_result, invoke_agent_graph
 from .store import Store
-from .switch import SwitchClient, SwitchOwnershipLost
+from .switch import SwitchClient, SwitchOwnershipLost, deliver_targeted_outbox
 from .wire import read_message, render_message
 
 log = logging.getLogger("switchcrew.runtime")
@@ -199,23 +199,11 @@ class AgentRuntime:
                 raise ValueError("Missing target name for durable delivery")
             source = task["source"]
             body = render_message(item, task, h, role=c.role, target=target)
-            result = await self.switch.send_targeted_message(
-                body,
-                target_names=[target],
-                thread_id=source.get("thread_id") or source.get("message_id"),
-            )
-            status = result.get("target_statuses", {}).get(target)
-            if status in {
-                "offline",
-                "disconnected",
-                "no_session",
-                "awaiting_manual_poll",
-                "dormant",
-            }:
+            thread = source.get("thread_id") or source.get("message_id")
+            if not await deliver_targeted_outbox(
+                self.switch, self.store, item, target, body, thread
+            ):
                 return False
-            if status != "live":
-                raise RuntimeError("Addressed Switch target is not live")
-            self.store.mark_outbox_sent(item["id"], result.get("event_id"))
 
     async def _recover(self, event):
         for page in reversed(event.get("history", {}).get(self.connection.room_id, [])):

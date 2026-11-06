@@ -19,6 +19,42 @@ import httpx
 log = logging.getLogger("switchcrew.switch")
 
 
+_UNREACHABLE_TARGETS = {
+    "offline",
+    "disconnected",
+    "no_session",
+    "awaiting_manual_poll",
+    "dormant",
+}
+
+
+async def deliver_targeted_outbox(switch, store, item, target, body, thread):
+    """Wait for reachability without repeating a message Switch already posted."""
+    target_status = getattr(switch, "target_status", None)
+    status = await target_status(target) if target_status else None
+    if status in _UNREACHABLE_TARGETS:
+        return False
+    if item["external_id"]:
+        if status != "live":
+            return False
+        store.mark_outbox_sent(item["id"], item["external_id"])
+        return True
+
+    result = await switch.send_targeted_message(body, target_names=[target], thread_id=thread)
+    status = result.get("target_statuses", {}).get(target)
+    event_id = result.get("event_id") or result.get("message_id")
+    if status in _UNREACHABLE_TARGETS:
+        # Switch may post before reporting that the target went offline. Keep
+        # the receipt while waiting for reconnect and ordinary history replay.
+        if event_id:
+            store.record_outbox_post(item["id"], event_id)
+        return False
+    if status != "live":
+        raise RuntimeError(f"Addressed Switch target is not live: {status}")
+    store.mark_outbox_sent(item["id"], event_id)
+    return True
+
+
 class SwitchProtocolError(RuntimeError):
     pass
 
@@ -127,6 +163,13 @@ class SwitchClient:
 
     async def post_message(self, body, thread_id=None):
         return await self.operation("post_message", body=body, thread_id=thread_id)
+
+    async def target_status(self, target):
+        participants = await self.operation("list_participants")
+        match = next((p for p in participants if p["name"] == target), None)
+        if match is None:
+            match = next((p for p in participants if p.get("alias") == target.lower()), None)
+        return match.get("status") if match else None
 
     async def send_targeted_message(
         self, body, target_names=None, target_roles=None, thread_id=None

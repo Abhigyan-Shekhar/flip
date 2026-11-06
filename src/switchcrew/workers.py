@@ -16,7 +16,7 @@ from .logging import configure_logging
 from .orchestration import Orchestrator
 from .research import ResearchProvider
 from .store import ConflictError, Store
-from .switch import SwitchClient, SwitchOwnershipLost
+from .switch import SwitchClient, SwitchOwnershipLost, deliver_targeted_outbox
 from .wire import plan_summary, read_message, render_message, research_summary
 
 log = logging.getLogger("switchcrew.workers")
@@ -1106,21 +1106,10 @@ class Worker:
             if item["recipient"] == "discord":
                 result = await self.switch.post_message(payload["text"], thread_id=thread)
             else:
-                result = await self.switch.send_targeted_message(
-                    body, target_names=[self.names[item["recipient"]]], thread_id=thread
+                await deliver_targeted_outbox(
+                    self.switch, self.store, item, self.names[item["recipient"]], body, thread
                 )
-            if item["recipient"] != "discord":
-                statuses = result.get("target_statuses", {})
-                if statuses.get(self.names[item["recipient"]]) in {
-                    "offline",
-                    "disconnected",
-                    "no_session",
-                    "awaiting_manual_poll",
-                    "dormant",
-                }:
-                    return
-                if statuses.get(self.names[item["recipient"]]) != "live":
-                    raise RuntimeError(f"Target is not live: {statuses}")
+                continue
             external_id = (
                 result.get("event_id", result.get("message_id"))
                 if isinstance(result, dict)

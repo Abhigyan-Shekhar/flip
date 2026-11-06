@@ -422,6 +422,12 @@ class Store:
                 self.connection.execute("SELECT * FROM outbox WHERE id=?", (item_id,)).fetchone()
             )
 
+    def record_outbox_post(self, item_id, external_id):
+        self.connection.execute(
+            "UPDATE outbox SET external_id=? WHERE id=? AND status='pending'",
+            (external_id, item_id),
+        )
+
     def mark_outbox_sent(self, item_id, external_id=None):
         self.connection.execute(
             "UPDATE outbox SET status='sent',external_id=? WHERE id=?", (external_id, item_id)
