@@ -332,6 +332,35 @@ class ApprovalWorkflow:
             require_active=True,
         )
 
+    def request_prepublication_correction(self, task_id, expected_version, findings):
+        """Operator-only request for additional work under the existing Engineering approval."""
+        if (
+            not isinstance(findings, list)
+            or not findings
+            or any(not isinstance(finding, str) or not finding.strip() for finding in findings)
+        ):
+            raise ValueError("Concrete prepublication findings are required")
+        with self.store._lock, self.store.transaction():
+            task = self.store._check(task_id, expected_version)
+            data = self.get(task_id)
+            if (
+                not data
+                or task["status"] != "HUMAN_REVIEW"
+                or data["phase"] != "human_review"
+                or not self.parent_active(task)
+                or data.get("engineering_approval", {}).get("approved") is not True
+            ):
+                raise ConflictError("A task awaiting release approval is required")
+            self._queue_correction(
+                task_id,
+                data,
+                self.store.get_handoff(data["engineering_handoff"]),
+                data["spec"]["pm"],
+                findings,
+            )
+            self._save(task_id, data)
+            return data
+
     def _queue_correction(self, task_id, data, rejected_handoff, rejector, findings):
         task = self.store.get_task(task_id)
         if data["attempt"] >= data["spec"]["max_corrections"]:

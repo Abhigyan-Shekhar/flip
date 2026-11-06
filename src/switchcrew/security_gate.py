@@ -146,7 +146,9 @@ def _engineering_result(store, task_id, workflow_data):
     return handoff, result, revision, Path(checkout).resolve(strict=True)
 
 
-def schedule_security_gate(store, task_id, pm_id, security_id, policy):
+def schedule_security_gate(
+    store, task_id, pm_id, security_id, policy, *, retry_failed_handoff=None
+):
     """Create one independent Security handoff for the current Engineering SHA.
 
     Call this from the application poll after Engineering completion. It can be
@@ -156,85 +158,123 @@ def schedule_security_gate(store, task_id, pm_id, security_id, policy):
     if not all(isinstance(v, str) and v.strip() for v in (pm_id, security_id)):
         raise ValueError("PM and Security identities are required")
     policy = _valid_policy(policy)
-    workflow_row = store.connection.execute(
-        "SELECT data FROM approval_workflows WHERE task_id=?", (task_id,)
-    ).fetchone()
-    if not workflow_row:
-        raise ValueError("Approval workflow is unavailable")
-    workflow_data = json.loads(workflow_row[0])
-    parent = store.get_task(task_id)
-    configured = _configured_policy(store, parent)
-    if configured and (
-        configured["pm_id"] != pm_id
-        or configured["security_id"] != security_id
-        or configured["policy"] != policy
-    ):
-        raise ConflictError("Security gate does not match the registered project policy")
-    if workflow_data.get("spec", {}).get("pm") != pm_id:
-        raise PermissionError("Security gate sender must match the configured PM")
-    if workflow_data.get("phase") not in {
-        "engineering",
-        "qa",
-        "review",
-        "human_review",
-        "release",
-    } or parent["status"] not in {"IN_PROGRESS", "QA_REVIEW", "HUMAN_REVIEW", "PUBLISH_APPROVED"}:
-        raise ValueError("Security gate must be scheduled before QA review completes")
-    engineering, result, revision, checkout = _engineering_result(store, task_id, workflow_data)
-    if not _within_allowed_root(checkout, policy["allowed_repo_roots"]):
-        raise PermissionError("Engineering checkout is outside the configured security roots")
-    prior = _row(store, task_id, engineering["id"], revision)
-    if prior:
-        if prior["security_recipient"] != security_id or prior["policy"] != policy:
-            raise ConflictError("Security gate assignment already exists with different policy")
-        return prior
+    with store._lock, store.transaction():
+        workflow_row = store.connection.execute(
+            "SELECT data FROM approval_workflows WHERE task_id=?", (task_id,)
+        ).fetchone()
+        if not workflow_row:
+            raise ValueError("Approval workflow is unavailable")
+        workflow_data = json.loads(workflow_row[0])
+        parent = store.get_task(task_id)
+        configured = _configured_policy(store, parent)
+        if configured and (
+            configured["pm_id"] != pm_id
+            or configured["security_id"] != security_id
+            or configured["policy"] != policy
+        ):
+            raise ConflictError("Security gate does not match the registered project policy")
+        if workflow_data.get("spec", {}).get("pm") != pm_id:
+            raise PermissionError("Security gate sender must match the configured PM")
+        if workflow_data.get("phase") not in {
+            "engineering",
+            "qa",
+            "review",
+            "human_review",
+            "release",
+        } or parent["status"] not in {
+            "IN_PROGRESS",
+            "QA_REVIEW",
+            "HUMAN_REVIEW",
+            "PUBLISH_APPROVED",
+        }:
+            raise ValueError("Security gate must be scheduled before QA review completes")
+        engineering, result, revision, checkout = _engineering_result(store, task_id, workflow_data)
+        if not _within_allowed_root(checkout, policy["allowed_repo_roots"]):
+            raise PermissionError("Engineering checkout is outside the configured security roots")
+        prior = _row(store, task_id, engineering["id"], revision)
+        if prior:
+            if prior["security_recipient"] != security_id or prior["policy"] != policy:
+                raise ConflictError("Security gate assignment already exists with different policy")
+            if retry_failed_handoff is None:
+                return prior
+            failed = store.get_handoff(retry_failed_handoff)
+            if (
+                prior["security_handoff_id"] != retry_failed_handoff
+                or prior["status"] != "failed"
+                or not failed
+                or failed["status"] != "completed"
+                or (failed["result"] or {}).get("status") != "scanner_failed"
+            ):
+                raise ConflictError("Retry requires the current completed scanner failure")
+        elif retry_failed_handoff is not None:
+            raise ConflictError("No current Security handoff to retry")
 
-    identity = hashlib.sha256(f"{task_id}:{engineering['id']}:{revision}".encode()).hexdigest()
-    child_task_id = str(uuid5(NAMESPACE_URL, f"switchcrew:security-gate:task:{identity}"))
-    child_handoff_id = str(uuid5(NAMESPACE_URL, f"switchcrew:security-gate:handoff:{identity}"))
-    source = {
-        "security_gate": True,
-        "source_evidence_task_id": task_id,
-        "engineering_handoff_id": engineering["id"],
-        "revision": revision,
-        "checkout": str(checkout),
-        "policy": policy,
-    }
-    task = store.create_task(
-        f"Read-only security scan for {task_id} at {revision}",
-        source,
-        ["Run configured security scanners against the exact pinned revision."],
-        task_id=child_task_id,
-    )
-    question = (
-        f"Run the configured read-only security scan for revision {revision}. "
-        "Use only the authorized local checkout and operator scanner configuration."
-    )
-    handoff = store.create_handoff(
-        task["id"],
-        pm_id,
-        security_id,
-        question,
-        task["acceptance_criteria"],
-        task["version"],
-        handoff_id=child_handoff_id,
-    )
-    with store.transaction():
-        _ensure_table(store)
-        store.connection.execute(
-            "INSERT INTO security_gates(task_id,engineering_handoff_id,revision,security_task_id,"
-            "security_handoff_id,security_recipient,policy,status) VALUES(?,?,?,?,?,?,?,'pending')",
-            (
-                task_id,
-                engineering["id"],
-                revision,
-                task["id"],
-                handoff["id"],
-                security_id,
-                json.dumps(policy, sort_keys=True),
-            ),
+        identity = hashlib.sha256(f"{task_id}:{engineering['id']}:{revision}".encode()).hexdigest()
+        if retry_failed_handoff is not None:
+            identity += f":retry:{retry_failed_handoff}"
+        child_task_id = str(uuid5(NAMESPACE_URL, f"switchcrew:security-gate:task:{identity}"))
+        child_handoff_id = str(uuid5(NAMESPACE_URL, f"switchcrew:security-gate:handoff:{identity}"))
+        source = {
+            "security_gate": True,
+            "source_evidence_task_id": task_id,
+            "engineering_handoff_id": engineering["id"],
+            "revision": revision,
+            "checkout": str(checkout),
+            "policy": policy,
+            **{
+                key: parent["source"][key]
+                for key in ("room_id", "thread_id")
+                if key in parent["source"]
+            },
+        }
+        task = store.create_task(
+            f"Read-only security scan for {task_id} at {revision}",
+            source,
+            ["Run configured security scanners against the exact pinned revision."],
+            task_id=child_task_id,
         )
-    return _row(store, task_id, engineering["id"], revision)
+        question = (
+            f"Run the configured read-only security scan for revision {revision}. "
+            "Use only the authorized local checkout and operator scanner configuration."
+        )
+        handoff = store.create_handoff(
+            task["id"],
+            pm_id,
+            security_id,
+            question,
+            task["acceptance_criteria"],
+            task["version"],
+            handoff_id=child_handoff_id,
+        )
+        if prior:
+            store.connection.execute(
+                "UPDATE security_gates SET security_task_id=?, security_handoff_id=?, "
+                "status='pending' "
+                "WHERE security_handoff_id=?",
+                (task["id"], handoff["id"], retry_failed_handoff),
+            )
+            store._event(
+                task_id,
+                "security.gate_retried",
+                {"previous_handoff_id": retry_failed_handoff, "handoff_id": handoff["id"]},
+                parent["version"],
+            )
+        else:
+            store.connection.execute(
+                "INSERT INTO security_gates(task_id,engineering_handoff_id,revision,"
+                "security_task_id,security_handoff_id,security_recipient,policy,status) "
+                "VALUES(?,?,?,?,?,?,?,'pending')",
+                (
+                    task_id,
+                    engineering["id"],
+                    revision,
+                    task["id"],
+                    handoff["id"],
+                    security_id,
+                    json.dumps(policy, sort_keys=True),
+                ),
+            )
+        return _row(store, task_id, engineering["id"], revision)
 
 
 def require_security_gate(store, task_id, workflow_data):

@@ -24,7 +24,7 @@ from switchcrew.workers import Worker
 
 
 @pytest.fixture
-def flow(tmp_path):
+def flow(tmp_path, request):
     store = Store(tmp_path / "application.db")
     ledger = Ledger(tmp_path / "ledger.db")
     workflow = ApprovalWorkflow(store, ["owner"])
@@ -41,7 +41,7 @@ def flow(tmp_path):
         "org/repo",
         "master",
         reviewer="reviewer",
-        max_corrections=0,
+        max_corrections=getattr(request, "param", 0),
     )
     source = tmp_path / "source"
     source.mkdir()
@@ -717,3 +717,21 @@ async def test_parent_completion_after_durable_pr_receipt_preserves_release_resu
     completed = store.complete_handoff(state["handoff_id"], "release", result, "release")
     assert completed["result"]["status"] == "completed"
     assert completed["result"]["receipt"]["pr_url"] == "https://github.com/org/repo/pull/1"
+
+
+@pytest.mark.parametrize("flow", [1], indirect=True)
+async def test_prepublication_correction_requires_fresh_evidence(flow, tmp_path):
+    store, _, workflow, task_id, *_ = flow
+    revision, _, _ = await implement_and_review(flow, tmp_path)
+    previous = workflow.get(task_id)
+    version = store.get_task(task_id)["version"]
+    current = workflow.request_prepublication_correction(task_id, version, ["Ruff format failed"])
+    assert current["engineering_approval"] == previous["engineering_approval"]
+    assert current["engineering_handoff"] != previous["engineering_handoff"]
+    assert current["correction"]["implementation"]["final_revision"] == revision
+    assert store.get_handoff(previous["review_handoff"])["status"] == "completed"
+    workflow.require_engineering(
+        handoff_state(store, current["engineering_handoff"], "engineering"), "engineering"
+    )
+    with pytest.raises(ConflictError):
+        decide(flow, stage="release", version=version)

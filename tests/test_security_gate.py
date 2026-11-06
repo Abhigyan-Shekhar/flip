@@ -10,7 +10,7 @@ from switchcrew.security_gate import (
     require_security_gate,
     schedule_security_gate,
 )
-from switchcrew.store import Store
+from switchcrew.store import ConflictError, Store
 
 
 def _repo(path):
@@ -310,3 +310,42 @@ async def test_executor_discards_success_if_parent_changes_during_scan(configure
         "security_gate_parent_inactive",
         "security_gate_engineering_unavailable",
     }
+
+
+def test_retry_preserves_failed_receipt_and_requires_fresh_security_result(configured):
+    store, _workflow, task_id, repo, revision, data = configured
+    first = _schedule(configured)
+    failure = {"status": "scanner_failed", "revision": revision}
+    _complete(configured, first, failure)
+    store.connection.execute("UPDATE security_gates SET status='failed'")
+    assert _schedule(configured) == first | {"status": "failed"}
+
+    def retry():
+        return schedule_security_gate(
+            store,
+            task_id,
+            "pm",
+            "security",
+            {"block_at_or_above": "high", "allowed_repo_roots": [str(repo.parent)]},
+            retry_failed_handoff=first["security_handoff_id"],
+        )
+
+    second = retry()
+    assert second["security_handoff_id"] != first["security_handoff_id"]
+    assert second["revision"] == revision
+    assert store.get_handoff(first["security_handoff_id"])["result"] == failure
+    with pytest.raises(ConflictError, match="current completed scanner failure"):
+        retry()
+    with pytest.raises(PermissionError, match="pending"):
+        require_security_gate(store, task_id, data)
+    _complete(
+        configured,
+        second,
+        {
+            "status": "verified_success",
+            "revision": revision,
+            "findings": [],
+            "scanners": [{"status": "completed"}],
+        },
+    )
+    assert require_security_gate(store, task_id, data)
