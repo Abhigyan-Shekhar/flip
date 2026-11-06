@@ -99,6 +99,7 @@ async def test_operator_can_configure_scanner_finding_exit_code(tmp_path):
 async def test_trivy_native_finding_preserves_severity_file_and_redaction(tmp_path):
     root, revision = committed_repo(tmp_path / "repo")
     payload = {
+        **trivy_envelope(),
         "Results": [
             {
                 "Target": "app.py",
@@ -131,7 +132,7 @@ async def test_trivy_native_finding_preserves_severity_file_and_redaction(tmp_pa
 @pytest.mark.parametrize("result", [None, {"Secrets": {}}, {"Secrets": [None]}])
 async def test_malformed_trivy_results_fail_closed(tmp_path, result):
     root, revision = committed_repo(tmp_path / "repo")
-    code = "print(" + repr(json.dumps({"Results": [result]})) + ")"
+    code = "print(" + repr(json.dumps({**trivy_envelope(), "Results": [result]})) + ")"
     report = await SecurityRunner(
         [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
     ).run(root, revision)
@@ -370,3 +371,58 @@ async def test_clean_native_dependency_report_still_requires_database_freshness(
     ).run(root, revision)
     assert report.status == "degraded_coverage"
     assert report.scanners[0]["status"] == "degraded"
+
+
+def trivy_envelope():
+    return {
+        "SchemaVersion": 2,
+        "ArtifactName": "/workspace",
+        "ArtifactType": "filesystem",
+        "Trivy": {"Version": "0.76.1"},
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("results", [[], [{"Target": "app.py"}]])
+@pytest.mark.parametrize("field,bad_value", [
+    ("SchemaVersion", 1),
+    ("ArtifactName", ""),
+    ("ArtifactType", "unsupported"),
+    ("Trivy", {}),
+    ("Trivy", {"Version": ""}),
+    ("Trivy", {"Version": 2}),
+])
+@pytest.mark.parametrize("missing", [True, False])
+async def test_incomplete_trivy_envelope_fails_closed(tmp_path, results, field, bad_value, missing):
+    root, revision = committed_repo(tmp_path / "repo")
+    payload = {**trivy_envelope(), "Results": results}
+    if missing:
+        del payload[field]
+    else:
+        payload[field] = bad_value
+    code = "print(" + repr(json.dumps(payload)) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("trivy-contract", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    assert report.status == "scanner_failed"
+    assert not report.findings
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload,expected", [
+    ({"Results": []}, "scanner_failed"),
+    ({**trivy_envelope(), "Results": []}, "verified_success"),
+    ({**trivy_envelope(), "Results": [{"Target": "app.py"}]}, "verified_success"),
+    ({**trivy_envelope(), "Results": None}, "scanner_failed"),
+    ({**trivy_envelope(), "Results": {}}, "scanner_failed"),
+    ([], "verified_success"),
+    ({"findings": []}, "verified_success"),
+    ({"issues": []}, "verified_success"),
+])
+async def test_native_and_normalized_clean_contracts(tmp_path, payload, expected):
+    root, revision = committed_repo(tmp_path / "repo")
+    code = "print(" + repr(json.dumps(payload)) + ")"
+    report = await SecurityRunner(
+        [ScannerConfig("contract", (sys.executable, "-c", code))]
+    ).run(root, revision)
+    assert report.status == expected
