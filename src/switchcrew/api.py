@@ -186,9 +186,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 settings.merge_required_checks,
             )
         app.state.company_brain = None
-        from switchcrew.harnesses import HarnessPlanner, load_harness_config
+        from switchcrew.harnesses import HarnessPlanner, HarnessRunner, load_harness_config
 
         harness_roles = load_harness_config(settings.harness_config)
+        app.state.site_builder = (
+            (HarnessRunner(), harness_roles["pm"]) if "pm" in harness_roles else None
+        )
         harness_planner = (
             HarnessPlanner(
                 harness_roles["pm"],
@@ -394,6 +397,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 bytes(content),
                 {k.lower(): v for k, v in request.headers.items()},
                 merge_service=request.app.state.guarded_merge,
+                site_builder=request.app.state.site_builder,
                 background_tasks=background_tasks,
             )
         except PermissionError:

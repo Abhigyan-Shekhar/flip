@@ -76,6 +76,9 @@ class Store:
           REFERENCES tasks(id), recipient TEXT NOT NULL, payload TEXT NOT NULL,
           idempotency_key TEXT UNIQUE NOT NULL, status TEXT NOT NULL, external_id TEXT);
         CREATE TABLE IF NOT EXISTS cursors(stream TEXT PRIMARY KEY, cursor TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS site_previews(
+          id TEXT PRIMARY KEY, room_id TEXT NOT NULL, user_id TEXT NOT NULL,
+          parent_id TEXT REFERENCES site_previews(id), html TEXT NOT NULL, url TEXT NOT NULL);
         INSERT OR IGNORE INTO schema_migrations VALUES(1);
         PRAGMA user_version=1;
         COMMIT;
@@ -367,6 +370,19 @@ class Store:
                 (message_id, recipient, task_id, encode(payload), "pending"),
             )
         return True
+
+    def site_preview_source(self, preview_id, room_id, user_id):
+        row = self.connection.execute(
+            "SELECT html FROM site_previews WHERE id=? AND room_id=? AND user_id=?",
+            (preview_id, room_id, user_id),
+        ).fetchone()
+        return row["html"] if row else None
+
+    def save_site_preview(self, preview_id, room_id, user_id, parent_id, html, url):
+        self.connection.execute(
+            "INSERT INTO site_previews VALUES(?,?,?,?,?,?)",
+            (preview_id, room_id, user_id, parent_id, html, url),
+        )
 
     def pending_inbox(self, recipient):
         return [

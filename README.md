@@ -6,6 +6,9 @@ and Python 3.12/FastAPI with SQLite preserves tasks, handoffs and approvals.
 Engineering changes require independent QA/Reviewer checks and human approval
 before Release can publish a draft PR.
 
+For direct exchanges between separately configured Codex sessions, see
+[Discord peer messaging](docs/DISCORD_PEERS.md).
+
 ## Phase 1 — The Green Check That Lied
 
 The scanner false-clean defect is reproduced and locally patched. Live Discord,

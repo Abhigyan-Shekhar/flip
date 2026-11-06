@@ -21,11 +21,9 @@ are not claimed to be live online.
 
 `POST /discord/interactions` validates Discord's Ed25519 signature over the
 exact timestamp and raw body, rejects stale timestamps and requests over 32 KiB,
-and enforces existing guild/user/room bindings. It only exposes read-only
-scoped `/crew` subcommands: `status`, `team`, `why`, `dependencies`, `trace`,
-`evidence`. Responses are ephemeral and clipped to Discord's message limit.
-There is no native approval/cancel command. This avoids bypassing the
-independent human approval workflow.
+and enforces existing guild/user/room bindings. Scoped `/crew` inspection and
+`/agent-connections` return private responses within Discord's message limit.
+`/flip` approval and merge commands use separate workflow authorization.
 
 1. In the Discord developer application, configure the interaction endpoint
    as the externally reachable HTTPS `/discord/interactions` URL.
@@ -45,6 +43,51 @@ independent human approval workflow.
    fix; routing was restored and the temporary command removed. See the
    [verification record](VERIFICATION_2026-11-04.md). Persistent hosting and
    comprehensive live authorization/replay coverage remain pending.
+
+### Inspect an agent's MCP connections
+
+Register `/agent-connections` from the same manifest. Set
+`SWITCHCREW_DISCORD_CONNECTION_VIEWERS` to a JSON object mapping `pm` and/or
+`research` to the Discord user IDs that may view each agent's grants. The user
+must also have an exact Discord binding to `SWITCHCREW_SWITCH_ROOM_ID`. An empty
+object disables access.
+
+The command uses the selected agent's configured ID and API key to read its
+grants from Switch. Enable `service_connections` in the Switch server's
+`FEATURE_FLAGS_ENABLED` and configure the agent's grants in Console. The
+private reply shows MCP service names and the Console Connections URI. In
+clients that don't open the URI, navigate to **Connections** in Switch Console.
+
+### Publish a website preview from Discord
+
+1. Set `SWITCHCREW_VERCEL_TOKEN` in the API service's private environment.
+   Set `SWITCHCREW_VERCEL_PREVIEW_PROJECT` to a dedicated static demo project
+   name. Vercel can create the project on the first deployment. For a team
+   project, also set `SWITCHCREW_VERCEL_TEAM_ID`.
+2. Add the authorized publisher's Discord user ID to the JSON array
+   `SWITCHCREW_DISCORD_SITE_PUBLISHERS`. The user also needs a verified
+   binding to `SWITCHCREW_SWITCH_ROOM_ID`. Register `/launch-site` from the
+   same slash manifest.
+3. In the bound Discord channel or mapped thread, run
+   `/launch-site title:Night Shift Coffee description:A small coffee bar for late nights.`
+   The command publishes the supplied text in a static page and returns the
+   preview URL privately when Vercel reports it ready. The URL follows the
+   Vercel project's deployment protection settings.
+
+The Discord invocation authorizes publishing the supplied text. Use demo copy
+intended for a website. The workflow creates a Vercel preview and does not
+promote it. If the API restarts during publication or reports an uncertain
+result, check the Vercel dashboard before submitting a fresh command.
+
+For prompt-based builds, configure an authenticated `pm` CLI harness through
+`SWITCHCREW_HARNESS_CONFIG` on the API host and register `/build-site` from
+the manifest. The API process must be able to run the configured CLI. Use
+`/build-site prompt:Build a late-night coffee bar site with hours and a menu`.
+After opening the preview, use `/build-site` with a new prompt and the returned
+`revision` ID. SwitchCrew passes the saved HTML to the model and publishes a
+new preview. Revisions are available to their author in the bound Switch room.
+The generated site is a single static HTML page. Its Vercel content security
+policy blocks scripts, form submissions, and external assets.
 
 ### Verified thread identifiers
 

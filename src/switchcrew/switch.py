@@ -145,6 +145,21 @@ class SwitchClient:
         self.operations = result["operations"]
         return self.operations
 
+    async def mcp_service_names(self) -> list[str]:
+        result = await self._request("GET", f"/agents/{self.agent_id}/service-grants")
+        grants = result.get("grants") if isinstance(result, dict) else None
+        if not isinstance(grants, list):
+            raise SwitchProtocolError("Invalid Switch service grants")
+        services = set()
+        for grant in grants:
+            if not isinstance(grant, dict):
+                raise SwitchProtocolError("Invalid Switch service grant")
+            service = grant.get("service")
+            servers = grant.get("mcp_servers")
+            if isinstance(servers, list) and servers and isinstance(service, str):
+                services.add(service)
+        return sorted(services)
+
     async def operation(self, name: str, **args):
         if self.operations is None:
             await self.discover_operations()

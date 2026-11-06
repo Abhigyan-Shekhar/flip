@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     incident_max_events_per_minute: int = Field(default=10, ge=1, le=100)
     discord_participant_ids: list[str] = Field(default_factory=list)
     discord_application_public_key: str = ""
+    discord_connection_viewers: dict[str, list[str]] = Field(default_factory=dict)
+    discord_site_publishers: list[str] = Field(default_factory=list)
+    vercel_token: SecretStr | None = None
+    vercel_preview_project: str = Field(default="", pattern=r"^(?:[a-z0-9][a-z0-9-]{0,62})?$")
+    vercel_team_id: str = ""
     specialist_targets: dict[str, dict[str, str]] = Field(default_factory=dict)
     orchestration_job_key: str = ""
     research_source_urls: list[str] = Field(default_factory=list)

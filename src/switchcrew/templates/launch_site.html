@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>$title</title>
+  <style>
+    :root { color-scheme: light; --paper: #f6f2e8; --ink: #18251c; --line: #a8afa0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--paper); color: var(--ink);
+      font: 1rem/1.55 Georgia, serif;
+      background-image: repeating-linear-gradient(0deg, transparent 0 23px, #18251c0a 24px);
+    }
+    main { width: min(68rem, calc(100% - 3rem)); margin: 0 auto; }
+    header, footer {
+      display: flex; flex-wrap: wrap; gap: .5rem 1rem; justify-content: space-between;
+      padding: 1rem 0; font: .75rem/1.4 ui-monospace, monospace; letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    header { border-bottom: 1px solid var(--ink); }
+    footer { border-top: 1px solid var(--line); }
+    .hero {
+      min-height: 65vh; display: grid; align-items: center;
+      grid-template-columns: minmax(0, 1fr) minmax(8rem, 25%); gap: clamp(1rem, 5vw, 5rem);
+      padding: clamp(3rem, 9vw, 8rem) 0;
+    }
+    h1 { margin: 0; font-size: clamp(2.75rem, 8vw, 6.75rem); line-height: .98;
+      letter-spacing: -.055em; overflow-wrap: anywhere; }
+    p { max-width: 33rem; margin: 1.5rem 0 0; font-size: clamp(1.1rem, 2vw, 1.5rem);
+      white-space: pre-line; overflow-wrap: anywhere; }
+    .mark { width: 100%; height: auto; color: #426548; }
+    @media (max-width: 37rem) {
+      .hero { grid-template-columns: 1fr; min-height: 0; }
+      .mark { width: 6rem; grid-row: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header><span>SwitchCrew</span><span>Site preview</span></header>
+    <section class="hero" aria-labelledby="title">
+      <div><h1 id="title">$title</h1><p>$description</p></div>
+      <svg class="mark" viewBox="0 0 140 140" aria-hidden="true">
+        <circle cx="70" cy="70" r="66" fill="none" stroke="currentColor"/>
+        <circle cx="70" cy="70" r="48" fill="none" stroke="currentColor"/>
+        <path d="M70 18v104M18 70h104M33 33l74 74M107 33l-74 74"
+              fill="none" stroke="currentColor"/>
+        <circle cx="70" cy="70" r="16" fill="#d2e879" stroke="currentColor" stroke-width="2"/>
+      </svg>
+    </section>
+    <footer><span>Created from Discord</span><span>Hosted on Vercel</span></footer>
+  </main>
+</body>
+</html>
