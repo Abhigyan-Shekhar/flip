@@ -384,14 +384,17 @@ def trivy_envelope():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("results", [[], [{"Target": "app.py"}]])
-@pytest.mark.parametrize("field,bad_value", [
-    ("SchemaVersion", 1),
-    ("ArtifactName", ""),
-    ("ArtifactType", "unsupported"),
-    ("Trivy", {}),
-    ("Trivy", {"Version": ""}),
-    ("Trivy", {"Version": 2}),
-])
+@pytest.mark.parametrize(
+    "field,bad_value",
+    [
+        ("SchemaVersion", 1),
+        ("ArtifactName", ""),
+        ("ArtifactType", "unsupported"),
+        ("Trivy", {}),
+        ("Trivy", {"Version": ""}),
+        ("Trivy", {"Version": 2}),
+    ],
+)
 @pytest.mark.parametrize("missing", [True, False])
 async def test_incomplete_trivy_envelope_fails_closed(tmp_path, results, field, bad_value, missing):
     root, revision = committed_repo(tmp_path / "repo")
@@ -409,20 +412,23 @@ async def test_incomplete_trivy_envelope_fails_closed(tmp_path, results, field, 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("payload,expected", [
-    ({"Results": []}, "scanner_failed"),
-    ({**trivy_envelope(), "Results": []}, "verified_success"),
-    ({**trivy_envelope(), "Results": [{"Target": "app.py"}]}, "verified_success"),
-    ({**trivy_envelope(), "Results": None}, "scanner_failed"),
-    ({**trivy_envelope(), "Results": {}}, "scanner_failed"),
-    ([], "verified_success"),
-    ({"findings": []}, "verified_success"),
-    ({"issues": []}, "verified_success"),
-])
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        ({"Results": []}, "scanner_failed"),
+        ({**trivy_envelope(), "Results": []}, "verified_success"),
+        ({**trivy_envelope(), "Results": [{"Target": "app.py"}]}, "verified_success"),
+        ({**trivy_envelope(), "Results": None}, "scanner_failed"),
+        ({**trivy_envelope(), "Results": {}}, "scanner_failed"),
+        ([], "verified_success"),
+        ({"findings": []}, "verified_success"),
+        ({"issues": []}, "verified_success"),
+    ],
+)
 async def test_native_and_normalized_clean_contracts(tmp_path, payload, expected):
     root, revision = committed_repo(tmp_path / "repo")
     code = "print(" + repr(json.dumps(payload)) + ")"
-    report = await SecurityRunner(
-        [ScannerConfig("contract", (sys.executable, "-c", code))]
-    ).run(root, revision)
+    report = await SecurityRunner([ScannerConfig("contract", (sys.executable, "-c", code))]).run(
+        root, revision
+    )
     assert report.status == expected
