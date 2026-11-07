@@ -1,0 +1,25 @@
+{
+  "name": "flip-hackathon-final-demo",
+  "version": "1.0.0",
+  "description": "Product demo video template for claude-code-video-toolkit",
+  "scripts": {
+    "studio": "remotion studio",
+    "record:evidence": "node scripts/record-public-evidence.mjs",
+    "render": "remotion render ProductDemo out/flip-hackathon-highlight.mp4",
+    "render:preview": "remotion render ProductDemo out/preview.mp4 --scale=0.5"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.539",
+    "@remotion/paths": "4.0.539",
+    "@remotion/shapes": "4.0.539",
+    "@remotion/transitions": "4.0.539",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "typescript": "^5.0.0",
+    "playwright": "^1.55.0"
+  }
+}

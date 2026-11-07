@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111714">
+  <meta name="description" content="A source-backed report on Flip's November 2026 Trivy envelope validation fix.">
+  <title>The Green Check That Lied — Flip Incident Report</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="wordmark" href="#top" aria-label="Flip incident report home"><span class="mark">F</span> FLIP <span class="slash">/</span> INCIDENT REPORT</a>
+    <a class="toplink" href="https://github.com/Abhigyan-Shekhar/flip/pull/11" target="_blank" rel="noreferrer">View PR #11 <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="dot"></span> FLIP SECURITY · 06 NOV 2026</p>
+        <h1>The green<br>check that <em>lied.</em></h1>
+        <p class="lede">A clean result is only as trustworthy as the report behind it. Flip found a gap in its native Trivy envelope validation and fixed it with a fail-closed contract.</p>
+        <a class="button" href="#evidence">Follow the evidence <span aria-hidden="true">↓</span></a>
+      </div>
+      <aside class="report-card" aria-label="Source-backed incident summary, not a live dashboard">
+        <div class="card-top"><span>INCIDENT NOTE <b>01 / 03</b></span><span class="card-spark" aria-hidden="true">✳</span></div>
+        <div class="signal-row"><span class="signal-icon bad">!</span><div><small>BEFORE · INCOMPLETE ENVELOPE</small><strong>Not enough evidence</strong></div></div>
+        <div class="card-rule"></div>
+        <div class="signal-row"><span class="signal-icon good">✓</span><div><small>AFTER · REQUIRED FIELDS CHECKED</small><strong>Malformed report → blocked</strong></div></div>
+        <div class="card-foot"><span>Source: PR #11</span><span>Historical summary</span></div>
+      </aside>
+      <div class="hero-index" aria-hidden="true">01 — A verification story</div>
+    </section>
+
+    <section class="proof-strip" aria-label="Verified public revisions">
+      <div class="wrap proof-grid">
+        <div><span class="proof-label">INVESTIGATED</span><a href="https://github.com/Abhigyan-Shekhar/flip/commit/c26948e4d4205b45d54a2faad86fb486d78576f3" target="_blank" rel="noreferrer"><code>c26948e</code><span>source revision ↗</span></a></div>
+        <div><span class="proof-label">FIX COMMIT</span><a href="https://github.com/Abhigyan-Shekhar/flip/commit/b54ff14dacf830ab808f6d58afacff9649ec2b99" target="_blank" rel="noreferrer"><code>b54ff14</code><span>envelope regression fix ↗</span></a></div>
+        <div><span class="proof-label">MERGED</span><a href="https://github.com/Abhigyan-Shekhar/flip/commit/37d125330ddd0dc603da92a442e796cd2542d683" target="_blank" rel="noreferrer"><code>37d1253</code><span>PR #11 · 06 Nov 2026 ↗</span></a></div>
+      </div>
+    </section>
+
+    <section class="section wrap" id="evidence">
+      <div class="section-kicker"><span>01</span><span>WHAT WENT WRONG</span></div>
+      <div class="section-body split">
+        <h2>A green result<br>needs a real contract.</h2>
+        <div class="prose"><p>Trivy’s native JSON has an envelope that identifies the report: schema, artifact, type, and scanner version. If those fields are missing or malformed, an empty findings list is not proof of a clean scan.</p><p>The vulnerable parser could accept report shapes without validating that complete native envelope. PR #11 tightened the contract while preserving the project’s normalized scanner formats.</p><p class="source-note"><span class="tiny-check">↗</span> Claim checked against the PR diff and its regression tests.</p></div>
+      </div>
+    </section>
+
+    <section class="contract-section">
+      <div class="wrap contract-layout">
+        <div><div class="section-kicker inverse"><span>02</span><span>THE REQUIRED ENVELOPE</span></div><h2>Validate the report<br>before trusting it.</h2><p class="contract-intro">The native clean-report path now requires these fields before an empty result can count as verified success.</p></div>
+        <div class="contract-list">
+          <div><span class="field-num">01</span><code>SchemaVersion</code><span class="field-type">2</span></div>
+          <div><span class="field-num">02</span><code>ArtifactName</code><span class="field-type">non-empty string</span></div>
+          <div><span class="field-num">03</span><code>ArtifactType</code><span class="field-type">supported artifact</span></div>
+          <div><span class="field-num">04</span><code>Trivy.Version</code><span class="field-type">non-empty string</span></div>
+          <div class="fail-row"><span class="field-num">→</span><code>Missing / malformed</code><span class="field-result">BLOCKED</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section wrap">
+      <div class="section-kicker"><span>03</span><span>THE CHANGE</span></div>
+      <div class="timeline">
+        <article><div class="time-mark">01 <i></i></div><div><p class="eyebrow">INVESTIGATE</p><h3>Pin the source.</h3><p>PR #11 names the investigated revision: <code>c26948e</code>.</p></div></article>
+        <article><div class="time-mark">02 <i></i></div><div><p class="eyebrow">CORRECT</p><h3>Fail closed on bad evidence.</h3><p>The parser validates the native envelope before classifying a Trivy report as clean.</p></div></article>
+        <article><div class="time-mark">03 <i></i></div><div><p class="eyebrow">REGRESS</p><h3>Exercise the contract.</h3><p>Added cases cover missing or invalid envelope fields, clean and finding reports, malformed results, and normalized report compatibility.</p></div></article>
+        <article><div class="time-mark">04 <i></i></div><div><p class="eyebrow">MERGE</p><h3>Record the reviewed result.</h3><p>PR #11 merged to <code>codex/demo-green-check-20261106</code> as <code>37d1253</code>.</p></div></article>
+      </div>
+    </section>
+
+    <section class="architecture">
+      <div class="wrap">
+        <div class="section-kicker inverse"><span>04</span><span>WHERE FLIP FITS</span></div>
+        <h2>One conversation.<br>Separate responsibilities.</h2>
+        <p class="architecture-lede">This is the collaboration model behind Flip. Discord is the human-facing workspace; Switch carries addressed agent messages. Each agent runs its own workflow, while Flip records state, checks, and approvals.</p>
+        <div class="layers" role="list">
+          <div role="listitem"><span>PEOPLE SEE &amp; DECIDE</span><strong>Discord</strong><small>Human-facing workspace</small></div>
+          <div role="listitem"><span>AGENTS HAND OFF</span><strong>Switch</strong><small>Addressed communication layer</small></div>
+          <div role="listitem"><span>AGENTS COORDINATE</span><strong>LangGraph</strong><small>Individual workflow orchestration</small></div>
+          <div role="listitem"><span>WORK STAYS ACCOUNTABLE</span><strong>Flip</strong><small>Durable state · verification · approvals</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="closing wrap">
+      <div class="section-kicker"><span>05</span><span>THE TAKEAWAY</span></div>
+      <div class="closing-grid"><h2>A green check<br>should mean<br><em>something.</em></h2><div><p>Flip’s scanner fix is one small example of a larger principle: agents should coordinate through real handoffs, and success should depend on evidence we can inspect.</p><a class="button dark" href="https://github.com/Abhigyan-Shekhar/flip/pull/11" target="_blank" rel="noreferrer">Read the public PR <span aria-hidden="true">↗</span></a></div></div>
+      <p class="disclosure">This page summarizes public GitHub history. It is not live telemetry or a recording of a new run. The PR was merged on 6 November 2026.</p>
+    </section>
+  </main>
+  <footer class="footer"><a class="wordmark" href="#top"><span class="mark">F</span> FLIP</a><span>YOUR AGENTS. YOUR TEAM. ONE CONVERSATION.</span><a href="https://github.com/Abhigyan-Shekhar/flip/pull/11" target="_blank" rel="noreferrer">SOURCE · PR #11 ↗</a></footer>
+</body>
+</html>
