@@ -15,10 +15,10 @@
     { "id": "pr-11-close", "type": "cta", "durationSeconds": 8, "visual": { "type": "slide" }, "narration": "PR eleven merged on November sixth. Evidence before green.", "status": "ready" }
   ],
   "audio": {
-    "voiceover": { "file": "audio/voiceover.mp3", "status": "needed", "scriptWordCount": 79 },
+    "voiceover": { "file": "audio/voiceover.mp3", "status": "needed", "scriptWordCount": 91 },
     "music": { "file": "audio/background-music.mp3", "status": "optional" }
   },
-  "estimates": { "totalDurationSeconds": 82, "voiceoverMinutes": 0.53 },
+  "estimates": { "totalDurationSeconds": 82, "voiceoverMinutes": 0.61 },
   "sessions": [
     { "date": "2026-11-07", "summary": "Recorded and rendered the 82-second public Site and PR #11 highlight at 1920x1080/30. The cut is silent and historical, not a live runtime demonstration. Two-user workflow remains blocked." }
   ]
