@@ -10,15 +10,15 @@
     { "id": "title", "type": "title", "durationSeconds": 8, "visual": { "type": "slide" }, "narration": "On November sixth, Flip fixed a green check that the scanner report had not earned.", "status": "ready" },
     { "id": "incomplete-report", "type": "problem", "durationSeconds": 13, "visual": { "type": "slide" }, "narration": "An empty findings list is not proof of a clean scan when the native report envelope is incomplete.", "status": "ready" },
     { "id": "fail-closed-contract", "type": "solution", "durationSeconds": 11, "visual": { "type": "slide" }, "narration": "The fix validates the native Trivy envelope and keeps the normalized scanner contract working.", "status": "ready" },
-    { "id": "public-evidence-tour", "type": "demo", "durationSeconds": 32, "visual": { "type": "playwright", "asset": "demos/incident-evidence-tour.mp4", "instructions": "Recorded the publicly accessible incident report and PR #11 Files changed tab without login or private Discord capture." }, "narration": "Here is the source-backed incident report and the real public pull request. The historical revisions are linked directly.", "status": "recorded" },
-    { "id": "regression-contract", "type": "feature", "durationSeconds": 10, "visual": { "type": "slide" }, "narration": "The regression cases cover missing or malformed fields, findings and clean reports, and compatibility with normalized results.", "status": "ready" },
+    { "id": "public-evidence-tour", "type": "demo", "durationSeconds": 32, "visual": { "type": "playwright", "asset": "demos/incident-evidence-tour.mp4", "instructions": "Recorded the publicly accessible incident report and PR #11 Files changed tab without login or private Discord capture." }, "narration": "This is the public incident report and merged PR eleven. The linked revisions show what was investigated, what changed, and where the fix landed. This is historical evidence, not a fresh run.", "status": "recorded" },
+    { "id": "regression-contract", "type": "feature", "durationSeconds": 10, "visual": { "type": "slide" }, "narration": "Regression cases cover missing or malformed fields, findings and clean reports, and compatibility with normalized results.", "status": "ready" },
     { "id": "pr-11-close", "type": "cta", "durationSeconds": 8, "visual": { "type": "slide" }, "narration": "PR eleven merged on November sixth. Evidence before green.", "status": "ready" }
   ],
   "audio": {
-    "voiceover": { "file": "audio/voiceover.mp3", "status": "needed", "scriptWordCount": 91 },
+    "voiceover": { "file": "audio/voiceover.mp3", "status": "needed", "scriptWordCount": 118 },
     "music": { "file": "audio/background-music.mp3", "status": "optional" }
   },
-  "estimates": { "totalDurationSeconds": 82, "voiceoverMinutes": 0.61 },
+  "estimates": { "totalDurationSeconds": 82, "voiceoverMinutes": 0.79 },
   "sessions": [
     { "date": "2026-11-07", "summary": "Recorded and rendered the 82-second public Site and PR #11 highlight at 1920x1080/30. The cut is silent and historical, not a live runtime demonstration. Two-user workflow remains blocked." }
   ]
