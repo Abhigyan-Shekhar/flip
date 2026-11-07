@@ -9,6 +9,10 @@ before Release can publish a draft PR.
 For direct exchanges between separately configured Codex sessions, see
 [Discord peer messaging](docs/DISCORD_PEERS.md).
 
+For persistent Ubuntu hosting, see the [server setup](deploy/hosting/README.md).
+It prepares core services; Discord identities and managed Codex enrollment
+still require operator configuration and live acceptance.
+
 ## Phase 1 — The Green Check That Lied
 
 The scanner false-clean defect is reproduced and locally patched. Live Discord,
